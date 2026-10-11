@@ -6,6 +6,7 @@ import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { sampleDialogSlide } from "../../../test/dialogMotion";
 import { holdPlayerStorage, releasePlayerStorage } from "../../../test/playerStorage";
+import { touchGesture } from "../../../test/touchGesture";
 import { setVisibleViewport } from "../../../test/visualViewport";
 
 let server: ViteDevServer;
@@ -353,6 +354,18 @@ describe.each(["/scorekeeper/create", "/phaseCompan10n/create"])("%s", (route) =
       await dialog.getByRole("button", { name: "Saving...", exact: true }).waitFor();
       expect(await back.isDisabled()).toBe(true);
       expect(await close.isDisabled()).toBe(true);
+      const panel = dialog.locator(".dialog-panel");
+      const pendingBounds = await box(panel);
+      for (const direction of [-1, 1]) {
+        expect(
+          await touchGesture(dialog.locator("header"), [
+            { y: 0, time: 0 },
+            { y: direction * 160, time: 100 },
+            { y: direction * 160, time: 110 },
+          ]),
+        ).toEqual([false, false, false]);
+        expect(await box(panel)).toEqual(pendingBounds);
+      }
       await page.keyboard.press("Escape");
       await page.mouse.click(2, 2);
       expect(await dialog.getAttribute("data-dialog-open")).toBe("true");

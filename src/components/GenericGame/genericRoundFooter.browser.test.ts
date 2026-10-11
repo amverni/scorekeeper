@@ -174,10 +174,17 @@ async function failNextSave(page: Page, message: string) {
   }, message);
 }
 
-it.each([
-  longErrorSettings[0],
-  longErrorSettings[2],
-])("respects the nearest $mode save-error scroller before accepting a fresh pull at its top", async (settings) => {
+it.each(
+  [longErrorSettings[0], longErrorSettings[2]].flatMap((settings) =>
+    [-1, 1].flatMap((direction) =>
+      [844, 180].map((visibleHeight) => ({ settings, direction, visibleHeight })),
+    ),
+  ),
+)("respects the nearest $settings.mode save-error boundary in direction $direction at $visibleHeight px", async ({
+  settings,
+  direction,
+  visibleHeight,
+}) => {
   const page = await browser.newPage({
     viewport: { width: 390, height: 844 },
     hasTouch: true,
@@ -190,6 +197,12 @@ it.each([
     const error = dialog.getByRole("region", { name: "Round save error", exact: true });
     const message = error.getByRole("alert");
     await message.waitFor();
+    await setVisibleViewport(page, {
+      width: 390,
+      height: visibleHeight,
+      offsetLeft: 0,
+      offsetTop: visibleHeight === 180 ? 60 : 0,
+    });
     const panel = dialog.locator(".dialog-panel");
     const resting = await panel.boundingBox();
     await error.evaluate((element) => {
@@ -199,18 +212,18 @@ it.each([
     expect(
       await touchGesture(message, [
         { y: 0, time: 0 },
-        { y: 160, time: 100 },
-        { y: 160, time: 110 },
+        { y: direction * 160, time: 100 },
+        { y: direction * 160, time: 110 },
       ]),
     ).toEqual([false, false, false]);
     expect(await panel.boundingBox()).toEqual(resting);
-    await error.evaluate((element) => {
-      element.scrollTop = 0;
-    });
+    await error.evaluate((element, direction) => {
+      element.scrollTop = direction === -1 ? element.scrollHeight : 0;
+    }, direction);
     await touchGesture(message, [
       { y: 0, time: 0 },
-      { y: 120, time: 500 },
-      { y: 120, time: 700 },
+      { y: direction * 120, time: 500 },
+      { y: direction * 120, time: 700 },
     ]);
     await dialog.waitFor({ state: "detached" });
     await page.getByRole("button", { name: "Add Round", exact: true }).click();
@@ -243,16 +256,124 @@ it("keeps horizontal Player navigation and numeric controls independent from mod
       .toBe("true");
     expect(await panel.boundingBox()).toEqual(resting);
     const digit = dialog.getByRole("button", { name: "7", exact: true });
-    await touchGesture(digit, [
-      { y: 0, time: 0 },
-      { y: 160, time: 100 },
-      { y: 160, time: 110 },
-    ]);
+    for (const direction of [-1, 1]) {
+      await touchGesture(digit, [
+        { y: 0, time: 0 },
+        { y: direction * 160, time: 100 },
+        { y: direction * 160, time: 110 },
+      ]);
+      await touchGesture(dialog.getByRole("tab", { name: "Player 1", exact: true }), [
+        { y: 0, time: 0 },
+        { y: direction * 160, time: 100 },
+        { y: direction * 160, time: 110 },
+      ]);
+    }
     expect(await panel.boundingBox()).toEqual(resting);
     await digit.click();
     expect(
       await dialog.getByRole("status", { name: "Player 2 Points", exact: true }).innerText(),
     ).toBe("7");
+  } finally {
+    await page.close();
+  }
+}, 60_000);
+
+it.each(
+  [-1, 1].flatMap((direction) => ["header", "body"].map((source) => ({ direction, source }))),
+)("does not let a non-scrolling $source child bypass the whole-panel boundary in direction $direction", async ({
+  direction,
+  source,
+}) => {
+  const page = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    reducedMotion: "reduce",
+  });
+  try {
+    const dialog = await openRound(page, longErrorSettings[2], 2);
+    await setVisibleViewport(page, { width: 390, height: 180, offsetLeft: 0, offsetTop: 60 });
+    const panel = dialog.locator(".dialog-panel");
+    const header =
+      source === "header"
+        ? dialog.locator("header")
+        : dialog.getByRole("status", { name: "Player 1 Points", exact: true });
+    const resting = await panel.boundingBox();
+    expect(await panel.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(
+      true,
+    );
+    await panel.evaluate((element) => {
+      element.scrollTop = 50;
+    });
+    expect(
+      await touchGesture(header, [
+        { y: 0, time: 0 },
+        { y: direction * 160, time: 100 },
+        { y: direction * 160, time: 110 },
+      ]),
+    ).toEqual([false, false, false]);
+    expect(await panel.boundingBox()).toEqual(resting);
+    await panel.evaluate((element, direction) => {
+      element.scrollTop = direction === -1 ? element.scrollHeight : 0;
+    }, direction);
+    await touchGesture(header, [
+      { y: 0, time: 0 },
+      { y: direction * 120, time: 500 },
+      { y: direction * 120, time: 700 },
+    ]);
+    await dialog.waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Add Round", exact: true }).click();
+    await dialog.getByRole("button", { name: "Save", exact: true }).waitFor();
+  } finally {
+    await page.close();
+  }
+}, 60_000);
+
+it.each([
+  -1, 1,
+])("respects the independent Player list boundary in direction %s without dragging selection controls", async (direction) => {
+  const page = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    reducedMotion: "reduce",
+  });
+  try {
+    const dialog = await openRound(page, longErrorSettings[0], 12);
+    const list = dialog.getByRole("region", { name: "Pass/Fail entries", exact: true });
+    const panel = dialog.locator(".dialog-panel");
+    const resting = await panel.boundingBox();
+    await list.evaluate((element) => {
+      element.scrollTop = 60;
+    });
+    expect(
+      await touchGesture(list, [
+        { y: 0, time: 0 },
+        { y: direction * 160, time: 100 },
+        { y: direction * 160, time: 110 },
+      ]),
+    ).toEqual([false, false, false]);
+    expect(await panel.boundingBox()).toEqual(resting);
+    await list.evaluate((element, direction) => {
+      element.scrollTop = direction === -1 ? element.scrollHeight : 0;
+    }, direction);
+    const player = dialog.getByRole("button", {
+      name: direction === -1 ? "Player 12" : "Player 1",
+      exact: true,
+    });
+    expect(
+      await touchGesture(player, [
+        { y: 0, time: 0 },
+        { y: direction * 160, time: 100 },
+        { y: direction * 160, time: 110 },
+      ]),
+    ).toEqual([false, false, false]);
+    expect(await player.getAttribute("aria-pressed")).toBe("false");
+    expect(await panel.boundingBox()).toEqual(resting);
+    await touchGesture(list, [
+      { y: 0, time: 0 },
+      { y: direction * 120, time: 500 },
+      { y: direction * 120, time: 700 },
+    ]);
+    await dialog.waitFor({ state: "detached" });
   } finally {
     await page.close();
   }

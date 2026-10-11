@@ -5,6 +5,7 @@ import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { holdRoundStorage, releaseRoundStorage } from "../../test/roundStorage";
+import { touchGesture } from "../../test/touchGesture";
 import type { GenericGameSettings } from "../../types";
 import { expectReadyAction } from "../ui/Button/readyActionTestUtils";
 
@@ -50,7 +51,7 @@ async function expectDraft(dialog: Locator, settings: GenericGameSettings, saved
 it.each(
   settings,
 )("allows pending $mode closure and recovers a failed draft without duplicate saves", async (gameSettings) => {
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true });
   try {
     await page.goto(`${appUrl}#/scorekeeper`);
     const gameId = await page.evaluate<string>(`(async () => {
@@ -120,7 +121,11 @@ it.each(
       if (!(form instanceof HTMLFormElement)) throw new Error("Missing Round form");
       form.requestSubmit();
     });
-    await close.click();
+    await touchGesture(dialog.locator("header"), [
+      { y: 0, time: 0 },
+      { y: -120, time: 500 },
+      { y: -120, time: 700 },
+    ]);
     await dialog.waitFor({ state: "detached" });
 
     await releaseRoundStorage(page);

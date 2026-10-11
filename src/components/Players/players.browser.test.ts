@@ -150,7 +150,9 @@ describe.each(["scorekeeper", "phaseCompan10n"])("%s focused Player modal", (exp
   }, 60_000);
 });
 
-it("keeps a focused Player draft recoverable through a pending and failed save", async () => {
+it.each([
+  -1, 1,
+])("keeps a focused Player draft recoverable through a pending and failed save with dismissal direction %s", async (direction) => {
   const page = await browser.newPage({
     viewport: { width: 390, height: 844 },
     hasTouch: true,
@@ -170,19 +172,19 @@ it("keeps a focused Player draft recoverable through a pending and failed save",
     expect(
       await touchGesture(name, [
         { y: 0, time: 0 },
-        { y: 160, time: 100 },
-        { y: 160, time: 110 },
+        { y: direction * 160, time: 100 },
+        { y: direction * 160, time: 110 },
       ]),
     ).toEqual([false, false, false]);
     await touchGesture(
       header,
       [
         { y: 0, time: 0 },
-        { y: 160, time: 100 },
+        { y: direction * 160, time: 100 },
       ],
       null,
     );
-    expect((await panel.boundingBox())?.y).toBe((resting?.y ?? 0) + 160);
+    expect((await panel.boundingBox())?.y).toBe((resting?.y ?? 0) + direction * 160);
     await page.keyboard.press("Enter");
     await dialog.getByRole("button", { name: "Saving...", exact: true }).waitFor();
     const close = dialog.getByRole("button", { name: "Close", exact: true });
@@ -190,8 +192,8 @@ it("keeps a focused Player draft recoverable through a pending and failed save",
     expect(await panel.boundingBox()).toEqual(resting);
     await touchGesture(header, [
       { y: 0, time: 0 },
-      { y: 160, time: 100 },
-      { y: 160, time: 110 },
+      { y: direction * 160, time: 100 },
+      { y: direction * 160, time: 110 },
     ]);
     await page.keyboard.press("Escape");
     await page.mouse.click(2, 2);
@@ -205,8 +207,8 @@ it("keeps a focused Player draft recoverable through a pending and failed save",
     expect(await name.inputValue()).toBe("Recoverable keyboard pilot");
     await touchGesture(header, [
       { y: 0, time: 0 },
-      { y: 120, time: 500 },
-      { y: 120, time: 700 },
+      { y: direction * 120, time: 500 },
+      { y: direction * 120, time: 700 },
     ]);
     await dialog.waitFor({ state: "detached" });
     await page.getByRole("button", { name: "Create new player" }).click();
