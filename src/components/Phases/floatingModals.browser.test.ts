@@ -200,7 +200,15 @@ describe.each([
     }
   }, 90_000);
 
-  it("dismisses a deliberate header pull at a consistent distance on short and tall panels", async () => {
+  it.each([
+    { direction: -1, source: "header" },
+    { direction: 1, source: "header" },
+    { direction: -1, source: "body" },
+    { direction: 1, source: "body" },
+  ])("dismisses a deliberate $source pull in direction $direction at a consistent distance on short and tall panels", async ({
+    direction,
+    source,
+  }) => {
     const page = await browser.newPage({
       viewport: { width: 390, height: 844 },
       hasTouch: true,
@@ -220,18 +228,21 @@ describe.each([
         await settle(page);
         const panel = panelFor(dialog);
         const resting = await box(panel);
-        const header = dialog.getByRole("heading");
+        const header =
+          source === "header"
+            ? dialog.getByRole("heading")
+            : dialog.getByText("Type", { exact: true });
         await touchGesture(header, [
           { y: 0, time: 0 },
-          { y: 119, time: 500 },
-          { y: 119, time: 800 },
+          { y: direction * 119, time: 500 },
+          { y: direction * 119, time: 800 },
         ]);
         await settle(page);
         expect(await box(panel)).toEqual(resting);
         await touchGesture(header, [
           { y: 0, time: 1000 },
-          { y: 120, time: 1500 },
-          { y: 120, time: 1800 },
+          { y: direction * 120, time: 1500 },
+          { y: direction * 120, time: 1800 },
         ]);
         await dialog.waitFor({ state: "detached" });
         await trigger.click();
@@ -246,7 +257,12 @@ describe.each([
     }
   }, 60_000);
 
-  it("requires meaningful flick travel and recent downward release speed, rejecting pauses and reversals", async () => {
+  it.each(
+    [-1, 1].flatMap((direction) => ["header", "body"].map((source) => ({ direction, source }))),
+  )("requires meaningful $source flick travel and recent release speed in direction $direction, rejecting pauses and reversals", async ({
+    direction,
+    source,
+  }) => {
     const page = await browser.newPage({
       viewport: { width: 390, height: 844 },
       hasTouch: true,
@@ -263,7 +279,10 @@ describe.each([
       await settle(page);
       const panel = panelFor(dialog);
       const resting = await box(panel);
-      const header = dialog.getByRole("heading");
+      const header =
+        source === "header"
+          ? dialog.getByRole("heading")
+          : dialog.getByText("Type", { exact: true });
       for (const points of [
         [
           { y: 0, time: 0 },
@@ -291,16 +310,30 @@ describe.each([
           { y: 140, time: 80 },
           { y: 30, time: 100 },
         ],
+        [
+          { y: 0, time: 0 },
+          { y: 140, time: 80 },
+          { y: 130, time: 100 },
+        ],
+        [
+          { y: 0, time: 0 },
+          { y: 60, time: 40 },
+          { y: -140, time: 80 },
+          { y: -150, time: 100 },
+        ],
       ]) {
-        await touchGesture(header, points);
+        await touchGesture(
+          header,
+          points.map((point) => ({ ...point, y: point.y * direction })),
+        );
         await settle(page);
         expect(await box(panel)).toEqual(resting);
       }
       await touchGesture(header, [
         { y: 0, time: 0 },
-        { y: 24, time: 20 },
-        { y: 48, time: 40 },
-        { y: 48, time: 41 },
+        { y: direction * 24, time: 20 },
+        { y: direction * 48, time: 40 },
+        { y: direction * 48, time: 41 },
       ]);
       await dialog.waitFor({ state: "detached" });
     } finally {
@@ -308,7 +341,9 @@ describe.each([
     }
   }, 60_000);
 
-  it("restores cancellations, upward and horizontal gestures without stretching or capturing controls", async () => {
+  it.each([
+    -1, 1,
+  ])("restores interrupted gestures in direction %s without stretching or capturing controls", async (direction) => {
     const page = await browser.newPage({
       viewport: { width: 390, height: 844 },
       hasTouch: true,
@@ -326,13 +361,13 @@ describe.each([
       const returning = await sampleDialogSlide(page, () =>
         touchGesture(header, [
           { y: 0, time: 0 },
-          { y: 60, time: 500 },
-          { y: 60, time: 800 },
+          { y: direction * 60, time: 500 },
+          { y: direction * 60, time: 800 },
         ]),
       );
       expect(returning.duration).toBe(300);
-      expect(returning.samples[0].y).toBeCloseTo(resting.y + 60, 3);
-      expect(returning.samples[2].y - resting.y).toBeLessThan(6);
+      expect(returning.samples[0].y).toBeCloseTo(resting.y + direction * 60, 3);
+      expect(Math.abs(returning.samples[2].y - resting.y)).toBeLessThan(6);
       expect(returning.samples[4].y).toBeCloseTo(resting.y, 3);
       await panel.evaluate((element) => {
         for (const animation of element.getAnimations()) animation.finish();
@@ -342,20 +377,41 @@ describe.each([
         header,
         [
           { y: 0, time: 0 },
-          { y: 160, time: 100 },
-          { y: 160, time: 110 },
+          { y: direction * 160, time: 100 },
+          { y: direction * 160, time: 110 },
         ],
         "touchcancel",
       );
       expect(cancelled[1]).toBe(true);
       await settle(page);
       expect(await box(panel)).toEqual(resting);
-      for (const points of [
+      await touchGesture(
+        header,
         [
-          { y: 100, time: 0 },
-          { y: 0, time: 100 },
-          { y: 0, time: 110 },
+          { y: 0, time: 0 },
+          { y: direction * 160, time: 100 },
         ],
+        null,
+      );
+      await header.evaluate((element) => {
+        const event = new Event("touchstart", { bubbles: true, cancelable: true });
+        Object.defineProperty(event, "touches", {
+          value: [
+            { identifier: 7, clientX: 100, clientY: 160 },
+            { identifier: 8, clientX: 120, clientY: 160 },
+          ],
+        });
+        element.dispatchEvent(event);
+        const end = new Event("touchend", { bubbles: true, cancelable: true });
+        Object.defineProperties(end, {
+          touches: { value: [] },
+          changedTouches: { value: [{ identifier: 7, clientX: 100, clientY: 200 }] },
+        });
+        element.dispatchEvent(end);
+      });
+      await settle(page);
+      expect(await box(panel)).toEqual(resting);
+      for (const points of [
         [
           { x: 0, y: 0, time: 0 },
           { x: 150, y: 15, time: 100 },
@@ -363,8 +419,8 @@ describe.each([
         ],
         [
           { y: 0, time: 0 },
-          { y: 7, time: 1 },
-          { y: 7, time: 2 },
+          { y: direction * 7, time: 1 },
+          { y: direction * 7, time: 2 },
         ],
       ]) {
         expect(await touchGesture(header, points)).toEqual([false, false, false]);
@@ -375,8 +431,8 @@ describe.each([
       expect(
         await touchGesture(close, [
           { y: 0, time: 0 },
-          { y: 160, time: 100 },
-          { y: 160, time: 110 },
+          { y: direction * 160, time: 100 },
+          { y: direction * 160, time: 110 },
         ]),
       ).toEqual([false, false, false]);
       expect(await box(panel)).toEqual(resting);
@@ -387,7 +443,14 @@ describe.each([
     }
   }, 60_000);
 
-  it("leaves scrolling native until a fresh swipe begins at the nearest content boundary", async () => {
+  it.each([
+    { direction: -1, release: "pull" },
+    { direction: 1, release: "pull" },
+    { direction: -1, release: "flick" },
+  ])("leaves scrolling native until a fresh $release begins at the matching content boundary in direction $direction", async ({
+    direction,
+    release,
+  }) => {
     const page = await browser.newPage({
       viewport: { width: 390, height: 400 },
       hasTouch: true,
@@ -398,7 +461,10 @@ describe.each([
       await page.goto(`${appUrl}#/phaseCompan10n/phases`);
       await page.getByRole("button", { name: "Original", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Original", exact: true });
-      const text = dialog.getByText("Phases (10)", { exact: true });
+      const text =
+        direction === -1
+          ? dialog.getByText("10", { exact: true })
+          : dialog.getByText("Phases (10)", { exact: true });
       await text.waitFor();
       await settle(page);
       const panel = panelFor(dialog);
@@ -415,11 +481,11 @@ describe.each([
         Object.defineProperty(event, "touches", { value: [touch] });
         element.dispatchEvent(event);
       });
-      await scroller.evaluate((element) => {
-        element.scrollTop = 0;
-      });
-      const prevented = await text.evaluate((element) => {
-        const touch = { identifier: 7, target: element, clientX: 100, clientY: 160 };
+      await scroller.evaluate((element, direction) => {
+        element.scrollTop = direction === -1 ? element.scrollHeight : 0;
+      }, direction);
+      const prevented = await text.evaluate((element, direction) => {
+        const touch = { identifier: 7, target: element, clientX: 100, clientY: direction * 160 };
         return ["touchmove", "touchend"].map((type) => {
           const event = new Event(type, { bubbles: true, cancelable: true });
           Object.defineProperties(event, {
@@ -429,36 +495,48 @@ describe.each([
           element.dispatchEvent(event);
           return event.defaultPrevented;
         });
-      });
+      }, direction);
       expect(prevented).toEqual([false, false]);
       expect(await box(panel)).toEqual(resting);
       await scroller.hover();
-      await page.mouse.wheel(0, 180);
-      await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+      const boundary = await scroller.evaluate((element) => element.scrollTop);
+      await page.mouse.wheel(0, direction * 180);
+      await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).not.toBe(boundary);
       expect(await box(panel)).toEqual(resting);
-      await scroller.evaluate((element) => {
-        element.scrollTop = 0;
-      });
+      await scroller.evaluate((element, direction) => {
+        element.scrollTop = direction === -1 ? element.scrollHeight : 0;
+      }, direction);
       expect(
         await touchGesture(text, [
-          { y: 150, time: 0 },
+          { y: direction * 150, time: 0 },
           { y: 0, time: 100 },
           { y: 0, time: 110 },
         ]),
       ).toEqual([false, false, false]);
       expect(await box(panel)).toEqual(resting);
-      await touchGesture(text, [
-        { y: 0, time: 0 },
-        { y: 120, time: 500 },
-        { y: 120, time: 700 },
-      ]);
+      await touchGesture(
+        text,
+        release === "flick"
+          ? [
+              { y: 0, time: 0 },
+              { y: direction * 48, time: 40 },
+              { y: direction * 48, time: 41 },
+            ]
+          : [
+              { y: 0, time: 0 },
+              { y: direction * 120, time: 500 },
+              { y: direction * 120, time: 700 },
+            ],
+      );
       await dialog.waitFor({ state: "detached" });
     } finally {
       await page.close();
     }
   }, 60_000);
 
-  it("restricts mouse dragging to the header and restores pointer cancellation", async () => {
+  it.each([
+    -1, 1,
+  ])("restricts mouse dragging in direction %s to the header and restores pointer cancellation", async (direction) => {
     const page = await browser.newPage({
       viewport: { width: 1280, height: 900 },
       colorScheme,
@@ -479,19 +557,21 @@ describe.each([
       await page.mouse.up();
       expect(await box(panel)).toEqual(resting);
       expect(await page.evaluate(() => getSelection()?.toString().length)).toBeGreaterThan(0);
+      await page.mouse.wheel(0, direction * 180);
+      expect(await box(panel)).toEqual(resting);
       const header = await box(dialog.getByRole("heading"));
       await page.mouse.move(header.x + 10, header.y + 8);
       await page.mouse.down();
-      await page.mouse.move(header.x + 10, header.y + 160, { steps: 5 });
+      await page.mouse.move(header.x + 10, header.y + 8 + direction * 152, { steps: 5 });
       const dragged = await box(panel);
-      expect(dragged.y).toBeGreaterThan(resting.y + 120);
+      expect((dragged.y - resting.y) * direction).toBeGreaterThan(120);
       expect(dragged.height).toBe(resting.height);
       await panel.dispatchEvent("pointercancel", { pointerId: 1, pointerType: "mouse" });
       await page.mouse.up();
       expect(await box(panel)).toEqual(resting);
       await page.mouse.move(header.x + 10, header.y + 8);
       await page.mouse.down();
-      await page.mouse.move(header.x + 10, header.y + 160, { steps: 5 });
+      await page.mouse.move(header.x + 10, header.y + 8 + direction * 152, { steps: 5 });
       await page.mouse.up();
       await dialog.waitFor({ state: "detached" });
     } finally {
@@ -499,7 +579,18 @@ describe.each([
     }
   }, 60_000);
 
-  it("slides a released panel fully below the current visible viewport at its final size and reopens cleanly", async () => {
+  it.each([
+    { name: "2 sets of 3", direction: 1, height: 1600, offsetTop: 0, pull: 120 },
+    { name: "2 sets of 3", direction: -1, height: 420, offsetTop: 60, pull: 120 },
+    { name: "Original", direction: -1, height: 420, offsetTop: 60, pull: 120 },
+    { name: "2 sets of 3", direction: -1, height: 420, offsetTop: 60, pull: 800 },
+  ])("slides released $name panels in direction $direction after $pull px beyond the visible viewport and reopens cleanly", async ({
+    name,
+    direction,
+    height,
+    offsetTop,
+    pull,
+  }) => {
     const page = await browser.newPage({
       viewport: { width: 390, height: 844 },
       hasTouch: true,
@@ -507,17 +598,19 @@ describe.each([
     });
     try {
       await page.goto(`${appUrl}#/phaseCompan10n/phases`);
-      await page.getByRole("tab", { name: "Phases", exact: true }).click();
+      if (name === "2 sets of 3") {
+        await page.getByRole("tab", { name: "Phases", exact: true }).click();
+      }
       const trigger = page.getByRole("button", {
-        name: "2 sets of 3",
+        name,
         exact: true,
         includeHidden: true,
       });
       await trigger.click();
-      const dialog = page.getByRole("dialog", { name: "2 sets of 3", exact: true });
+      const dialog = page.getByRole("dialog", { name, exact: true });
       await dialog.getByRole("heading").waitFor();
       await settle(page);
-      await setVisibleViewport(page, { width: 390, height: 1600, offsetLeft: 0, offsetTop: 0 });
+      await setVisibleViewport(page, { width: 390, height, offsetLeft: 0, offsetTop });
       const panel = panelFor(dialog);
       const resting = await box(panel);
       const { duration, samples } = await sampleDialogSlide(
@@ -525,8 +618,8 @@ describe.each([
         () =>
           touchGesture(dialog.getByRole("heading"), [
             { y: 0, time: 0 },
-            { y: 120, time: 500 },
-            { y: 120, time: 700 },
+            { y: direction * pull, time: 500 },
+            { y: direction * pull, time: 700 },
           ]),
         [0, 75, 150, 225],
       );
@@ -534,14 +627,22 @@ describe.each([
       expect(
         await panel.evaluate((element) => getComputedStyle(element).transitionTimingFunction),
       ).toBe("ease-out");
-      expect(samples[0].y).toBeCloseTo(resting.y + 120, 0);
-      expect(samples[1].y).toBeGreaterThan(samples[0].y + (samples[4].y - samples[0].y) * 0.25);
-      expect(samples[4].y).toBeGreaterThanOrEqual(1600);
+      expect(samples[0].y).toBeCloseTo(resting.y + direction * pull, 0);
+      expect((samples[1].y - samples[0].y) * direction).toBeGreaterThan(
+        (samples[4].y - samples[0].y) * direction * 0.25,
+      );
+      if (direction === -1) {
+        expect(samples[4].y + samples[4].height).toBeLessThanOrEqual(offsetTop - 32);
+      } else {
+        expect(samples[4].y).toBeGreaterThanOrEqual(offsetTop + height);
+      }
       for (let index = 0; index < samples.length; index++) {
         expect(samples[index]).toMatchObject({ scaleX: 1, scaleY: 1 });
         expect(samples[index].height).toBeCloseTo(resting.height, 3);
         expect(samples[index].width).toBeCloseTo(resting.width, 3);
-        if (index > 0) expect(samples[index].y).toBeGreaterThan(samples[index - 1].y);
+        if (index > 0) {
+          expect((samples[index].y - samples[index - 1].y) * direction).toBeGreaterThan(0);
+        }
       }
       await panel.evaluate((element) => {
         for (const animation of element.getAnimations()) animation.currentTime = 150;
@@ -556,11 +657,24 @@ describe.each([
       });
       await settle(page);
       expect(await box(panel)).toEqual(resting);
-      await dialog.getByRole("button", { name: "Close", exact: true }).click();
+      const ordinaryExit = await sampleDialogSlide(page, () =>
+        dialog.getByRole("button", { name: "Close", exact: true }).click(),
+      );
+      expect(ordinaryExit.duration).toBe(300);
+      expect(ordinaryExit.samples[4].y).toBeGreaterThanOrEqual(offsetTop + height);
+      expect(
+        await panel.evaluate((element) => getComputedStyle(element).transitionTimingFunction),
+      ).toBe("cubic-bezier(0.5, 0, 1, 0)");
       await panel.evaluate((element) => {
         for (const animation of element.getAnimations()) animation.finish();
       });
       await dialog.waitFor({ state: "detached" });
+      const reopening = await sampleDialogSlide(page, () => trigger.click());
+      expect(reopening.samples[0].y).toBeGreaterThanOrEqual(offsetTop + height);
+      expect(reopening.samples[4].y).toBeCloseTo(resting.y, 0);
+      await panel.evaluate((element) => {
+        for (const animation of element.getAnimations()) animation.finish();
+      });
     } finally {
       await page.close();
     }

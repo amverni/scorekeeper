@@ -124,6 +124,19 @@
   transition-timing-function: ease-out;
 }
 
+[data-dialog-open="false"] .dialog-panel-floating[data-dialog-exit-direction="up"] {
+  /* Clear the top with the whole panel; even an already-offscreen pull continues upward. */
+  transform: translateY(
+    min(
+      calc(
+        var(--dialog-viewport-top) -
+        (var(--dialog-usable-top) + var(--dialog-usable-bottom)) / 2 - 50% - 32px
+      ),
+      calc(var(--dialog-drag-offset, 0px) - 32px)
+    )
+  );
+}
+
 .dialog-panel-workspace .dialog-scroll-frame {
   flex: 1;
 }

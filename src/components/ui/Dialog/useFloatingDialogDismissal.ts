@@ -31,29 +31,32 @@ const INTERACTIVE_TARGETS = [
 ].join(",");
 
 function eligibleTarget(target: EventTarget | null, panel: HTMLElement, mouse: boolean) {
-  if (!(target instanceof Element) || !panel.contains(target)) return false;
-  if (target.closest(INTERACTIVE_TARGETS)) return false;
+  if (!(target instanceof Element) || !panel.contains(target)) return null;
+  if (target.closest(INTERACTIVE_TARGETS)) return null;
   const header = panel.querySelector(":scope > header");
-  if (mouse && !header?.contains(target)) return false;
-  if (!header?.contains(target) && !target.closest(".dialog-body, .dialog-scroll")) return false;
+  if (mouse && !header?.contains(target)) return null;
+  if (!header?.contains(target) && !target.closest(".dialog-body, .dialog-scroll")) return null;
 
   // Record the nearest owner's boundary at touchstart, never during a swipe.
   for (let owner: Element | null = target; owner; owner = owner.parentElement) {
     if (owner instanceof HTMLElement) {
       const style = getComputedStyle(owner);
       if (/(auto|scroll|overlay)/.test(style.overflowX) && owner.scrollWidth > owner.clientWidth) {
-        return false;
+        return null;
       }
       if (
         /(auto|scroll|overlay)/.test(style.overflowY) &&
         owner.scrollHeight > owner.clientHeight
       ) {
-        return owner.scrollTop <= 0;
+        return {
+          down: owner.scrollTop <= 0,
+          up: owner.scrollHeight - owner.clientHeight - owner.scrollTop <= 1,
+        };
       }
     }
     if (owner === panel) break;
   }
-  return true;
+  return { down: true, up: true };
 }
 
 interface Gesture {
@@ -63,12 +66,14 @@ interface Gesture {
   y: number;
   offset: number;
   dragging: boolean;
+  eligible: { down: boolean; up: boolean };
+  exitDirection: -1 | 1 | null;
   lastY: number;
   direction: number;
   samples: { y: number; time: number }[];
 }
 
-/** Native touch scrolling owns a gesture until a fresh eligible downward pull. */
+/** Native scrolling owns the whole gesture unless it starts at the matching boundary. */
 export function useFloatingDialogDismissal(
   panelRef: RefObject<HTMLDivElement | null>,
   enabled: boolean,
@@ -90,6 +95,8 @@ export function useFloatingDialogDismissal(
     const panel = panelElement;
     panel.removeAttribute("data-dialog-released");
     panel.removeAttribute("data-dialog-restoring");
+    panel.removeAttribute("data-dialog-exit-direction");
+    panel.style.removeProperty("--dialog-drag-offset");
     let gesture: Gesture | null = null;
     let capturedPointer: number | null = null;
 
@@ -117,7 +124,9 @@ export function useFloatingDialogDismissal(
         restore();
         return;
       }
-      if (!permission.current || !eligibleTarget(target, panel, source === "mouse")) return;
+      if (!permission.current) return;
+      const eligible = eligibleTarget(target, panel, source === "mouse");
+      if (!eligible) return;
       panel.removeAttribute("data-dialog-restoring");
       gesture = {
         source,
@@ -126,6 +135,8 @@ export function useFloatingDialogDismissal(
         y,
         offset: 0,
         dragging: false,
+        eligible,
+        exitDirection: null,
         lastY: y,
         direction: 0,
         samples: [{ y, time }],
@@ -139,10 +150,15 @@ export function useFloatingDialogDismissal(
       const deltaY = y - current.y;
       if (!current.dragging) {
         if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) < DIRECTION_DISTANCE) return false;
-        if (deltaY <= 0 || deltaY <= Math.abs(deltaX) * 1.2) {
+        const exitDirection = deltaY < 0 ? -1 : 1;
+        if (
+          Math.abs(deltaY) <= Math.abs(deltaX) * 1.2 ||
+          !current.eligible[exitDirection === -1 ? "up" : "down"]
+        ) {
           restore();
           return false;
         }
+        current.exitDirection = exitDirection;
         current.dragging = true;
         panel?.setAttribute("data-dialog-dragging", "");
       }
@@ -150,7 +166,7 @@ export function useFloatingDialogDismissal(
       current.lastY = y;
       current.samples = current.samples.filter((sample) => sample.time >= time - VELOCITY_WINDOW);
       current.samples.push({ y, time });
-      current.offset = Math.max(0, deltaY);
+      current.offset = current.exitDirection === -1 ? Math.min(0, deltaY) : Math.max(0, deltaY);
       panel?.style.setProperty("--dialog-drag-offset", `${current.offset}px`);
       return true;
     }
@@ -161,18 +177,22 @@ export function useFloatingDialogDismissal(
       move(x, y, time);
       const first = current.samples[0];
       const elapsed = time - first.time;
-      const speed = elapsed > 0 ? (y - first.y) / elapsed : 0;
+      const direction = current.exitDirection ?? 1;
+      const travel = current.offset * direction;
+      const speed = elapsed > 0 ? ((y - first.y) * direction) / elapsed : 0;
       const dismiss =
         gesture === current &&
         permission.current &&
         current.dragging &&
-        current.direction > 0 &&
-        current.offset > Math.abs(x - current.x) * 1.2 &&
-        (current.offset >= PULL_DISTANCE ||
-          (current.offset >= FLICK_DISTANCE && speed >= FLICK_SPEED));
+        current.direction * direction > 0 &&
+        travel > Math.abs(x - current.x) * 1.2 &&
+        (travel >= PULL_DISTANCE || (travel >= FLICK_DISTANCE && speed >= FLICK_SPEED));
       // Flush the directly manipulated position before resuming CSS transitions.
       panel?.getBoundingClientRect();
-      if (dismiss) panel?.setAttribute("data-dialog-released", "");
+      if (dismiss) {
+        panel?.setAttribute("data-dialog-released", "");
+        if (direction === -1) panel?.setAttribute("data-dialog-exit-direction", "up");
+      }
       restore(!dismiss);
       if (dismiss) close();
     }
@@ -253,7 +273,7 @@ export function useFloatingDialogDismissal(
       panel.removeEventListener("pointerup", pointerUp);
       panel.removeEventListener("pointercancel", pointerCancel);
       panel.removeEventListener("lostpointercapture", pointerCancel);
-      restore();
+      restore(!panel.hasAttribute("data-dialog-released"));
       panel.removeAttribute("data-dialog-restoring");
       cancelRef.current = null;
     };

@@ -5,6 +5,7 @@ import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { holdRoundStorage, releaseRoundStorage } from "../../test/roundStorage";
+import { touchGesture } from "../../test/touchGesture";
 import { setVisibleViewport } from "../../test/visualViewport";
 import type { Game, GameTiebreaker, Player, Round } from "../../types";
 import { expectReadyAction } from "../ui/Button/readyActionTestUtils";
@@ -88,6 +89,16 @@ it.each<GameTiebreaker>([
     ).toBe(true);
     await page.keyboard.press("Space");
     await page.getByRole("listbox").waitFor();
+    const panelBeforeSelection = await entry.locator(".dialog-panel").boundingBox();
+    for (const direction of [-1, 1]) {
+      await touchGesture(page.getByRole("listbox"), [
+        { y: 0, time: 0 },
+        { y: direction * 160, time: 100 },
+        { y: direction * 160, time: 110 },
+      ]);
+      expect(await entry.locator(".dialog-panel").boundingBox()).toEqual(panelBeforeSelection);
+      expect(await page.getByRole("listbox").isVisible()).toBe(true);
+    }
     await page.keyboard.press("Home");
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Enter");
@@ -583,6 +594,7 @@ it.each([
 ])("keeps Phase Round dismissal and edits blocked until a failed save is recoverable, then retries safely at %dpx visible height", async (visibleHeight) => {
   const page = await browser.newPage({
     viewport: { width: 390, height: 844 },
+    hasTouch: true,
     reducedMotion: "reduce",
   });
   try {
@@ -642,6 +654,18 @@ it.each([
     expect(await dialog.getByRole("tab", { name: "Amy Jones", exact: true }).isDisabled()).toBe(
       true,
     );
+    const panel = dialog.locator(".dialog-panel");
+    const pendingBounds = await panel.boundingBox();
+    for (const direction of [-1, 1]) {
+      expect(
+        await touchGesture(dialog.locator("header"), [
+          { y: 0, time: 0 },
+          { y: direction * 160, time: 100 },
+          { y: direction * 160, time: 110 },
+        ]),
+      ).toEqual([false, false, false]);
+      expect(await panel.boundingBox()).toEqual(pendingBounds);
+    }
     await page.keyboard.press("Escape");
     await page.mouse.click(4, 4);
     expect(await cancel.isVisible()).toBe(true);
@@ -663,7 +687,11 @@ it.each([
         .getAttribute("aria-pressed"),
     ).toBe("true");
     await setVisibleViewport(page, { width: 390, height: 844, offsetLeft: 0, offsetTop: 0 });
-    await cancel.click();
+    await touchGesture(dialog.locator("header"), [
+      { y: 0, time: 0 },
+      { y: -120, time: 500 },
+      { y: -120, time: 700 },
+    ]);
     await dialog.waitFor({ state: "detached" });
     await page.getByRole("button", { name: "Add round 1", exact: true }).click();
     expect(
