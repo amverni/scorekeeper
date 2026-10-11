@@ -146,7 +146,7 @@ async function expectPinnedActions(dialog: Locator, bottomInset: number) {
   const closeBounds = await close.boundingBox();
   const save = await dialog.getByRole("button", { name: "Save", exact: true }).boundingBox();
   if (!closeBounds || !save) throw new Error("Missing Round actions");
-  if (!whole) expect(closeBounds.y - panel.y).toBeCloseTo(16, 0);
+  if (!whole) expect(closeBounds.y - panel.y).toBeCloseTo(8, 0);
   expect(panel.y + panel.height - save.y - save.height).toBeGreaterThanOrEqual(16);
   expect(panel.y + panel.height - save.y - save.height).toBeLessThanOrEqual(32);
   expect(panel.y + panel.height).toBeLessThanOrEqual(
@@ -380,7 +380,7 @@ it.each([
 }, 60_000);
 
 async function expectBodyClearOfActions(dialog: Locator, lastControl: Locator) {
-  const body = dialog.locator(".dialog-scroll:not(.dialog-content)").first();
+  const body = dialog.locator(".dialog-scroll").first();
   if (await dialog.getByRole("group", { name: /keypad$/ }).count()) {
     expect(await body.evaluate((element) => element.scrollHeight - element.clientHeight)).toBe(0);
     expect(await body.evaluate((element) => element.scrollTop)).toBe(0);
@@ -537,7 +537,7 @@ it.each([
           await page.keyboard.press("Delete");
           await page.keyboard.press("7");
         } else {
-          const body = dialog.locator(".dialog-scroll:not(.dialog-content)").first();
+          const body = dialog.locator(".dialog-scroll").first();
           if (playerCount === 12) {
             expect(
               await body.evaluate((element) => element.scrollHeight > element.clientHeight),

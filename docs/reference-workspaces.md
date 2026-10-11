@@ -1,6 +1,6 @@
 # Reference workspaces
 
-[Issue #65](https://github.com/amverni/phaze-compan10n/issues/65) migrates Phase 10 Standings, Generic Standings, and the in-Game Phases Card reference to the shared floating modal described in [Shared presentation contracts](shared-presentation.md#modal-migration).
+[Issue #65](https://github.com/amverni/phaze-compan10n/issues/65) migrates Phase 10 Standings, Generic Standings, and the in-Game Phases Card reference to the shared floating modal described in [Shared presentation contracts](shared-presentation.md#shared-modals). The [#66 cutover](https://github.com/amverni/phaze-compan10n/issues/66) makes that presentation universal; references no longer opt in.
 
 Both Standings retain their `max-w-xl` (576px) cap and use the available height inside usable Safe Areas with 16px edge clearance. Their existing tab panels own list scrolling and horizontal swipes; graphs retain their series, accessible tables, and Player identities. The shared header X replaces Generic Standings' footer Close without adding a visible title. Phase resets to Standings when opened; Generic resets after leaving, preserving its existing interrupted-close behavior.
 

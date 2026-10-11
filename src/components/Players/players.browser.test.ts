@@ -75,11 +75,11 @@ describe.each(["scorekeeper", "phaseCompan10n"])("%s focused Player modal", (exp
       expect(await close.boundingBox()).toEqual(initialClose);
       expect(await region.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
 
-      for (const height of [257, 258]) {
+      for (const height of [241, 242]) {
         await setVisibleViewport(page, { width: 390, height, offsetLeft: 0, offsetTop: 60 });
         await save.scrollIntoViewIfNeeded();
         const scrollTop = await panel.evaluate((element) => element.scrollTop);
-        if (height === 257) expect(scrollTop).toBeGreaterThan(0);
+        if (height === 241) expect(scrollTop).toBeGreaterThan(0);
         else expect(scrollTop).toBe(0);
       }
 

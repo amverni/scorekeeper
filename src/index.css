@@ -35,11 +35,6 @@
   --glass-floating-filter: blur(30px) saturate(100%) brightness(120%);
   --glass-floating-shine-bg: rgba(255, 255, 255, 0.06);
   --glass-floating-shine-opacity: 0.18;
-  --glass-dialog-opacity: 0.20;
-  --glass-dialog-bg: rgba(255, 255, 255, var(--glass-dialog-opacity));
-  --glass-dialog-filter: var(--glass-floating-filter);
-  --glass-dialog-shine-bg: rgba(255, 255, 255, 0.04);
-  --glass-dialog-shine-opacity: 0.16;
 }
 
 @media (prefers-color-scheme: light) {
@@ -130,11 +125,6 @@ body,
     --glass-floating-filter: blur(56px) saturate(155%) brightness(58%);
     --glass-floating-shine-bg: rgba(255, 255, 255, 0.03);
     --glass-floating-shine-opacity: 0.12;
-    --glass-dialog-opacity: 0.26;
-    --glass-dialog-bg: rgba(18, 18, 18, var(--glass-dialog-opacity));
-    --glass-dialog-filter: blur(56px) saturate(155%) brightness(70%);
-    --glass-dialog-shine-bg: rgba(255, 255, 255, 0.03);
-    --glass-dialog-shine-opacity: 0.12;
   }
 
   .glass {

@@ -53,7 +53,6 @@ export function SwitchPhaseSetDialog({ open, onClose, onSelectPhases }: SwitchPh
       open={open}
       onClose={onClose}
       aria-label="Switch phase set"
-      presentation="floating"
       bodyScroll="custom"
       className="phase-selection-dialog"
     >

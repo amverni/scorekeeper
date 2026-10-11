@@ -79,7 +79,7 @@ export function PlayersSearch({
         value={searchTerm}
         onValueChange={setSearchTerm}
         placeholder="Search players…"
-        className="pt-3"
+        className={inDialog ? undefined : "pt-3"}
       >
         {actions?.(searchTerm)}
       </SearchBar>

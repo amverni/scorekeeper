@@ -242,8 +242,13 @@ describe.each(["/scorekeeper/create", "/phaseCompan10n/create"])("%s", (route) =
       expect(original.x + original.width).toBeLessThanOrEqual(366);
       expect(original.y).toBe(36);
       expect(original.y + original.height).toBe(804);
+      const close = dialog.getByRole("button", { name: "Close", exact: true });
+      const searchClose = await box(close);
+      const searchSurface = await box(search.locator(".."));
+      expect(searchClose.y - original.y).toBe(8);
+      expect(searchSurface.y - searchClose.y - searchClose.height).toBe(8);
       await setVisibleViewport(page, { width: 390, height: 420, offsetLeft: 0, offsetTop: 60 });
-      await setVisibleViewport(page, { width: 390, height: 257, offsetLeft: 0, offsetTop: 60 });
+      await setVisibleViewport(page, { width: 390, height: 241, offsetLeft: 0, offsetTop: 60 });
       await dialog.getByRole("button", { name: "Create new player" }).tap();
       const name = dialog.getByRole("textbox", { name: "Name", exact: true });
       await name.waitFor();
@@ -256,9 +261,11 @@ describe.each(["/scorekeeper/create", "/phaseCompan10n/create"])("%s", (route) =
       expect(fitted.y).toBe(76);
       expect(fitted.y + fitted.height).toBe(464);
       expect(await name.inputValue()).toBe("Keyboard Player");
-      const close = dialog.getByRole("button", { name: "Close", exact: true });
       const saveBounds = await box(save);
       const closeBounds = await box(close);
+      const nameLabel = await box(dialog.getByText("Name", { exact: true }));
+      expect(closeBounds.y - fitted.y).toBe(8);
+      expect(nameLabel.y - closeBounds.y - closeBounds.height).toBe(8);
       const region = dialog.getByRole("region", { name: "Create player form", exact: true });
       await region.evaluate((element) => {
         element.scrollTop = element.scrollHeight;

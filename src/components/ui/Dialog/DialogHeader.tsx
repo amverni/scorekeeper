@@ -18,7 +18,7 @@ export function DialogHeader({
   dismissible,
 }: DialogHeaderProps) {
   return (
-    <header className="flex shrink-0 items-center gap-3 p-4">
+    <header className="flex shrink-0 items-center gap-3 px-4 py-2">
       {onBack && (
         <Button
           onClick={onBack}

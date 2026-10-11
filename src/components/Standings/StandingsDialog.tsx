@@ -36,7 +36,6 @@ export function StandingsDialog({ open, onClose, game, players, rounds }: Standi
     <Dialog
       open={open}
       onClose={onClose}
-      presentation="floating"
       sizing="workspace"
       bodyScroll="custom"
       minBodyHeight={200}

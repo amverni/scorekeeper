@@ -33,7 +33,6 @@ export function GenericStandingsDialog({ open, onClose, view }: GenericStandings
       open={open}
       onClose={onClose}
       afterLeave={() => setSelectedIndex(0)}
-      presentation="floating"
       sizing="workspace"
       bodyScroll="custom"
       minBodyHeight={200}

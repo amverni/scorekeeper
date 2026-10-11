@@ -16,7 +16,6 @@ export function ManagePhaseDialog({ phase, open, onClose, afterLeave }: ManagePh
       onClose={onClose}
       afterLeave={afterLeave}
       aria-label={phase ? formatPhaseDisplayName(phase) : "Phase"}
-      presentation="floating"
       header={
         <h2 className="truncate text-lg font-semibold">
           {phase ? formatPhaseDisplayName(phase) : "Phase"}

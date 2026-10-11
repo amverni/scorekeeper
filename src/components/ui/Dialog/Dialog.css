@@ -1,7 +1,6 @@
 /* ── Backdrop ──────────────────────────────────────────────── */
 
 .dialog-backdrop {
-  bottom: -100lvh;
   pointer-events: none;
   opacity: 0;
   transition: opacity 300ms cubic-bezier(0.5, 0, 1, 0);
@@ -15,6 +14,7 @@
 /* ── Panel slide-up / slide-down ──────────────────────────── */
 
 .dialog-panel {
+  --dialog-fade-height: 10px;
   transform: translateY(var(--dialog-exit-distance, 100svh));
   transition: transform 300ms cubic-bezier(0.5, 0, 1, 0);
 }
@@ -55,18 +55,6 @@
   }
 }
 
-/* ── Dialog glass brightness boost ────────────────────────── */
-/* Counteracts the darkening caused by the backdrop-filter
-   picking up the dark overlay behind the panel. */
-
-.dialog-panel {
-  --dialog-fade-height: 10px;
-  height: calc(75svh + var(--safe-area-inset-bottom));
-  padding-bottom: var(--safe-area-inset-bottom);
-  border: 1px solid transparent;
-  border-bottom: none;
-}
-
 .dialog-floating-wrapper {
   --dialog-viewport-left: 0px;
   --dialog-viewport-top: 0px;
@@ -104,7 +92,6 @@
   height: auto;
   width: min(90vw, 100%);
   max-height: 100%;
-  padding-bottom: 0;
   border: none;
   border-radius: 1rem;
   background-color: var(--color-app-background);
@@ -172,10 +159,6 @@
   -webkit-mask-image: var(--dialog-scroll-mask);
 }
 
-.dialog-content:not(:has(.dialog-scroll)) {
-  padding-bottom: var(--dialog-fade-height);
-}
-
 .dialog-scroll-frame {
   position: relative;
   display: flex;
@@ -200,41 +183,8 @@
   pointer-events: none;
 }
 
-.dialog-glass {
-  /* One continuous surface avoids a double-tinted seam at the skirt. Its
-     overflow does not change content height, drag thresholds, or hit targets. */
-  position: absolute;
-  inset: -1px -1px -100lvh;
-  z-index: -1;
-  pointer-events: none;
-  border-radius: inherit;
-  --_g-bg: var(--glass-dialog-bg);
-  --_g-filter: var(--glass-dialog-filter);
-  --_gs-bg: var(--glass-dialog-shine-bg);
-  --_gs-opacity: var(--glass-dialog-shine-opacity);
-  --_gs-filter: blur(0.5px) brightness(100%);
-  border-bottom: none;
-}
-
-@media (prefers-color-scheme: dark) {
-  .dialog-glass {
-    --_g-bg: var(--glass-dialog-bg);
-    --_g-filter: var(--glass-dialog-filter);
-    --_gs-bg: var(--glass-dialog-shine-bg);
-    --_gs-opacity: var(--glass-dialog-shine-opacity);
-  }
-}
-
 @media (prefers-color-scheme: light) {
-  .dialog-glass {
-    --_g-bg: var(--glass-dialog-bg);
-    --_g-border: rgba(0, 0, 0, 0.08);
-    --_g-shadow: 0 8px 22px rgba(0, 0, 0, 0.14),
-      0 1px 3px rgba(0, 0, 0, 0.06),
-      inset 0 1px 0 rgba(255, 255, 255, 0.24);
-  }
-
-  .dialog-panel .glass:not(.dialog-glass) {
+  .dialog-panel .glass {
     --_g-border: rgba(0, 0, 0, 0.14);
     --_g-shadow: 0 4px 10px rgba(0, 0, 0, 0.16),
       inset 0 1px 0 rgba(255, 255, 255, 0.16);

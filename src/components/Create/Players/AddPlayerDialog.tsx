@@ -41,7 +41,6 @@ export function AddPlayerDialog({ open, onClose }: AddPlayerDialogProps) {
           }}
           initialFocus={inputRef}
           aria-label={view === "create" ? "Create player" : "Add player"}
-          presentation="floating"
           sizing="workspace"
           bodyScroll="custom"
           dismissible={!isPending}
@@ -91,7 +90,9 @@ export function AddPlayerDialog({ open, onClose }: AddPlayerDialogProps) {
                 aria-hidden={view !== "create"}
               >
                 {view === "create" && (
-                  <DialogScrollArea aria-label="Create player form">{content}</DialogScrollArea>
+                  <DialogScrollArea aria-label="Create player form" className="pt-0!">
+                    {content}
+                  </DialogScrollArea>
                 )}
               </div>
             </div>

@@ -112,7 +112,6 @@ export function AddRoundDialog({
       open={open}
       onClose={onClose}
       dismissible={!addRound.isPending}
-      presentation="floating"
       sizing="workspace"
       bodyScroll="custom"
       minBodyHeight={240}

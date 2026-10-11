@@ -88,7 +88,6 @@ export function AddPhasesDialog({ open, onClose }: AddPhasesDialogProps) {
       open={open}
       onClose={onClose}
       aria-label="Add phases"
-      presentation="floating"
       bodyScroll="custom"
       className="phase-selection-dialog"
     >

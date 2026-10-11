@@ -44,7 +44,6 @@ export function PhasesCardDialog({ gameId, open, onClose, phaseSet }: PhasesCard
       open={open}
       onClose={onClose}
       aria-label="Phases Card"
-      presentation="floating"
       bodyScroll="custom"
       header={
         <div className="flex shrink-0 justify-end">

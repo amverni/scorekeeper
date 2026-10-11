@@ -26,7 +26,6 @@ export function SavePhaseSetButton({ disabled = false }: SavePhaseSetButtonProps
         open={open}
         onClose={() => setOpen(false)}
         aria-label="Save phase set"
-        presentation="floating"
         header={<h2 className="text-lg font-semibold">Save phase set</h2>}
       >
         <p className="text-sm text-text-secondary">Save phase set flow coming soon.</p>

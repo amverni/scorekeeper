@@ -62,7 +62,6 @@ export function GenericRoundDialog({
     <Dialog
       open={open}
       onClose={onClose}
-      presentation="floating"
       sizing="workspace"
       bodyScroll="custom"
       minBodyHeight={minBodyHeight}

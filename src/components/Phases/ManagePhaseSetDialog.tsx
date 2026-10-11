@@ -44,7 +44,6 @@ export function ManagePhaseSetDialog({
       onClose={onClose}
       afterLeave={afterLeave}
       aria-label={phaseSet?.name ?? "Phase set"}
-      presentation="floating"
       header={<h2 className="truncate text-lg font-semibold">{phaseSet?.name ?? "Phase Set"}</h2>}
     >
       {phaseSetError && (

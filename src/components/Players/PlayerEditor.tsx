@@ -251,7 +251,6 @@ export function PlayerEditor({
             afterLeave={dialog.afterLeave}
             dismissible={!isPending}
             aria-label={isEditing ? "Edit player" : "Create player"}
-            presentation="floating"
             header={
               <h2 className="text-base font-medium text-text-secondary">
                 {isEditing ? "Edit Player" : "New Player"}
