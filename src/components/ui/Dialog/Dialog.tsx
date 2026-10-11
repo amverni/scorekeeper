@@ -8,11 +8,19 @@ import {
   useState,
 } from "react";
 import "./Dialog.css";
+import { DialogHeader } from "./DialogHeader";
+import { DialogScrollArea } from "./DialogScrollArea";
 
 interface AppDialogProps extends Omit<DialogProps<"div">, "children"> {
   children?: ReactNode;
   afterLeave?: () => void;
   dismissible?: boolean;
+  presentation?: "drawer" | "floating";
+  sizing?: "content" | "workspace";
+  header?: ReactNode;
+  actions?: ReactNode;
+  onBack?: () => void;
+  readyToOpen?: boolean;
 }
 
 const panelClasses = [
@@ -64,27 +72,37 @@ function findNearestVerticalScroller(target: EventTarget | null, contentNode: HT
 }
 
 /**
- * A frosted-glass dialog that wraps Headless UI's `Dialog`.
- *
- * Accepts the same props as `@headlessui/react`'s `Dialog` and layers on
- * the app's glass styling with a slide-up transition.
- *
- * Supports swipe-down-to-dismiss: drag the handle bar, or swipe down
- * on the content area when scrolled to the top.
- *
- * Usage:
- * ```tsx
- * <Dialog open={open} onClose={setOpen}>
- *   <p>Your content here</p>
- * </Dialog>
- * ```
+ * Shared accessible modal boundary. Floating consumers use fixed header/actions
+ * around a bounded scrolling body; the drawer default remains during migration.
  */
 export function Dialog(props: AppDialogProps) {
-  const { children, open, onClose, className, afterLeave, dismissible = true, ...rest } = props;
-  const [rendered, setRendered] = useState(Boolean(open));
-  if (open && !rendered) setRendered(true);
+  const {
+    children,
+    open,
+    onClose,
+    className,
+    afterLeave,
+    dismissible = true,
+    presentation = "drawer",
+    sizing = "content",
+    header,
+    actions,
+    onBack,
+    readyToOpen = true,
+    ...rest
+  } = props;
+  const floating = presentation === "floating";
+  const [rendered, setRendered] = useState(Boolean(open && readyToOpen));
+  if (open && readyToOpen && !rendered) setRendered(true);
 
-  const mergedPanelClasses = [panelClasses, className].filter(Boolean).join(" ");
+  const mergedPanelClasses = [
+    panelClasses,
+    floating && "dialog-panel-floating",
+    floating && sizing === "workspace" && "dialog-panel-workspace",
+    className,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   const panelRef = useRef<HTMLDivElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
@@ -295,34 +313,61 @@ export function Dialog(props: AppDialogProps) {
       }}
       className="relative z-50"
     >
-      {/* Dim overlay */}
       <div
         ref={backdropRef}
-        className="dialog-backdrop fixed inset-0 bg-black/15 backdrop-blur-xs"
+        className={["dialog-backdrop fixed inset-0 backdrop-blur-xs", !floating && "bg-black/15"]
+          .filter(Boolean)
+          .join(" ")}
       />
 
-      {/* Bottom-anchored wrapper — above the backdrop */}
-      <div className={wrapperClasses}>
-        {/* Glass panel — slides up */}
+      <div className={floating ? "dialog-floating-wrapper" : wrapperClasses}>
         <DialogPanel ref={panelRef} className={mergedPanelClasses}>
-          <div aria-hidden="true" className="glass dialog-glass" />
-          {/* Drag handle */}
-          <div
-            className="flex shrink-0 cursor-grab justify-center pt-2.5 pb-1 touch-none select-none active:cursor-grabbing"
-            aria-hidden="true"
-            onPointerDown={onHandlePointerDown}
-            onPointerMove={onHandlePointerMove}
-            onPointerUp={onHandlePointerUp}
-            onPointerCancel={onHandlePointerUp}
-          >
-            <div className="h-1 w-9 rounded-full bg-gray-400/50 dark:bg-gray-500/50" />
-          </div>
-          <section
-            ref={contentCallbackRef}
-            className="dialog-content dialog-scroll min-h-0 flex-1 overflow-y-auto overscroll-none"
-          >
-            {children}
-          </section>
+          {floating ? (
+            <>
+              <DialogHeader
+                onClose={() => onClose?.(false)}
+                onBack={onBack}
+                dismissible={dismissible}
+              >
+                {header}
+              </DialogHeader>
+              <div
+                className={["min-h-0 flex flex-col px-4", sizing === "workspace" && "flex-1"]
+                  .filter(Boolean)
+                  .join(" ")}
+              >
+                <DialogScrollArea
+                  aria-label={rest["aria-label"] ?? "Dialog content"}
+                  className={["overscroll-none pb-4", sizing === "workspace" && "flex-1"]
+                    .filter(Boolean)
+                    .join(" ")}
+                >
+                  {children}
+                </DialogScrollArea>
+              </div>
+              {actions && <footer className="shrink-0 p-4 pt-0">{actions}</footer>}
+            </>
+          ) : (
+            <>
+              <div aria-hidden="true" className="glass dialog-glass" />
+              <div
+                className="flex shrink-0 cursor-grab justify-center pt-2.5 pb-1 touch-none select-none active:cursor-grabbing"
+                aria-hidden="true"
+                onPointerDown={onHandlePointerDown}
+                onPointerMove={onHandlePointerMove}
+                onPointerUp={onHandlePointerUp}
+                onPointerCancel={onHandlePointerUp}
+              >
+                <div className="h-1 w-9 rounded-full bg-gray-400/50 dark:bg-gray-500/50" />
+              </div>
+              <section
+                ref={contentCallbackRef}
+                className="dialog-content dialog-scroll min-h-0 flex-1 overflow-y-auto overscroll-none"
+              >
+                {children}
+              </section>
+            </>
+          )}
         </DialogPanel>
       </div>
     </HeadlessDialog>

@@ -1,0 +1,598 @@
+/// <reference types="node" />
+
+import type { Browser, Locator, Page } from "playwright";
+import { webkit } from "playwright";
+import { createServer, type ViteDevServer } from "vite";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+let server: ViteDevServer;
+let browser: Browser;
+let appUrl: string;
+
+beforeAll(async () => {
+  server = await createServer({ server: { host: "127.0.0.1", port: 0, open: false } });
+  await server.listen();
+  const address = server.httpServer?.address();
+  if (!address || typeof address === "string") throw new Error("Missing test server address");
+  appUrl = `http://127.0.0.1:${address.port}/scorekeeper/`;
+  browser = await webkit.launch();
+}, 60_000);
+
+afterAll(async () => {
+  await browser?.close();
+  await server?.close();
+});
+
+async function settle(page: Page) {
+  await page.evaluate(() =>
+    Promise.allSettled(document.getAnimations().map((animation) => animation.finished)),
+  );
+}
+
+async function box(locator: Locator) {
+  const bounds = await locator.boundingBox();
+  if (!bounds) throw new Error("Missing visible modal content");
+  return bounds;
+}
+
+function holdPhaseStorage(page: Page, storeName: "customPhases" | "customPhaseSets") {
+  return page.evaluate(
+    (storeName) =>
+      new Promise<void>((resolve, reject) => {
+        const request = indexedDB.open("phase10-db");
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+          const db = request.result;
+          const transaction = db.transaction(storeName, "readwrite");
+          let held = true;
+          window.addEventListener(
+            "release-phase-storage",
+            () => {
+              held = false;
+            },
+            { once: true },
+          );
+          transaction.oncomplete = () => db.close();
+          transaction.onabort = () => {
+            db.close();
+            reject(transaction.error);
+          };
+          const hold = () => {
+            if (held) transaction.objectStore(storeName).get("fixture").onsuccess = hold;
+          };
+          hold();
+          resolve();
+        };
+      }),
+    storeName,
+  );
+}
+
+function panelFor(dialog: Locator) {
+  return dialog.getByRole("heading").locator("xpath=ancestor::*[@data-headlessui-state][1]");
+}
+
+async function expectClearance(
+  page: Page,
+  panel: Locator,
+  insets: { top: number; right: number; bottom: number; left: number },
+) {
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error("Missing viewport");
+  const bounds = await box(panel);
+  expect(bounds.x).toBeGreaterThanOrEqual(insets.left + 16);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width - insets.right - 16);
+  expect(bounds.y).toBeGreaterThanOrEqual(insets.top + 16);
+  expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height - insets.bottom - 16);
+  expect(bounds.width).toBeLessThanOrEqual(512);
+  expect(bounds.x + bounds.width / 2).toBeCloseTo(
+    (insets.left + viewport.width - insets.right) / 2,
+    0,
+  );
+  expect(bounds.y + bounds.height / 2).toBeCloseTo(
+    (insets.top + viewport.height - insets.bottom) / 2,
+    0,
+  );
+  return bounds;
+}
+
+async function samplePixels(page: Page, points: { x: number; y: number }[]) {
+  const screenshot = await page.screenshot();
+  return page.evaluate(
+    async ({ image, points }) => {
+      const img = new Image();
+      img.src = `data:image/png;base64,${image}`;
+      await img.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Missing screenshot canvas");
+      context.drawImage(img, 0, 0);
+      return points.map(({ x, y }) =>
+        Array.from(context.getImageData(Math.floor(x), Math.floor(y), 1, 1).data),
+      );
+    },
+    { image: screenshot.toString("base64"), points },
+  );
+}
+
+describe.each([
+  "light",
+  "dark",
+] as const)("floating management modals in %s appearance", (colorScheme) => {
+  it("opens a content-sized, app-colored Phase with one accessible glass Close control", async () => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      colorScheme,
+      reducedMotion: "reduce",
+    });
+    try {
+      await page.goto(`${appUrl}#/phaseCompan10n/phases`);
+      await page.getByRole("tab", { name: "Phases", exact: true }).click();
+      const trigger = page.getByRole("button", { name: "2 sets of 3", exact: true });
+      await trigger.click();
+      const dialog = page.getByRole("dialog", { name: "2 sets of 3", exact: true });
+      const heading = dialog.getByRole("heading", { name: "2 sets of 3", exact: true });
+      await heading.waitFor();
+      await settle(page);
+      const panel = panelFor(dialog);
+      const bounds = await box(panel);
+      expect(bounds.height).toBeLessThan(250);
+      expect(bounds.y + bounds.height / 2).toBeCloseTo(422, 0);
+      expect(bounds.x).toBeGreaterThanOrEqual(16);
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(374);
+      expect(
+        await panel.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return {
+            background: style.backgroundColor,
+            filter: style.filter,
+            backdropFilter: style.backdropFilter,
+            shine: getComputedStyle(element, "::after").content,
+            corners: [
+              style.borderTopLeftRadius,
+              style.borderTopRightRadius,
+              style.borderBottomLeftRadius,
+              style.borderBottomRightRadius,
+            ],
+          };
+        }),
+      ).toEqual({
+        background: colorScheme === "light" ? "rgb(255, 255, 255)" : "rgb(23, 23, 23)",
+        filter: "none",
+        backdropFilter: "none",
+        shine: "none",
+        corners: ["16px", "16px", "16px", "16px"],
+      });
+      const close = dialog.getByRole("button", { name: "Close", exact: true });
+      expect(await close.count()).toBe(1);
+      expect(await dialog.getByRole("button", { name: "Go back", exact: true }).count()).toBe(0);
+      const closeBounds = await box(close);
+      expect(closeBounds.width).toBe(44);
+      expect(closeBounds.height).toBe(44);
+      expect(closeBounds.x).toBeGreaterThan(bounds.x + bounds.width / 2);
+      expect(
+        await close.evaluate((element) =>
+          Number.parseFloat(getComputedStyle(element).borderRadius),
+        ),
+      ).toBeGreaterThanOrEqual(22);
+      await close.click();
+      await dialog.waitFor({ state: "detached" });
+      await expect
+        .poll(() => trigger.evaluate((element) => document.activeElement === element))
+        .toBe(true);
+      await trigger.click();
+      await dialog.getByText("built-in", { exact: true }).waitFor();
+      await page.keyboard.press("Escape");
+      await dialog.waitFor({ state: "detached" });
+      await page.getByRole("tab", { name: "Phase Sets", exact: true }).click();
+      await page.getByRole("button", { name: "Original", exact: true }).click();
+      const phaseSet = page.getByRole("dialog", { name: "Original", exact: true });
+      await phaseSet.getByText("Phases (10)", { exact: true }).waitFor();
+      await phaseSet.getByText("10", { exact: true }).waitFor();
+      await settle(page);
+      const setBounds = await expectClearance(page, panelFor(phaseSet), {
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+      });
+      expect(setBounds.height).toBeLessThan(700);
+      await phaseSet.getByRole("button", { name: "Close", exact: true }).click();
+      await phaseSet.waitFor({ state: "detached" });
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+
+  it("keeps the background blurred but undimmed and paints no skirt beneath the floating surface", async () => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      colorScheme,
+      reducedMotion: "reduce",
+    });
+    try {
+      await page.goto(`${appUrl}#/phaseCompan10n/phases`);
+      await page.getByRole("tab", { name: "Phases", exact: true }).click();
+      await page.evaluate(() => {
+        const probe = document.createElement("div");
+        probe.style.cssText =
+          "position:fixed;inset:0;z-index:40;pointer-events:none;background:rgb(255,0,255)";
+        document.body.append(probe);
+      });
+      await page.getByRole("button", { name: "2 sets of 3", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "2 sets of 3", exact: true });
+      await dialog.getByRole("button", { name: "Close", exact: true }).waitFor();
+      await settle(page);
+      const backdrop = await dialog.locator(".dialog-backdrop").evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { color: style.backgroundColor, blur: style.backdropFilter };
+      });
+      expect(backdrop).toEqual({ color: "rgba(0, 0, 0, 0)", blur: "blur(4px)" });
+      const bounds = await box(panelFor(dialog));
+      const samples = await samplePixels(page, [
+        { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height - 5 },
+        { x: 195, y: 839 },
+        { x: 5, y: 5 },
+      ]);
+      expect(samples).toEqual([
+        colorScheme === "light" ? [255, 255, 255, 255] : [23, 23, 23, 255],
+        [255, 0, 255, 255],
+        [255, 0, 255, 255],
+      ]);
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+
+  it("bounds a long Phase Set inside Safe Areas with a fixed header and a reachable final Phase", async () => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      colorScheme,
+      reducedMotion: "reduce",
+      hasTouch: true,
+    });
+    try {
+      await page.goto(appUrl);
+      await page.evaluate(`(async () => {
+        const { phasesApi } = await import("/scorekeeper/src/data/api/phases.ts");
+        const { phaseSetsApi } = await import("/scorekeeper/src/data/api/phaseSets.ts");
+        const phases = (await phasesApi.getAll({ type: "built-in" })).slice(0, 24);
+        if (phases.length !== 24) throw new Error("Missing fixture Phases");
+        await phaseSetsApi.create({
+          type: "saved", name: "Long pilot Phase Set", phases: phases.map(phase => phase.id),
+        });
+      })()`);
+      await page.goto(`${appUrl}#/phaseCompan10n/phases`);
+      const trigger = page.getByRole("button", { name: "Long pilot Phase Set", exact: true });
+      await trigger.click();
+      const dialog = page.getByRole("dialog", { name: "Long pilot Phase Set", exact: true });
+      const close = dialog.getByRole("button", { name: "Close", exact: true });
+      await close.waitFor();
+      await dialog.getByText("Phases (24)", { exact: true }).waitFor();
+      const panel = panelFor(dialog);
+      const finalPhase = dialog.getByText("24", { exact: true });
+      const scroller = finalPhase.locator(
+        "xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' overflow-y-auto ')][1]",
+      );
+      for (const [width, height, top, right, bottom, left] of [
+        [320, 568, 0, 0, 0, 0],
+        [390, 844, 47, 0, 34, 0],
+        [844, 390, 0, 44, 21, 44],
+        [844, 390, 20, 12, 21, 44],
+        [1280, 900, 0, 0, 0, 0],
+      ]) {
+        await page.setViewportSize({ width, height });
+        const insets = { top, right, bottom, left };
+        await page.evaluate((insets) => {
+          for (const [edge, value] of Object.entries(insets)) {
+            document.documentElement.style.setProperty(`--safe-area-inset-${edge}`, `${value}px`);
+          }
+        }, insets);
+        await settle(page);
+        const bounds = await expectClearance(page, panel, insets);
+        expect(bounds.height).toBeCloseTo(height - top - bottom - 32, 0);
+        const headerBounds = await box(close);
+        await scroller.evaluate((element) => {
+          element.scrollTop = element.scrollHeight;
+        });
+        expect(await scroller.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+        expect(await box(close)).toEqual(headerBounds);
+        const last = await box(finalPhase);
+        const scrollBounds = await box(scroller);
+        expect(last.y).toBeGreaterThanOrEqual(scrollBounds.y);
+        expect(last.y + last.height).toBeLessThanOrEqual(scrollBounds.y + scrollBounds.height - 10);
+        expect(
+          await finalPhase.evaluate((element) => {
+            const rect = element.getBoundingClientRect();
+            return element.contains(
+              document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2),
+            );
+          }),
+        ).toBe(true);
+      }
+      await close.tap();
+      await dialog.waitFor({ state: "detached" });
+      await trigger.click();
+      await finalPhase.waitFor({ state: "attached" });
+      expect(await scroller.evaluate((element) => element.scrollTop)).toBe(0);
+      await page.mouse.click(2, 2);
+      await dialog.waitFor({ state: "detached" });
+      await trigger.click();
+      await close.waitFor();
+      const region = dialog.getByRole("region", { name: "Long pilot Phase Set", exact: true });
+      const tab = process.platform === "darwin" ? "Alt+Tab" : "Tab";
+      await close.focus();
+      await page.keyboard.press(tab);
+      await expect
+        .poll(() => region.evaluate((element) => element === document.activeElement))
+        .toBe(true);
+      await page.keyboard.press("PageDown");
+      await expect.poll(() => region.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+      await close.focus();
+      expect(
+        await close.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return [style.outlineStyle, style.outlineColor];
+        }),
+      ).toEqual(["solid", colorScheme === "light" ? "rgb(26, 26, 26)" : "rgb(255, 255, 255)"]);
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+
+  it("waits for saved Phase Set content before sliding at its final size", async () => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      colorScheme,
+    });
+    try {
+      await page.goto(appUrl);
+      await page.evaluate(`(async () => {
+        const { phasesApi } = await import("/scorekeeper/src/data/api/phases.ts");
+        const { phaseSetsApi } = await import("/scorekeeper/src/data/api/phaseSets.ts");
+        const source = (await phasesApi.getAll({ type: "built-in" })).slice(0, 24);
+        const ids = [];
+        for (const phase of source) {
+          ids.push((await phasesApi.create({ type: "saved", requirements: phase.requirements })).id);
+        }
+        await phaseSetsApi.create({ type: "saved", name: "Delayed pilot Phase Set", phases: ids });
+      })()`);
+      await page.goto(`${appUrl}#/phaseCompan10n/phases`);
+      const trigger = page.getByRole("button", { name: "Delayed pilot Phase Set", exact: true });
+      await trigger.waitFor();
+      await page.addStyleTag({ content: ".dialog-panel { transition-duration: 10s; }" });
+      await holdPhaseStorage(page, "customPhases");
+      await trigger.click();
+      await page.waitForTimeout(100);
+      expect(await page.getByRole("dialog").count()).toBe(0);
+      await page.evaluate(() => window.dispatchEvent(new Event("release-phase-storage")));
+      const dialog = page.getByRole("dialog", { name: "Delayed pilot Phase Set", exact: true });
+      const panel = panelFor(dialog);
+      await dialog.getByText("24", { exact: true }).waitFor({ state: "attached" });
+      const samples = await panel.evaluate((element) => {
+        const animation = element.getAnimations()[0];
+        if (!animation) throw new Error("Missing Phase Set entry animation");
+        animation.pause();
+        return [0, 2500, 5000, 7500, 9999].map((time) => {
+          animation.currentTime = time;
+          const rect = element.getBoundingClientRect();
+          return { y: rect.y, width: rect.width, height: rect.height };
+        });
+      });
+      expect(samples[0].y).toBeGreaterThanOrEqual(844);
+      for (const sample of samples) {
+        expect(sample.width).toBeCloseTo(351, 3);
+        expect(sample.height).toBeCloseTo(812, 1);
+        expect(sample.height).toBeCloseTo(samples[0].height, 3);
+      }
+      await panel.evaluate((element) => {
+        for (const animation of element.getAnimations()) animation.finish();
+      });
+      await dialog.getByRole("button", { name: "Close", exact: true }).click();
+      await panel.evaluate((element) => {
+        for (const animation of element.getAnimations()) animation.finish();
+      });
+      await dialog.waitFor({ state: "detached" });
+    } finally {
+      await page.evaluate(() => window.dispatchEvent(new Event("release-phase-storage")));
+      await page.close();
+    }
+  }, 60_000);
+
+  it.each([
+    "no-preference",
+    "reduce",
+  ] as const)("retains the selected Phase Set through a failed read and delayed retry with %s motion", async (reducedMotion) => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      colorScheme,
+      reducedMotion,
+    });
+    try {
+      await page.goto(appUrl);
+      await page.evaluate(`(async () => {
+        const { phaseSetsApi } = await import("/scorekeeper/src/data/api/phaseSets.ts");
+        await phaseSetsApi.create({
+          type: "saved", name: "Recoverable pilot Phase Set", phases: ["classic-1", "classic-2"],
+        });
+      })()`);
+      await page.goto(`${appUrl}#/phaseCompan10n/phases`);
+      const trigger = page.getByRole("button", {
+        name: "Recoverable pilot Phase Set",
+        exact: true,
+      });
+      await trigger.waitFor();
+      await page.evaluate(() => {
+        const get = IDBObjectStore.prototype.get;
+        IDBObjectStore.prototype.get = function (key) {
+          if (this.name === "customPhaseSets") {
+            IDBObjectStore.prototype.get = get;
+            throw new DOMException("Phase Set storage unavailable", "UnknownError");
+          }
+          return get.call(this, key);
+        };
+      });
+      await trigger.click();
+      const dialog = page.getByRole("dialog");
+      await dialog.getByRole("alert").getByText("Phase Set storage unavailable").waitFor();
+      await settle(page);
+      await holdPhaseStorage(page, "customPhaseSets");
+      await dialog.getByRole("button", { name: "Try again", exact: true }).click();
+      await page.waitForTimeout(400);
+      expect(await dialog.count()).toBe(1);
+      expect(await dialog.getByText("Phase Set not found.", { exact: true }).count()).toBe(0);
+      await page.evaluate(() => window.dispatchEvent(new Event("release-phase-storage")));
+      const recovered = page.getByRole("dialog", {
+        name: "Recoverable pilot Phase Set",
+        exact: true,
+      });
+      await recovered.getByText("Phases (2)", { exact: true }).waitFor();
+      await recovered.getByText("2", { exact: true }).waitFor();
+      expect(await recovered.getByRole("alert").count()).toBe(0);
+      await recovered.getByRole("button", { name: "Close", exact: true }).click();
+      await recovered.waitFor({ state: "detached" });
+      await trigger.click();
+      await recovered.getByText("Phases (2)", { exact: true }).waitFor();
+      await page.keyboard.press("Escape");
+      await recovered.waitFor({ state: "detached" });
+    } finally {
+      await page.evaluate(() => window.dispatchEvent(new Event("release-phase-storage")));
+      await page.close();
+    }
+  }, 60_000);
+
+  it.each([
+    "no-preference",
+    "reduce",
+  ] as const)("preserves focus and cleanup across interrupted slides with motion set to %s", async (reducedMotion) => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      colorScheme,
+      reducedMotion,
+    });
+    try {
+      await page.goto(`${appUrl}#/phaseCompan10n/phases`);
+      await page.getByRole("tab", { name: "Phases", exact: true }).click();
+      await page.addStyleTag({ content: ".dialog-panel { transition-duration: 10s; }" });
+      const trigger = page.getByRole("button", {
+        name: "2 sets of 3",
+        exact: true,
+        includeHidden: true,
+      });
+      const dialog = page.getByRole("dialog", { name: "2 sets of 3", exact: true });
+      const panel = panelFor(dialog);
+      await trigger.click();
+      await dialog.getByRole("heading").waitFor({ state: "attached" });
+
+      function sampleSlide() {
+        return panel.evaluate((element) => {
+          const animation = element.getAnimations()[0];
+          if (!animation) return [];
+          animation.pause();
+          const samples = [0, 2500, 5000, 7500, 9999].map((time) => {
+            animation.currentTime = time;
+            const rect = element.getBoundingClientRect();
+            const transform = new DOMMatrix(getComputedStyle(element).transform);
+            return {
+              y: rect.y,
+              width: rect.width,
+              height: rect.height,
+              scaleX: transform.a,
+              scaleY: transform.d,
+            };
+          });
+          animation.currentTime = 100;
+          return samples;
+        });
+      }
+
+      const entry = await sampleSlide();
+      if (reducedMotion === "reduce") {
+        expect(entry).toEqual([]);
+      } else {
+        expect(entry).toHaveLength(5);
+        expect(entry[0].y).toBeGreaterThanOrEqual(844);
+        for (let index = 0; index < entry.length; index++) {
+          expect(entry[index]).toMatchObject({
+            scaleX: 1,
+            scaleY: 1,
+          });
+          expect(entry[index].width).toBeCloseTo(entry[0].width, 3);
+          expect(entry[index].height).toBeCloseTo(entry[0].height, 3);
+          if (index > 0) expect(entry[index].y).toBeLessThanOrEqual(entry[index - 1].y);
+        }
+      }
+      await panel.evaluate((element) => {
+        for (const animation of element.getAnimations()) animation.finish();
+      });
+      await settle(page);
+      const restingBounds = await box(panel);
+      const close = dialog.getByRole("button", { name: "Close", exact: true });
+      await close.focus();
+      const tab = process.platform === "darwin" ? "Alt+Tab" : "Tab";
+      const backTab = process.platform === "darwin" ? "Shift+Alt+Tab" : "Shift+Tab";
+      for (const key of [tab, backTab]) {
+        await page.keyboard.press(key);
+        await expect
+          .poll(() => dialog.evaluate((element) => element.contains(document.activeElement)))
+          .toBe(true);
+      }
+      await close.click();
+      if (reducedMotion === "no-preference") {
+        const exit = await sampleSlide();
+        expect(exit).toHaveLength(5);
+        expect(exit[0].y).toBeCloseTo(restingBounds.y, 0);
+        expect(exit.at(-1)?.y).toBeGreaterThanOrEqual(844);
+        for (let index = 1; index < exit.length; index++) {
+          expect(exit[index].y).toBeGreaterThanOrEqual(exit[index - 1].y);
+          expect(exit[index].height).toBeCloseTo(restingBounds.height, 3);
+          expect(exit[index].width).toBeCloseTo(restingBounds.width, 3);
+          expect(exit[index].scaleX).toBe(1);
+          expect(exit[index].scaleY).toBe(1);
+        }
+        // Reopen through the same public trigger before after-leave clears its selection.
+        await trigger.evaluate((element) => {
+          if (!(element instanceof HTMLElement)) throw new Error("Missing Phase trigger");
+          element.click();
+        });
+        await expect.poll(() => dialog.getAttribute("data-dialog-open")).toBe("true");
+        await panel.evaluate((element) => {
+          for (const animation of element.getAnimations()) animation.finish();
+        });
+        await settle(page);
+        expect(await box(panel)).toEqual(restingBounds);
+        expect(await dialog.getByText("built-in", { exact: true }).count()).toBe(1);
+        await close.focus();
+        await page.keyboard.press(tab);
+        expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(
+          true,
+        );
+        await close.click();
+        await panel.evaluate((element) => {
+          for (const animation of element.getAnimations()) animation.finish();
+        });
+      }
+      await dialog.waitFor({ state: "detached" });
+      await expect
+        .poll(() => trigger.evaluate((element) => element === document.activeElement))
+        .toBe(true);
+      await page.getByRole("button", { name: "1 run of 9", exact: true }).click();
+      const next = page.getByRole("dialog", { name: "1 run of 9", exact: true });
+      await next.getByRole("heading").waitFor({ state: "attached" });
+      await panelFor(next).evaluate((element) => {
+        for (const animation of element.getAnimations()) animation.finish();
+      });
+      await page.keyboard.press("Escape");
+      if (reducedMotion === "no-preference") {
+        await panelFor(next).evaluate((element) => {
+          for (const animation of element.getAnimations()) animation.finish();
+        });
+      }
+      await next.waitFor({ state: "detached" });
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+});

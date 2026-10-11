@@ -351,7 +351,7 @@ describe.each(["light", "dark"] as const)("dialog bottom fade in %s mode", (colo
     }
   }, 30_000);
 
-  it("fades a dialog using the default scroll area", async () => {
+  it("fades the floating Phase Set body while keeping Close fixed", async () => {
     const page = await browser.newPage({
       viewport: { width: 390, height: 600 },
       colorScheme,
@@ -362,8 +362,11 @@ describe.each(["light", "dark"] as const)("dialog bottom fade in %s mode", (colo
       await page.getByRole("button", { name: "Original", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Original", exact: true });
       const lastPhase = dialog.getByText("10", { exact: true }).locator("..");
+      const close = dialog.getByRole("button", { name: "Close", exact: true });
+      const closeBounds = await close.boundingBox();
       await expectClearAtEnd(scrollAreaFor(lastPhase), lastPhase);
-      await dialog.getByRole("button", { name: "Go back", exact: true }).click();
+      expect(await close.boundingBox()).toEqual(closeBounds);
+      await close.click();
       await dialog.waitFor({ state: "detached" });
     } finally {
       await page.close();

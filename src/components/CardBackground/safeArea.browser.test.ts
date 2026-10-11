@@ -297,7 +297,7 @@ describe("safe-area layout in WebKit", () => {
       await page.mouse.click(40, clickY);
       const dialog = page.getByRole("dialog", { name: "1 run of 9", exact: true });
       await expect.poll(() => dialog.count()).toBe(1);
-      await dialog.getByRole("button", { name: "Go back" }).click();
+      await dialog.getByRole("button", { name: "Close", exact: true }).click();
       await dialog.waitFor({ state: "detached" });
       await page.getByRole("link", { name: "Go home", exact: true }).click();
       await page.getByRole("link", { name: "Create Game", exact: true }).waitFor();
