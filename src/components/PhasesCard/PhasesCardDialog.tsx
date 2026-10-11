@@ -40,8 +40,13 @@ export function PhasesCardDialog({ gameId, open, onClose, phaseSet }: PhasesCard
   });
 
   return (
-    <Dialog open={open} onClose={onClose} aria-label="Phases Card">
-      <div className="flex h-full min-h-0 flex-col gap-3 px-4 pt-2 pb-3 text-text-primary">
+    <Dialog
+      open={open}
+      onClose={onClose}
+      aria-label="Phases Card"
+      presentation="floating"
+      bodyScroll="custom"
+      header={
         <div className="flex shrink-0 justify-end">
           <PhasesCardShareButton
             target={{ source: "game-snapshot", name: phaseSet.name, phases, builtInPhaseSetId }}
@@ -56,30 +61,36 @@ export function PhasesCardDialog({ gameId, open, onClose, phaseSet }: PhasesCard
             onError={(message) => toastRef.current?.show(message)}
           />
         </div>
-        {isError ? (
-          <InlineError message="Unable to load phases." onRetry={() => refetch()} />
-        ) : missingPhaseRecords ? (
-          <InlineError message="This Phase Set is missing phase data and cannot be shared." />
-        ) : phasePlayersQuery.isError ? (
-          <InlineError
-            message="Unable to load Players' Current Phases."
-            onRetry={() => phasePlayersQuery.refetch()}
-          />
-        ) : (
-          <DialogScrollArea
-            aria-label="Phases Card phase list"
-            aria-busy={isLoading || phasePlayersQuery.isPending}
-          >
-            <PhasesCardList
-              phases={phases}
-              playerGroups={phasePlayersQuery.data}
-              isLoading={isLoading || phasePlayersQuery.isPending}
-              scrollable={false}
+      }
+    >
+      {isError || missingPhaseRecords || phasePlayersQuery.isError ? (
+        <div className="pb-4">
+          {isError ? (
+            <InlineError message="Unable to load phases." onRetry={() => refetch()} />
+          ) : missingPhaseRecords ? (
+            <InlineError message="This Phase Set is missing phase data and cannot be shared." />
+          ) : phasePlayersQuery.isError ? (
+            <InlineError
+              message="Unable to load Players' Current Phases."
+              onRetry={() => phasePlayersQuery.refetch()}
             />
-          </DialogScrollArea>
-        )}
-        <Toast ref={toastRef} />
-      </div>
+          ) : null}
+        </div>
+      ) : (
+        <DialogScrollArea
+          aria-label="Phases Card phase list"
+          aria-busy={isLoading || phasePlayersQuery.isPending}
+          className="overscroll-none pb-4"
+        >
+          <PhasesCardList
+            phases={phases}
+            playerGroups={phasePlayersQuery.data}
+            isLoading={isLoading || phasePlayersQuery.isPending}
+            scrollable={false}
+          />
+        </DialogScrollArea>
+      )}
+      <Toast ref={toastRef} />
     </Dialog>
   );
 }

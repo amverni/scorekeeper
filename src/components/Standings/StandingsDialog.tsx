@@ -10,6 +10,7 @@ import {
   standingsDialogListClasses,
   standingsDialogTabPanelClasses,
   standingsDialogTabPanelHorizontalBleed,
+  standingsDialogWorkspaceClasses,
 } from "./standingsDialogLayout";
 import { getStandingsDisplayRows } from "./standingsDialogView";
 import { TiebreakerGraph } from "./TiebreakerGraph";
@@ -32,8 +33,16 @@ export function StandingsDialog({ open, onClose, game, players, rounds }: Standi
   }, [open]);
 
   return (
-    <Dialog open={open} onClose={onClose} className="max-w-xl">
-      <div className="flex h-full min-h-0 flex-col gap-3 px-4 pt-2 pb-3 text-text-primary">
+    <Dialog
+      open={open}
+      onClose={onClose}
+      presentation="floating"
+      sizing="workspace"
+      bodyScroll="custom"
+      minBodyHeight={200}
+      className="max-w-xl"
+    >
+      <div className={standingsDialogWorkspaceClasses}>
         <TabGroup
           selectedIndex={selectedIndex}
           onChange={setSelectedIndex}

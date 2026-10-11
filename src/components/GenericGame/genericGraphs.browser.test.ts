@@ -4,6 +4,8 @@ import type { Browser, Locator, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { swipeTabPanel } from "../../test/swipeTabPanel";
+import { setVisibleViewport } from "../../test/visualViewport";
 import type { GenericGameSettings } from "../../types";
 
 let server: ViteDevServer;
@@ -176,6 +178,8 @@ it.each([
   { width: 320, height: 568, colorScheme: "dark" },
   { width: 844, height: 390, colorScheme: "light" },
   { width: 844, height: 390, colorScheme: "dark" },
+  { width: 1280, height: 900, colorScheme: "light" },
+  { width: 1280, height: 900, colorScheme: "dark" },
 ] as const)("keeps graph controls, labels and long Standings usable at $width x $height in $colorScheme", async ({
   width,
   height,
@@ -204,10 +208,32 @@ it.each([
       content:
         ":root { --safe-area-inset-top: 20px; --safe-area-inset-bottom: 34px; --safe-area-inset-left: 16px; --safe-area-inset-right: 16px; }",
     });
+    const surface = dialog.locator(".dialog-panel");
+    await expect
+      .poll(() => surface.evaluate((element) => element.getBoundingClientRect().y))
+      .toBe(36);
+    const surfaceBounds = await surface.boundingBox();
+    if (!surfaceBounds) throw new Error("Missing Standings workspace");
+    expect(surfaceBounds.height).toBe(height - 86);
+    expect(surfaceBounds.width).toBe(Math.min(576, width - 64));
+    expect(surfaceBounds.x).toBeGreaterThanOrEqual(32);
+    expect(surfaceBounds.x + surfaceBounds.width).toBeLessThanOrEqual(width - 32);
+    expect(await surface.getAttribute("data-dialog-scroll")).toBe("body");
+    expect(await surface.evaluate((element) => getComputedStyle(element).backdropFilter)).toBe(
+      "none",
+    );
+    expect(
+      await dialog
+        .locator(".dialog-backdrop")
+        .evaluate((element) => getComputedStyle(element).backgroundColor),
+    ).toBe("rgba(0, 0, 0, 0)");
     const close = dialog.getByRole("button", { name: "Close", exact: true });
+    expect(await close.count()).toBe(1);
     const before = await close.boundingBox();
     if (!before) throw new Error("Missing Close geometry");
-    expect(before.y + before.height).toBeLessThanOrEqual(height - 34);
+    expect(before.width).toBe(44);
+    expect(before.height).toBe(44);
+    expect(before.y).toBeGreaterThanOrEqual(36);
     const scroll = dialog.getByRole("region", { name: "Points Standings", exact: true });
     expect(await scroll.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(
       true,
@@ -253,8 +279,8 @@ it.each([
       expect(label.fontSize).toBeGreaterThanOrEqual(14);
       expect(label.x).toBeGreaterThanOrEqual(16);
       expect(label.right).toBeLessThanOrEqual(width - 16);
-      expect(label.y).toBeGreaterThanOrEqual(20);
-      expect(label.bottom).toBeLessThanOrEqual(before.y);
+      expect(label.y).toBeGreaterThanOrEqual(before.y + before.height);
+      expect(label.bottom).toBeLessThanOrEqual(height - 50);
     }
     expect(await close.boundingBox()).toEqual(before);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
@@ -266,32 +292,6 @@ it.each([
     await page.close();
   }
 }, 60_000);
-
-async function swipe(panel: Locator, direction: "left" | "right") {
-  await panel.evaluate((element, direction) => {
-    const bounds = element.getBoundingClientRect();
-    const start = direction === "left" ? bounds.right - 20 : bounds.left + 20;
-    const end = direction === "left" ? bounds.left + 20 : bounds.right - 20;
-    for (const [type, clientX] of [
-      ["touchstart", start],
-      ["touchmove", end],
-      ["touchend", end],
-    ] as const) {
-      const touch = {
-        identifier: 1,
-        target: element,
-        clientX,
-        clientY: bounds.y + bounds.height / 2,
-      };
-      const event = new Event(type, { bubbles: true, cancelable: true });
-      Object.defineProperties(event, {
-        touches: { value: type === "touchend" ? [] : [touch] },
-        changedTouches: { value: [touch] },
-      });
-      element.dispatchEvent(event);
-    }
-  }, direction);
-}
 
 it("keeps large signed axis labels inside the graph while exposing exact cumulative totals", async () => {
   const page = await browser.newPage({
@@ -387,15 +387,34 @@ it.each([
     expect(await tiebreaker.evaluate((element) => document.activeElement === element)).toBe(true);
     await page.keyboard.press("ArrowRight");
     expect(await standings.getAttribute("aria-selected")).toBe("true");
-    await swipe(dialog.getByRole("list", { name: "Standings places" }), "left");
+    await swipeTabPanel(dialog.getByRole("list", { name: "Standings places" }), "left");
     await expect.poll(() => points.getAttribute("aria-selected")).toBe("true");
-    await swipe(dialog.getByRole("img", { name: "Points progress by round", exact: true }), "left");
+    await swipeTabPanel(
+      dialog.getByRole("img", { name: "Points progress by round", exact: true }),
+      "left",
+    );
     await expect.poll(() => tiebreaker.getAttribute("aria-selected")).toBe("true");
-    await swipe(
+    await swipeTabPanel(
       dialog.getByRole("img", { name: "Tiebreaker progress by round", exact: true }),
       "right",
     );
     await expect.poll(() => points.getAttribute("aria-selected")).toBe("true");
+    await setVisibleViewport(page, { width: 320, height: 180, offsetTop: 60, offsetLeft: 0 });
+    const surface = dialog.locator(".dialog-panel");
+    await expect.poll(() => surface.getAttribute("data-dialog-scroll")).toBe("whole");
+    const plot = dialog.getByRole("img", { name: "Points progress by round", exact: true });
+    expect((await plot.boundingBox())?.height).toBeGreaterThan(70);
+    const close = dialog.getByRole("button", { name: "Close", exact: true });
+    await close.focus();
+    await page.evaluate(() => new Promise(requestAnimationFrame));
+    const cramped = await surface.boundingBox();
+    const closeBounds = await close.boundingBox();
+    if (!cramped || !closeBounds) throw new Error("Missing cramped Standings controls");
+    expect(closeBounds.y).toBeGreaterThanOrEqual(cramped.y);
+    expect(closeBounds.y + closeBounds.height).toBeLessThanOrEqual(cramped.y + cramped.height);
+    await setVisibleViewport(page, { width: 320, height: 568, offsetTop: 0, offsetLeft: 0 });
+    await expect.poll(() => surface.getAttribute("data-dialog-scroll")).toBe("body");
+    expect(await surface.evaluate((element) => element.scrollTop)).toBe(0);
     await page.keyboard.press("Escape");
     await dialog.waitFor({ state: "detached" });
     const open = page.getByRole("button", { name: "Open Standings", exact: true });

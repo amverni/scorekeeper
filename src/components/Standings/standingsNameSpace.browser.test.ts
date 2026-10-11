@@ -4,6 +4,7 @@ import type { Browser, Locator, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { swipeTabPanel } from "../../test/swipeTabPanel";
 import type { Game, GenericGame, GenericRound, Player, Round } from "../../types";
 import { makePhaseGraphGame } from "./phaseGraphTestFixtures";
 
@@ -31,7 +32,12 @@ const players: Player[] = [
   { id: "cam", name: "Christopher Worthington", color: "Spearmint", isFavorite: 0, createdAt: 0 },
 ];
 
-async function seedGame(page: Page, game: Game | GenericGame, round: Round | GenericRound) {
+async function seedGame(
+  page: Page,
+  game: Game | GenericGame,
+  round: Round | GenericRound,
+  identities = players,
+) {
   await page.goto(`${appUrl}#/scorekeeper`);
   await page.getByText("No active games yet", { exact: true }).waitFor();
   await page.evaluate(
@@ -60,7 +66,7 @@ async function seedGame(page: Page, game: Game | GenericGame, round: Round | Gen
         };
       });
     },
-    { game, round, players },
+    { game, round, players: identities },
   );
   const prefix = game.scorekeeper === "phase10" ? "phaseCompan10n/" : "scorekeeper/";
   await page.goto(`${appUrl}#/${prefix}game/${game.id}`);
@@ -149,6 +155,130 @@ async function expectFits(locator: Locator, container: Locator) {
 }
 
 describe.each(["light", "dark"] as const)("Standings name space in %s mode", (colorScheme) => {
+  it("keeps the Phase workspace, long list, graphs and reopen navigation usable across screen sizes", async () => {
+    const page = await browser.newPage({
+      viewport: { width: 320, height: 568 },
+      colorScheme,
+      reducedMotion: "reduce",
+    });
+    page.setDefaultTimeout(5_000);
+    page.setDefaultNavigationTimeout(30_000);
+    try {
+      const identities = Array.from({ length: 24 }, (_, index) => ({
+        ...players[index % players.length],
+        id: `player-${index}`,
+        name: `Alexandria Montgomery ${index}`,
+      }));
+      const game = makePhaseGraphGame({
+        players: identities.map((player) => player.id),
+        activePlayers: identities.map((player) => player.id),
+      });
+      await seedGame(
+        page,
+        game,
+        {
+          gameId: game.id,
+          scorekeeper: "phase10",
+          roundNumber: 1,
+          roundWinnerId: null,
+          scores: [
+            { playerId: identities[0].id, currentPhase: 1, phaseStatus: "failed", score: 0 },
+            ...identities.slice(1).map((player, index) => ({
+              playerId: player.id,
+              currentPhase: 1,
+              phaseStatus: "failed" as const,
+              score: index + 1,
+            })),
+          ],
+        },
+        identities,
+      );
+      await page.addStyleTag({
+        content:
+          ":root { --safe-area-inset-top: 20px; --safe-area-inset-bottom: 34px; --safe-area-inset-left: 16px; --safe-area-inset-right: 16px; }",
+      });
+      const dialog = page.getByRole("dialog");
+      const surface = dialog.locator(".dialog-panel");
+      const close = dialog.getByRole("button", { name: "Close", exact: true });
+      expect(await close.count()).toBe(1);
+      for (const viewport of [
+        { width: 320, height: 568 },
+        { width: 844, height: 390 },
+        { width: 1280, height: 900 },
+      ]) {
+        await page.setViewportSize(viewport);
+        await expect.poll(async () => (await box(surface)).height).toBe(viewport.height - 86);
+        const bounds = await box(surface);
+        expect(bounds.y).toBe(36);
+        expect(bounds.width).toBe(Math.min(576, viewport.width - 64));
+        expect(await surface.getAttribute("data-dialog-scroll")).toBe("body");
+        expect(await surface.evaluate((element) => getComputedStyle(element).backdropFilter)).toBe(
+          "none",
+        );
+        const closeBounds = await box(close);
+        await dialog.getByRole("tab", { name: "Standings", exact: true }).click();
+        const list = dialog.getByRole("region", { name: "Standings", exact: true });
+        await list.focus();
+        await page.keyboard.press("End");
+        await expect
+          .poll(() =>
+            list.evaluate(
+              (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+            ),
+          )
+          .toBeLessThanOrEqual(1);
+        const last = await box(list.getByRole("listitem").last());
+        const listBounds = await box(list);
+        expect(last.y + last.height).toBeLessThanOrEqual(listBounds.y + listBounds.height - 10);
+        for (const [tab, label] of [
+          ["Phases", "Phase progress by round"],
+          ["Tiebreaker", "Tiebreaker progress by round"],
+        ]) {
+          await dialog.getByRole("tab", { name: tab, exact: true }).click();
+          const graph = dialog.getByRole("img", { name: label, exact: true });
+          expect((await box(graph)).height).toBeGreaterThan(70);
+          expect(await dialog.getByRole("table").locator("tbody tr").count()).toBe(24);
+          expect(await box(close)).toEqual(closeBounds);
+        }
+      }
+      const standingsTab = dialog.getByRole("tab", { name: "Standings", exact: true });
+      await standingsTab.focus();
+      await page.keyboard.press("ArrowRight");
+      expect(
+        await dialog
+          .getByRole("tab", { name: "Phases", exact: true })
+          .getAttribute("aria-selected"),
+      ).toBe("true");
+      await swipeTabPanel(
+        dialog.getByRole("img", { name: "Phase progress by round", exact: true }),
+        "left",
+      );
+      await expect
+        .poll(() =>
+          dialog
+            .getByRole("tab", { name: "Tiebreaker", exact: true })
+            .getAttribute("aria-selected"),
+        )
+        .toBe("true");
+      await page.keyboard.press("Escape");
+      await dialog.waitFor({ state: "detached" });
+      const open = page.getByRole("button", { name: "Open Standings", exact: true });
+      await expect
+        .poll(() => open.evaluate((element) => document.activeElement === element))
+        .toBe(true);
+      await open.click();
+      expect(
+        await dialog
+          .getByRole("tab", { name: "Standings", exact: true })
+          .getAttribute("aria-selected"),
+      ).toBe("true");
+      await close.click();
+      await dialog.waitFor({ state: "detached" });
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+
   it("reclaims Phase 10 name width and aligns scores without overlapping the Finished indicator", async () => {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 }, colorScheme });
     page.setDefaultTimeout(5_000);

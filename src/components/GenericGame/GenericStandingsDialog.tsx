@@ -6,9 +6,9 @@ import { StandingsList, standingsRowClasses } from "../Standings/StandingsList";
 import {
   standingsDialogTabPanelClasses,
   standingsDialogTabPanelHorizontalBleed,
+  standingsDialogWorkspaceClasses,
 } from "../Standings/standingsDialogLayout";
 import {
-  Button,
   Dialog,
   DialogScrollArea,
   numberCircleClasses,
@@ -33,9 +33,13 @@ export function GenericStandingsDialog({ open, onClose, view }: GenericStandings
       open={open}
       onClose={onClose}
       afterLeave={() => setSelectedIndex(0)}
+      presentation="floating"
+      sizing="workspace"
+      bodyScroll="custom"
+      minBodyHeight={200}
       className="max-w-xl"
     >
-      <div className="flex h-full min-h-0 flex-col gap-3 px-4 pt-2 pb-4">
+      <div className={standingsDialogWorkspaceClasses}>
         <DialogTitle className="sr-only">Standings</DialogTitle>
         <TabGroup
           selectedIndex={selectedIndex}
@@ -107,15 +111,6 @@ export function GenericStandingsDialog({ open, onClose, view }: GenericStandings
             )}
           </SwipeableTabPanels>
         </TabGroup>
-        <div className="mt-auto flex shrink-0 justify-end px-2 pt-2">
-          <Button
-            type="button"
-            onClick={() => onClose(false)}
-            className="min-h-11 px-5 text-sm data-focus:outline-text-secondary!"
-          >
-            Close
-          </Button>
-        </div>
       </div>
     </Dialog>
   );

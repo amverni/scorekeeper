@@ -4,6 +4,7 @@ import type { Browser, Locator, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { setVisibleViewport } from "../../test/visualViewport";
 import type { ActiveGame, Player, Round } from "../../types";
 import { makePhaseGraphGame, phaseGraphPlayers } from "../Standings/phaseGraphTestFixtures";
 
@@ -25,6 +26,98 @@ async function bounds(locator: Locator) {
   if (!value) throw new Error("Expected a visible Phases Card element");
   return value;
 }
+
+it.each([
+  "light",
+  "dark",
+] as const)("keeps the floating Phases Card content-sized with fixed reference actions and reachable long lists in %s", async (colorScheme) => {
+  const page = await browser.newPage({
+    viewport: { width: 1280, height: 900 },
+    colorScheme,
+    reducedMotion: "reduce",
+  });
+  try {
+    await seedCrowdedGame(page);
+    await page.addStyleTag({
+      content:
+        ":root { --safe-area-inset-top: 20px; --safe-area-inset-bottom: 34px; --safe-area-inset-left: 16px; --safe-area-inset-right: 16px; }",
+    });
+    const card = await openCard(page);
+    const surface = card.locator(".dialog-panel");
+    const close = card.getByRole("button", { name: "Close", exact: true });
+    expect(await close.count()).toBe(1);
+    expect((await bounds(surface)).height).toBeLessThan(814);
+    const share = card.getByRole("button", { name: "Share Phases Card", exact: true });
+    for (const viewport of [
+      { width: 1280, height: 900 },
+      { width: 320, height: 568 },
+      { width: 844, height: 390 },
+    ]) {
+      await page.setViewportSize(viewport);
+      const toggle = card.getByRole("button", { name: "Players on Phase 1", exact: true });
+      await toggle.click({ position: { x: 5, y: 5 } });
+      await settleMotion(card);
+      const expanded = await toggle.getAttribute("aria-expanded");
+      if (expanded !== "true") {
+        await toggle.click({ position: { x: 5, y: 5 } });
+        await settleMotion(card);
+      }
+      const geometry = await bounds(surface);
+      expect(geometry.width).toBe(Math.min(512, viewport.width - 64));
+      expect(geometry.y).toBeGreaterThanOrEqual(36);
+      expect(geometry.y + geometry.height).toBeLessThanOrEqual(viewport.height - 50);
+      expect(await surface.evaluate((element) => getComputedStyle(element).backdropFilter)).toBe(
+        "none",
+      );
+      const closeBounds = await bounds(close);
+      const shareBounds = await bounds(share);
+      const list = card.getByRole("region", { name: "Phases Card phase list", exact: true });
+      await list.focus();
+      await page.keyboard.press("End");
+      await expect
+        .poll(() =>
+          list.evaluate(
+            (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+          ),
+        )
+        .toBeLessThanOrEqual(1);
+      const last = await bounds(list.locator(".list-row-shell").last());
+      const listBounds = await bounds(list);
+      expect(last.y + last.height).toBeLessThanOrEqual(listBounds.y + listBounds.height - 10);
+      expect(await bounds(close)).toEqual(closeBounds);
+      expect(await bounds(share)).toEqual(shareBounds);
+      await list.evaluate((element) => {
+        element.scrollTop = 0;
+      });
+    }
+    await setVisibleViewport(page, { width: 844, height: 180, offsetTop: 60, offsetLeft: 0 });
+    await expect.poll(() => surface.getAttribute("data-dialog-scroll")).toBe("whole");
+    await close.focus();
+    await page.evaluate(() => new Promise(requestAnimationFrame));
+    const cramped = await bounds(surface);
+    const reachableClose = await bounds(close);
+    expect(reachableClose.y).toBeGreaterThanOrEqual(cramped.y);
+    expect(reachableClose.y + reachableClose.height).toBeLessThanOrEqual(
+      cramped.y + cramped.height,
+    );
+    await setVisibleViewport(page, { width: 844, height: 390, offsetTop: 0, offsetLeft: 0 });
+    await expect.poll(() => surface.getAttribute("data-dialog-scroll")).toBe("body");
+    await close.click();
+    await card.waitFor({ state: "detached" });
+    const open = page.getByRole("button", { name: "Open Phases Card", exact: true });
+    await expect
+      .poll(() => open.evaluate((element) => element === document.activeElement))
+      .toBe(true);
+    await open.click();
+    expect(
+      await card
+        .getByRole("button", { name: "Players on Phase 1", exact: true })
+        .getAttribute("aria-expanded"),
+    ).toBe("false");
+  } finally {
+    await page.close();
+  }
+}, 60_000);
 
 async function setPlayerAvailability(page: Page, player: Player, available: boolean) {
   await page.evaluate(
