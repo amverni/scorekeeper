@@ -11,6 +11,7 @@ import "./Dialog.css";
 import { DialogHeader } from "./DialogHeader";
 import { DialogScrollArea } from "./DialogScrollArea";
 import { useDialogBackgroundLock } from "./useDialogBackgroundLock";
+import { useFloatingDialogDismissal } from "./useFloatingDialogDismissal";
 import { useFloatingDialogViewport } from "./useFloatingDialogViewport";
 
 interface AppDialogProps extends Omit<DialogProps<"div">, "children"> {
@@ -118,6 +119,9 @@ export function Dialog(props: AppDialogProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  useFloatingDialogDismissal(panelRef, floating && rendered && Boolean(open), dismissible, () =>
+    onClose?.(false),
+  );
 
   useLayoutEffect(() => {
     if (open || !rendered) return;

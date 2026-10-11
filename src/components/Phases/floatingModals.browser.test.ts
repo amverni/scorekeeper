@@ -4,6 +4,7 @@ import type { Browser, Locator, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { touchGesture } from "../../test/touchGesture";
 import { setVisibleViewport } from "../../test/visualViewport";
 
 let server: ViteDevServer;
@@ -122,6 +123,354 @@ describe.each([
   "light",
   "dark",
 ] as const)("floating management modals in %s appearance", (colorScheme) => {
+  it("dismisses a deliberate header pull at a consistent distance on short and tall panels", async () => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      colorScheme,
+      reducedMotion: "reduce",
+    });
+    try {
+      await page.goto(`${appUrl}#/phaseCompan10n/phases`);
+      for (const name of ["Original", "2 sets of 3"]) {
+        if (name === "2 sets of 3") {
+          await page.getByRole("tab", { name: "Phases", exact: true }).click();
+        }
+        const trigger = page.getByRole("button", { name, exact: true });
+        await trigger.click();
+        const dialog = page.getByRole("dialog", { name, exact: true });
+        await dialog.getByRole("heading").waitFor();
+        await settle(page);
+        const panel = panelFor(dialog);
+        const resting = await box(panel);
+        const header = dialog.getByRole("heading");
+        await touchGesture(header, [
+          { y: 0, time: 0 },
+          { y: 119, time: 500 },
+          { y: 119, time: 800 },
+        ]);
+        await settle(page);
+        expect(await box(panel)).toEqual(resting);
+        await touchGesture(header, [
+          { y: 0, time: 1000 },
+          { y: 120, time: 1500 },
+          { y: 120, time: 1800 },
+        ]);
+        await dialog.waitFor({ state: "detached" });
+        await trigger.click();
+        await dialog.getByRole("heading").waitFor();
+        await settle(page);
+        expect(await box(panel)).toEqual(resting);
+        await dialog.getByRole("button", { name: "Close", exact: true }).click();
+        await dialog.waitFor({ state: "detached" });
+      }
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+
+  it("requires meaningful flick travel and recent downward release speed, rejecting pauses and reversals", async () => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      colorScheme,
+      reducedMotion: "reduce",
+    });
+    try {
+      await page.goto(`${appUrl}#/phaseCompan10n/phases`);
+      await page.getByRole("tab", { name: "Phases", exact: true }).click();
+      const trigger = page.getByRole("button", { name: "2 sets of 3", exact: true });
+      const dialog = page.getByRole("dialog", { name: "2 sets of 3", exact: true });
+      await trigger.click();
+      await dialog.getByRole("heading").waitFor();
+      await settle(page);
+      const panel = panelFor(dialog);
+      const resting = await box(panel);
+      const header = dialog.getByRole("heading");
+      for (const points of [
+        [
+          { y: 0, time: 0 },
+          { y: 47, time: 30 },
+          { y: 47, time: 40 },
+        ],
+        [
+          { y: 0, time: 0 },
+          { y: 48, time: 80 },
+          { y: 48, time: 81 },
+        ],
+        [
+          { y: 0, time: 0 },
+          { y: 60, time: 40 },
+          { y: 60, time: 250 },
+        ],
+        [
+          { y: 0, time: 0 },
+          { y: 140, time: 80 },
+          { y: 130, time: 90 },
+          { y: 130, time: 100 },
+        ],
+        [
+          { y: 0, time: 0 },
+          { y: 140, time: 80 },
+          { y: 30, time: 100 },
+        ],
+      ]) {
+        await touchGesture(header, points);
+        await settle(page);
+        expect(await box(panel)).toEqual(resting);
+      }
+      await touchGesture(header, [
+        { y: 0, time: 0 },
+        { y: 24, time: 20 },
+        { y: 48, time: 40 },
+        { y: 48, time: 41 },
+      ]);
+      await dialog.waitFor({ state: "detached" });
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+
+  it("restores cancellations, upward and horizontal gestures without stretching or capturing controls", async () => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      colorScheme,
+    });
+    try {
+      await page.goto(`${appUrl}#/phaseCompan10n/phases`);
+      await page.getByRole("button", { name: "Original", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Original", exact: true });
+      await dialog.getByRole("heading").waitFor();
+      await settle(page);
+      const panel = panelFor(dialog);
+      const resting = await box(panel);
+      const header = dialog.getByRole("heading");
+      const cancelled = await touchGesture(
+        header,
+        [
+          { y: 0, time: 0 },
+          { y: 160, time: 100 },
+          { y: 160, time: 110 },
+        ],
+        "touchcancel",
+      );
+      expect(cancelled[1]).toBe(true);
+      await settle(page);
+      expect(await box(panel)).toEqual(resting);
+      for (const points of [
+        [
+          { y: 100, time: 0 },
+          { y: 0, time: 100 },
+          { y: 0, time: 110 },
+        ],
+        [
+          { x: 0, y: 0, time: 0 },
+          { x: 150, y: 15, time: 100 },
+          { x: 150, y: 160, time: 110 },
+        ],
+        [
+          { y: 0, time: 0 },
+          { y: 7, time: 1 },
+          { y: 7, time: 2 },
+        ],
+      ]) {
+        expect(await touchGesture(header, points)).toEqual([false, false, false]);
+        await settle(page);
+        expect(await box(panel)).toEqual(resting);
+      }
+      const close = dialog.getByRole("button", { name: "Close", exact: true });
+      expect(
+        await touchGesture(close, [
+          { y: 0, time: 0 },
+          { y: 160, time: 100 },
+          { y: 160, time: 110 },
+        ]),
+      ).toEqual([false, false, false]);
+      expect(await box(panel)).toEqual(resting);
+      await close.click();
+      await dialog.waitFor({ state: "detached" });
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+
+  it("leaves scrolling native until a fresh swipe begins at the nearest content boundary", async () => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 400 },
+      hasTouch: true,
+      colorScheme,
+      reducedMotion: "reduce",
+    });
+    try {
+      await page.goto(`${appUrl}#/phaseCompan10n/phases`);
+      await page.getByRole("button", { name: "Original", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Original", exact: true });
+      const text = dialog.getByText("Phases (10)", { exact: true });
+      await text.waitFor();
+      await settle(page);
+      const panel = panelFor(dialog);
+      const resting = await box(panel);
+      const scroller = dialog.getByRole("region", { name: "Original", exact: true });
+      await scroller.evaluate((element) => {
+        element.scrollTop = 50;
+      });
+      // Move the real scroll owner to its boundary after touchstart, as native
+      // scrolling would. That gesture must not transfer ownership mid-swipe.
+      await text.evaluate((element) => {
+        const touch = { identifier: 7, target: element, clientX: 100, clientY: 0 };
+        const event = new Event("touchstart", { bubbles: true, cancelable: true });
+        Object.defineProperty(event, "touches", { value: [touch] });
+        element.dispatchEvent(event);
+      });
+      await scroller.evaluate((element) => {
+        element.scrollTop = 0;
+      });
+      const prevented = await text.evaluate((element) => {
+        const touch = { identifier: 7, target: element, clientX: 100, clientY: 160 };
+        return ["touchmove", "touchend"].map((type) => {
+          const event = new Event(type, { bubbles: true, cancelable: true });
+          Object.defineProperties(event, {
+            touches: { value: type === "touchend" ? [] : [touch] },
+            changedTouches: { value: [touch] },
+          });
+          element.dispatchEvent(event);
+          return event.defaultPrevented;
+        });
+      });
+      expect(prevented).toEqual([false, false]);
+      expect(await box(panel)).toEqual(resting);
+      await scroller.hover();
+      await page.mouse.wheel(0, 180);
+      await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+      expect(await box(panel)).toEqual(resting);
+      await scroller.evaluate((element) => {
+        element.scrollTop = 0;
+      });
+      expect(
+        await touchGesture(text, [
+          { y: 150, time: 0 },
+          { y: 0, time: 100 },
+          { y: 0, time: 110 },
+        ]),
+      ).toEqual([false, false, false]);
+      expect(await box(panel)).toEqual(resting);
+      await touchGesture(text, [
+        { y: 0, time: 0 },
+        { y: 120, time: 500 },
+        { y: 120, time: 700 },
+      ]);
+      await dialog.waitFor({ state: "detached" });
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+
+  it("restricts mouse dragging to the header and restores pointer cancellation", async () => {
+    const page = await browser.newPage({
+      viewport: { width: 1280, height: 900 },
+      colorScheme,
+      reducedMotion: "reduce",
+    });
+    try {
+      await page.goto(`${appUrl}#/phaseCompan10n/phases`);
+      await page.getByRole("button", { name: "Original", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Original", exact: true });
+      await dialog.getByRole("heading").waitFor();
+      await settle(page);
+      const panel = panelFor(dialog);
+      const resting = await box(panel);
+      const body = await box(dialog.getByText("Phases (10)", { exact: true }));
+      await page.mouse.move(body.x + 20, body.y + 8);
+      await page.mouse.down();
+      await page.mouse.move(body.x + 20, body.y + 150, { steps: 5 });
+      await page.mouse.up();
+      expect(await box(panel)).toEqual(resting);
+      expect(await page.evaluate(() => getSelection()?.toString().length)).toBeGreaterThan(0);
+      const header = await box(dialog.getByRole("heading"));
+      await page.mouse.move(header.x + 10, header.y + 8);
+      await page.mouse.down();
+      await page.mouse.move(header.x + 10, header.y + 160, { steps: 5 });
+      const dragged = await box(panel);
+      expect(dragged.y).toBeGreaterThan(resting.y + 120);
+      expect(dragged.height).toBe(resting.height);
+      await panel.dispatchEvent("pointercancel", { pointerId: 1, pointerType: "mouse" });
+      await page.mouse.up();
+      expect(await box(panel)).toEqual(resting);
+      await page.mouse.move(header.x + 10, header.y + 8);
+      await page.mouse.down();
+      await page.mouse.move(header.x + 10, header.y + 160, { steps: 5 });
+      await page.mouse.up();
+      await dialog.waitFor({ state: "detached" });
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+
+  it("slides a released panel fully below the current visible viewport at its final size and reopens cleanly", async () => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      colorScheme,
+    });
+    try {
+      await page.goto(`${appUrl}#/phaseCompan10n/phases`);
+      await page.getByRole("tab", { name: "Phases", exact: true }).click();
+      const trigger = page.getByRole("button", {
+        name: "2 sets of 3",
+        exact: true,
+        includeHidden: true,
+      });
+      await trigger.click();
+      const dialog = page.getByRole("dialog", { name: "2 sets of 3", exact: true });
+      await dialog.getByRole("heading").waitFor();
+      await settle(page);
+      await setVisibleViewport(page, { width: 390, height: 1600, offsetLeft: 0, offsetTop: 0 });
+      const panel = panelFor(dialog);
+      const resting = await box(panel);
+      await page.addStyleTag({ content: ".dialog-panel { transition-duration: 10s; }" });
+      await touchGesture(dialog.getByRole("heading"), [
+        { y: 0, time: 0 },
+        { y: 120, time: 500 },
+        { y: 120, time: 700 },
+      ]);
+      const samples = await panel.evaluate((element) => {
+        const animation = element.getAnimations()[0];
+        if (!animation) throw new Error("Missing released-panel exit");
+        animation.pause();
+        return [0, 1000, 5000, 9999].map((time) => {
+          animation.currentTime = time;
+          const rect = element.getBoundingClientRect();
+          return { y: rect.y, width: rect.width, height: rect.height };
+        });
+      });
+      expect(samples[0].y).toBeCloseTo(resting.y + 120, 0);
+      expect(samples[1].y).toBeGreaterThan(samples[0].y + 50);
+      expect(samples[3].y).toBeGreaterThanOrEqual(1600);
+      for (const sample of samples) {
+        expect(sample.height).toBe(resting.height);
+        expect(sample.width).toBe(resting.width);
+      }
+      await trigger.evaluate((element) => {
+        if (!(element instanceof HTMLElement)) throw new Error("Missing Phase trigger");
+        element.click();
+      });
+      await expect.poll(() => dialog.getAttribute("data-dialog-open")).toBe("true");
+      await panel.evaluate((element) => {
+        for (const animation of element.getAnimations()) animation.finish();
+      });
+      await settle(page);
+      expect(await box(panel)).toEqual(resting);
+      await dialog.getByRole("button", { name: "Close", exact: true }).click();
+      await panel.evaluate((element) => {
+        for (const animation of element.getAnimations()) animation.finish();
+      });
+      await dialog.waitFor({ state: "detached" });
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+
   it("opens a content-sized, app-colored Phase with one accessible glass Close control", async () => {
     const page = await browser.newPage({
       viewport: { width: 390, height: 844 },

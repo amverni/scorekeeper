@@ -5,6 +5,7 @@ import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { holdPlayerStorage, releasePlayerStorage } from "../../test/playerStorage";
+import { touchGesture } from "../../test/touchGesture";
 import { setVisibleViewport } from "../../test/visualViewport";
 import type { Player } from "../../types";
 
@@ -163,10 +164,35 @@ it("keeps a focused Player draft recoverable through a pending and failed save",
     await name.fill("Recoverable keyboard pilot");
     await setVisibleViewport(page, { width: 390, height: 420, offsetLeft: 0, offsetTop: 60 });
     await holdPlayerStorage(page, "Player storage unavailable");
-    await dialog.getByRole("button", { name: "Save", exact: true }).click();
+    const header = dialog.getByRole("heading", { name: "New Player", exact: true });
+    const panel = dialog.locator(".dialog-panel");
+    const resting = await panel.boundingBox();
+    expect(
+      await touchGesture(name, [
+        { y: 0, time: 0 },
+        { y: 160, time: 100 },
+        { y: 160, time: 110 },
+      ]),
+    ).toEqual([false, false, false]);
+    await touchGesture(
+      header,
+      [
+        { y: 0, time: 0 },
+        { y: 160, time: 100 },
+      ],
+      null,
+    );
+    expect((await panel.boundingBox())?.y).toBe((resting?.y ?? 0) + 160);
+    await page.keyboard.press("Enter");
     await dialog.getByRole("button", { name: "Saving...", exact: true }).waitFor();
     const close = dialog.getByRole("button", { name: "Close", exact: true });
     expect(await close.isDisabled()).toBe(true);
+    expect(await panel.boundingBox()).toEqual(resting);
+    await touchGesture(header, [
+      { y: 0, time: 0 },
+      { y: 160, time: 100 },
+      { y: 160, time: 110 },
+    ]);
     await page.keyboard.press("Escape");
     await page.mouse.click(2, 2);
     expect(await dialog.getAttribute("data-dialog-open")).toBe("true");
@@ -175,6 +201,16 @@ it("keeps a focused Player draft recoverable through a pending and failed save",
       .getByRole("alert")
       .getByText("Player storage unavailable", { exact: true })
       .waitFor();
+    expect(await close.isEnabled()).toBe(true);
+    expect(await name.inputValue()).toBe("Recoverable keyboard pilot");
+    await touchGesture(header, [
+      { y: 0, time: 0 },
+      { y: 120, time: 500 },
+      { y: 120, time: 700 },
+    ]);
+    await dialog.waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Create new player" }).click();
+    await name.fill("Recoverable keyboard pilot");
     expect(await name.inputValue()).toBe("Recoverable keyboard pilot");
     expect(await close.isEnabled()).toBe(true);
     await dialog.getByRole("button", { name: "Save", exact: true }).click();

@@ -4,6 +4,7 @@ import type { Browser, Locator, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { touchGesture } from "../../test/touchGesture";
 import { setVisibleViewport } from "../../test/visualViewport";
 import type { GenericGameSettings } from "../../types";
 
@@ -172,6 +173,90 @@ async function failNextSave(page: Page, message: string) {
     };
   }, message);
 }
+
+it.each([
+  longErrorSettings[0],
+  longErrorSettings[2],
+])("respects the nearest $mode save-error scroller before accepting a fresh pull at its top", async (settings) => {
+  const page = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    reducedMotion: "reduce",
+  });
+  try {
+    const dialog = await openRound(page, settings, 12);
+    await failNextSave(page, "Round storage unavailable. Keep the draft and retry. ".repeat(30));
+    await dialog.getByRole("button", { name: "Save", exact: true }).click();
+    const error = dialog.getByRole("region", { name: "Round save error", exact: true });
+    const message = error.getByRole("alert");
+    await message.waitFor();
+    const panel = dialog.locator(".dialog-panel");
+    const resting = await panel.boundingBox();
+    await error.evaluate((element) => {
+      element.scrollTop = 60;
+    });
+    expect(await error.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    expect(
+      await touchGesture(message, [
+        { y: 0, time: 0 },
+        { y: 160, time: 100 },
+        { y: 160, time: 110 },
+      ]),
+    ).toEqual([false, false, false]);
+    expect(await panel.boundingBox()).toEqual(resting);
+    await error.evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    await touchGesture(message, [
+      { y: 0, time: 0 },
+      { y: 120, time: 500 },
+      { y: 120, time: 700 },
+    ]);
+    await dialog.waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Add Round", exact: true }).click();
+    await dialog.getByRole("region", { name: "Round save error", exact: true }).waitFor();
+  } finally {
+    await page.close();
+  }
+}, 60_000);
+
+it("keeps horizontal Player navigation and numeric controls independent from modal dismissal", async () => {
+  const page = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    reducedMotion: "reduce",
+  });
+  try {
+    const dialog = await openRound(page, longErrorSettings[2], 2);
+    const panel = dialog.locator(".dialog-panel");
+    const resting = await panel.boundingBox();
+    const value = dialog.getByRole("status", { name: "Player 1 Points", exact: true });
+    await touchGesture(value, [
+      { x: 250, y: 0, time: 0 },
+      { x: 100, y: 10, time: 100 },
+      { x: 100, y: 10, time: 110 },
+    ]);
+    await expect
+      .poll(() =>
+        dialog.getByRole("tab", { name: "Player 2", exact: true }).getAttribute("aria-selected"),
+      )
+      .toBe("true");
+    expect(await panel.boundingBox()).toEqual(resting);
+    const digit = dialog.getByRole("button", { name: "7", exact: true });
+    await touchGesture(digit, [
+      { y: 0, time: 0 },
+      { y: 160, time: 100 },
+      { y: 160, time: 110 },
+    ]);
+    expect(await panel.boundingBox()).toEqual(resting);
+    await digit.click();
+    expect(
+      await dialog.getByRole("status", { name: "Player 2 Points", exact: true }).innerText(),
+    ).toBe("7");
+  } finally {
+    await page.close();
+  }
+}, 60_000);
 
 async function expectBodyClearOfActions(dialog: Locator, lastControl: Locator) {
   const body = dialog.locator(".dialog-scroll:not(.dialog-content)").first();

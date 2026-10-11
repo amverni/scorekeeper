@@ -59,6 +59,14 @@ export function useFloatingDialogViewport(minBodyHeight = MIN_BODY_HEIGHT) {
       const previous = panel.dataset.dialogScroll;
       panel.dataset.dialogScroll = whole ? "whole" : "body";
       if (previous === "whole" && !whole) panel.scrollTop = 0;
+      const restingTop =
+        wrapper.getBoundingClientRect().top + (wrapper.clientHeight - panel.offsetHeight) / 2;
+      const visibleBottom =
+        (viewport?.offsetTop ?? 0) + (viewport?.height ?? document.documentElement.clientHeight);
+      panel.style.setProperty(
+        "--dialog-exit-distance",
+        `${Math.max(0, visibleBottom - restingTop) + 32}px`,
+      );
       reveal();
     }
 
@@ -83,6 +91,7 @@ export function useFloatingDialogViewport(minBodyHeight = MIN_BODY_HEIGHT) {
     function observeFixedRegions() {
       observer.disconnect();
       if (wrapper) observer.observe(wrapper);
+      observer.observe(panel);
       for (const region of panel.querySelectorAll(":scope > header, :scope > footer")) {
         observer.observe(region);
       }
