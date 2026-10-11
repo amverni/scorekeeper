@@ -227,10 +227,17 @@ describe("safe-area layout in WebKit", () => {
       await page.getByRole("button", { name: "Add Player", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Add player", exact: true });
       await dialog.waitFor({ state: "attached" });
-      await expect.poll(async () => (await bounds(page, ".dialog-panel")).y).toBe(16);
+      await expect
+        .poll(async () => {
+          const panel = await bounds(page, ".dialog-panel");
+          return panel.y + panel.height / 2;
+        })
+        .toBe(333);
       const surface = await bounds(page, ".dialog-panel");
       expect(surface.width).toBe(351);
-      expect(surface.y + surface.height).toBe(650);
+      expect(surface.height).toBeLessThan(634);
+      expect(surface.y).toBeGreaterThanOrEqual(16);
+      expect(surface.y + surface.height).toBeLessThanOrEqual(650);
       expect(await dialog.locator(".dialog-glass").count()).toBe(0);
       const panel = dialog.locator(".dialog-panel");
       expect(await panel.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe(

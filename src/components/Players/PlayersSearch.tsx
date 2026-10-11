@@ -79,7 +79,7 @@ export function PlayersSearch({
         value={searchTerm}
         onValueChange={setSearchTerm}
         placeholder="Search players…"
-        className={inDialog ? undefined : "pt-3"}
+        className={inDialog ? "player-search-bar" : "pt-3"}
       >
         {actions?.(searchTerm)}
       </SearchBar>
@@ -87,7 +87,7 @@ export function PlayersSearch({
       {/* Results - negative margin lets shadow bleed, inner padding restores layout */}
       {inDialog ? (
         <DialogScrollArea aria-label="Player search results" className="player-search-results">
-          {results}
+          <div className="player-search-content flow-root">{results}</div>
         </DialogScrollArea>
       ) : (
         <ScrollFade className="min-h-0 flex-1 -mx-6 px-6 pt-2 pb-[calc(0.5rem+var(--page-shell-edge-offset,var(--slant)))]">

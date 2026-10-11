@@ -1,5 +1,17 @@
 /* ── Horizontal slide transition between dialog pages ─────── */
 
+.dialog-panel.add-player-dialog {
+  height: min(var(--add-player-height, 100%), 100%);
+}
+
+/* Keep the real actions measurable without reserving their space in Search. */
+.add-player-dialog:has(.add-player-slider[data-view="search"]) > footer {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  visibility: hidden;
+}
+
 .add-player-slider {
   display: flex;
   transition: transform 300ms cubic-bezier(0, 1, 0.5, 1);
@@ -32,7 +44,11 @@
 }
 
 .dialog-panel[data-dialog-scroll="whole"] .add-player-page[aria-hidden="true"] {
-  display: none;
+  position: absolute;
+  top: 0;
+  height: 0;
+  overflow: clip;
+  visibility: hidden;
 }
 
 .dialog-panel[data-dialog-scroll="whole"] .add-player-page .dialog-scroll-frame {

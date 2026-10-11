@@ -5,6 +5,7 @@ import { PlayersSearch } from "../../Players/PlayersSearch";
 import { Button, Dialog, DialogScrollArea } from "../../ui";
 import { useAddPlayer, useGamePlayers } from "../PlayerSelectionContext";
 import { AddPlayerRow } from "./AddPlayerRow";
+import { useAddPlayerHeight } from "./useAddPlayerHeight";
 import "./AddPlayerDialog.css";
 
 type View = "search" | "create";
@@ -18,6 +19,8 @@ export interface AddPlayerDialogProps {
 export function AddPlayerDialog({ open, onClose }: AddPlayerDialogProps) {
   const [view, setView] = useState<View>("search");
   const inputRef = useRef<HTMLInputElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const workspaceRef = useAddPlayerHeight();
   const addPlayer = useAddPlayer();
   const gamePlayers = useGamePlayers();
   const gamePlayerIds = new Set(gamePlayers.map((p) => p.id));
@@ -29,6 +32,7 @@ export function AddPlayerDialog({ open, onClose }: AddPlayerDialogProps) {
 
   return (
     <PlayerEditor
+      nameInputRef={nameInputRef}
       onBack={handleBack}
       onCreated={addPlayer}
       render={({ content, actions, isPending, startCreate }) => (
@@ -42,6 +46,7 @@ export function AddPlayerDialog({ open, onClose }: AddPlayerDialogProps) {
           initialFocus={inputRef}
           aria-label={view === "create" ? "Create player" : "Add player"}
           sizing="workspace"
+          className="add-player-dialog"
           bodyScroll="custom"
           dismissible={!isPending}
           onBack={view === "create" ? handleBack : undefined}
@@ -51,9 +56,16 @@ export function AddPlayerDialog({ open, onClose }: AddPlayerDialogProps) {
               <h2 className="text-base font-medium text-text-secondary">New Player</h2>
             ) : undefined
           }
-          actions={view === "create" ? actions : undefined}
+          actions={
+            <div inert={view !== "create" ? true : undefined} aria-hidden={view !== "create"}>
+              {actions}
+            </div>
+          }
         >
-          <div className="add-player-viewport min-h-0 flex-1 -mx-4 overflow-clip">
+          <div
+            ref={workspaceRef}
+            className="add-player-viewport min-h-0 flex-1 -mx-4 overflow-clip"
+          >
             <div className="add-player-slider h-full" data-view={view}>
               <div
                 className="add-player-page h-full w-full shrink-0 px-4"
@@ -75,6 +87,7 @@ export function AddPlayerDialog({ open, onClose }: AddPlayerDialogProps) {
                       onClick={() => {
                         startCreate(searchTerm);
                         setView("create");
+                        requestAnimationFrame(() => nameInputRef.current?.focus());
                       }}
                       className="h-9 w-9 shrink-0 p-0"
                       aria-label="Create new player"
@@ -89,11 +102,9 @@ export function AddPlayerDialog({ open, onClose }: AddPlayerDialogProps) {
                 inert={view !== "create" ? true : undefined}
                 aria-hidden={view !== "create"}
               >
-                {view === "create" && (
-                  <DialogScrollArea aria-label="Create player form" className="pt-0!">
-                    {content}
-                  </DialogScrollArea>
-                )}
+                <DialogScrollArea aria-label="Create player form" className="pt-0!">
+                  <div className="add-player-form-content flow-root">{content}</div>
+                </DialogScrollArea>
               </div>
             </div>
           </div>

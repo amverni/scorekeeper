@@ -1,7 +1,7 @@
 import { Field, Fieldset, Label, Legend } from "@headlessui/react";
 import { useForm } from "@tanstack/react-form";
 import { Trash } from "lucide-react";
-import { type ReactNode, useId, useState } from "react";
+import { type ReactNode, type RefObject, useId, useState } from "react";
 import { playersApi } from "../../data/api/players";
 import { getRandomColorName } from "../../data/constants/colors";
 import { useCreatePlayer, useDeletePlayer, useUpdatePlayer } from "../../data/hooks/usePlayers";
@@ -17,6 +17,7 @@ import { Switch } from "../ui/Switch/Switch";
 export interface PlayerEditorProps {
   /** Pre-filled player name (e.g. from the search box). */
   defaultName?: string;
+  nameInputRef?: RefObject<HTMLInputElement | null>;
   /** Existing player to edit. When provided, the form operates in edit mode. */
   player?: Player;
   /** Called when the user navigates back to the previous view. */
@@ -41,6 +42,7 @@ export interface PlayerEditorProps {
 
 export function PlayerEditor({
   defaultName,
+  nameInputRef,
   player,
   onBack,
   onCreated,
@@ -180,7 +182,8 @@ export function PlayerEditor({
                   <Label className="text-sm font-medium text-text-secondary">Name</Label>
                   <Input
                     type="text"
-                    autoFocus
+                    ref={nameInputRef}
+                    autoFocus={!render}
                     value={field.state.value}
                     onChange={(e) => field.handleChange(e.target.value)}
                     onBlur={field.handleBlur}
