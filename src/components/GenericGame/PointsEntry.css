@@ -4,6 +4,12 @@
   height: 100%;
 }
 
+/* Whole-modal scrolling still needs a definite size for the keypad containers. */
+.dialog-panel-floating[data-dialog-scroll="whole"] .round-entry-form:has(.points-entry) {
+  height: 310px;
+  flex: none;
+}
+
 .points-entry-layout {
   display: flex;
   flex-direction: column;
@@ -36,11 +42,12 @@
 }
 
 .points-field {
+  container-type: inline-size;
   padding: clamp(4px, 2cqh, 12px) 8px;
 }
 
 .points-value {
-  font-size: clamp(1rem, 6cqh, 1.5rem);
+  font-size: clamp(0.875rem, 12cqw, 1.5rem);
   line-height: 1.2;
 }
 
@@ -75,7 +82,7 @@
   line-height: 1;
 }
 
-@container points-entry (max-height: 230px) {
+@container points-entry (max-height: 320px) {
   .points-entry-layout {
     flex-direction: row;
     gap: 12px;
@@ -101,7 +108,7 @@
   }
 }
 
-@container points-entry (max-height: 230px) and (min-width: 400px) {
+@container points-entry (max-height: 320px) and (min-width: 400px) {
   .points-fields {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

@@ -107,7 +107,7 @@
 }
 
 .dialog-panel-floating[data-dialog-scroll="whole"] .dialog-body,
-.dialog-panel-floating[data-dialog-scroll="whole"] .dialog-scroll-frame {
+.dialog-panel-floating[data-dialog-scroll="whole"] .dialog-body > .dialog-scroll-frame {
   display: block;
   max-height: none;
 }

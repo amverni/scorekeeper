@@ -39,13 +39,13 @@ export function GenericPassFailRoundDialog({
       isPending={roundDialog.isPending}
       onSubmit={() => roundDialog.handleSubmit(form.handleSubmit)}
       submitError={roundDialog.submitError}
-      actions={
+      actions={(formId) => (
         <form.Subscribe selector={(state) => state.isSubmitting}>
           {(submitting) => (
-            <GenericRoundDialogActions onClose={onClose} submitting={submitting} canSave />
+            <GenericRoundDialogActions formId={formId} submitting={submitting} canSave />
           )}
         </form.Subscribe>
-      }
+      )}
     >
       <DialogScrollArea aria-label="Pass/Fail entries" className="px-6! pt-4! pb-6!">
         <fieldset aria-label="Players who passed" className="flex min-w-0 flex-col gap-4">

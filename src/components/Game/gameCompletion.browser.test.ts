@@ -4,6 +4,8 @@ import type { Browser, Locator, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { holdRoundStorage, releaseRoundStorage } from "../../test/roundStorage";
+import { setVisibleViewport } from "../../test/visualViewport";
 import type { Game, GameTiebreaker, Player, Round } from "../../types";
 import { expectReadyAction } from "../ui/Button/readyActionTestUtils";
 
@@ -576,8 +578,13 @@ it("keeps header buttons centered together with clearance above the slant", asyn
   }
 }, 30_000);
 
-it("keeps incomplete and pending Save neutral and highlights ready Save in both themes", async () => {
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+it.each([
+  844, 180,
+])("keeps Phase Round dismissal and edits blocked until a failed save is recoverable, then retries safely at %dpx visible height", async (visibleHeight) => {
+  const page = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+    reducedMotion: "reduce",
+  });
   try {
     await page.goto(`${appUrl}#/phaseCompan10n/players`);
     await page.getByText("No players yet", { exact: true }).waitFor();
@@ -585,8 +592,15 @@ it("keeps incomplete and pending Save neutral and highlights ready Save in both 
     await page.goto(`${appUrl}#/phaseCompan10n/game/${game.id}`);
     await page.getByRole("button", { name: "Add round 1", exact: true }).click();
     const dialog = page.getByRole("dialog");
-    const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
+    const cancel = dialog.getByRole("button", { name: "Close", exact: true });
     const save = dialog.getByRole("button", { name: "Save round", exact: true });
+    await cancel.waitFor();
+    expect(await cancel.count()).toBe(1);
+    expect(await dialog.getByRole("button", { name: "Cancel", exact: true }).count()).toBe(0);
+    const bounds = await dialog.locator(".dialog-panel").boundingBox();
+    if (!bounds) throw new Error("Missing Phase Round workspace");
+    expect(bounds.y).toBe(16);
+    expect(bounds.height).toBe(812);
     for (const colorScheme of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme });
       await expectReadyAction(save, cancel, false);
@@ -601,35 +615,20 @@ it("keeps incomplete and pending Save neutral and highlights ready Save in both 
       expect(await save.locator("svg.lucide-check[aria-hidden=true]").count()).toBe(1);
       expect(await save.boundingBox()).toMatchObject({ width: 40, height: 40 });
     }
-    await page.evaluate(
-      () =>
-        new Promise<void>((resolve, reject) => {
-          const request = indexedDB.open("phase10-db");
-          request.onerror = () => reject(request.error);
-          request.onsuccess = () => {
-            const db = request.result;
-            const transaction = db.transaction("games", "readwrite");
-            let locked = true;
-            window.addEventListener(
-              "release-ready-round",
-              () => {
-                locked = false;
-              },
-              { once: true },
-            );
-            transaction.oncomplete = () => db.close();
-            transaction.onabort = () => {
-              db.close();
-              reject(transaction.error);
-            };
-            const hold = () => {
-              if (locked) transaction.objectStore("games").count().onsuccess = hold;
-            };
-            hold();
-            resolve();
-          };
-        }),
-    );
+    await setVisibleViewport(page, {
+      width: 390,
+      height: visibleHeight,
+      offsetLeft: 0,
+      offsetTop: visibleHeight === 180 ? 60 : 0,
+    });
+    await save.focus();
+    await page.evaluate(() => new Promise(requestAnimationFrame));
+    if (visibleHeight === 180) {
+      expect(
+        await dialog.locator(".dialog-panel").evaluate((element) => element.scrollTop),
+      ).toBeGreaterThan(0);
+    }
+    await holdRoundStorage(page, "Round storage unavailable");
     await save.click();
     for (const colorScheme of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme });
@@ -637,9 +636,53 @@ it("keeps incomplete and pending Save neutral and highlights ready Save in both 
       expect(await cancel.isDisabled()).toBe(true);
       expect(await save.locator("svg.lucide-loader-circle[aria-hidden=true]").count()).toBe(1);
     }
-    await page.evaluate(() => window.dispatchEvent(new Event("release-ready-round")));
+    expect(await dialog.getByRole("button", { name: "Passed", exact: true }).isDisabled()).toBe(
+      true,
+    );
+    expect(await dialog.getByRole("tab", { name: "Amy Jones", exact: true }).isDisabled()).toBe(
+      true,
+    );
+    await page.keyboard.press("Escape");
+    await page.mouse.click(4, 4);
+    expect(await cancel.isVisible()).toBe(true);
+    await releaseRoundStorage(page);
+    const feedback = dialog.getByText("Couldn't save round — try again.", { exact: true });
+    await feedback.waitFor();
+    const feedbackBounds = await feedback.boundingBox();
+    const visiblePanel = await dialog.locator(".dialog-panel").boundingBox();
+    if (!feedbackBounds || !visiblePanel) throw new Error("Missing Round failure feedback");
+    expect(feedbackBounds.y).toBeGreaterThanOrEqual(visiblePanel.y);
+    expect(feedbackBounds.y + feedbackBounds.height).toBeLessThanOrEqual(
+      visiblePanel.y + visiblePanel.height,
+    );
+    expect(await cancel.isEnabled()).toBe(true);
+    expect(await save.isEnabled()).toBe(true);
+    expect(
+      await dialog
+        .getByRole("button", { name: "Failed", exact: true })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    await setVisibleViewport(page, { width: 390, height: 844, offsetLeft: 0, offsetTop: 0 });
+    await cancel.click();
+    await dialog.waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Add round 1", exact: true }).click();
+    expect(
+      await dialog
+        .getByRole("button", { name: "Failed", exact: true })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    await holdRoundStorage(page);
+    await save.click();
+    await expect.poll(() => save.isDisabled()).toBe(true);
+    await page.keyboard.press("Escape");
+    expect(await cancel.isVisible()).toBe(true);
+    await releaseRoundStorage(page);
     await dialog.waitFor({ state: "detached" });
     await page.getByRole("button", { name: "Add round 2", exact: true }).waitFor();
+    await page.reload();
+    await page.getByRole("button", { name: "Add round 2", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Add round 2", exact: true }).click();
+    expect(await save.isDisabled()).toBe(true);
   } finally {
     await page.close();
   }

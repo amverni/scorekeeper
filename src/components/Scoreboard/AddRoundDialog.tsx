@@ -1,4 +1,4 @@
-import { Tab, TabGroup, TabPanel } from "@headlessui/react";
+import { DialogTitle, Tab, TabGroup, TabPanel } from "@headlessui/react";
 import { Check, Loader2, Minus, Redo, Trophy, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useAddRound } from "../../data/hooks/useRounds";
@@ -108,11 +108,53 @@ export function AddRoundDialog({
   const winnerPlayer = players.find((p) => p.id === draft.draft.roundWinnerId);
 
   return (
-    <Dialog open={open} onClose={onClose}>
-      <div className="flex h-full min-h-0 flex-col gap-3 px-4 pt-2 pb-3 text-text-primary">
+    <Dialog
+      open={open}
+      onClose={onClose}
+      dismissible={!addRound.isPending}
+      presentation="floating"
+      sizing="workspace"
+      bodyScroll="custom"
+      minBodyHeight={240}
+      header={<DialogTitle className="sr-only">Add Round</DialogTitle>}
+      actions={
+        <div className="flex shrink-0 items-center gap-3 pt-1">
+          <AddRoundProgressPopover
+            players={players}
+            draft={draft.draft}
+            tiebreaker={game.settings.tiebreaker}
+          />
+          <Button
+            type="button"
+            variant="ready"
+            aria-label="Save round"
+            onClick={handleSave}
+            disabled={!canSave}
+            className="glass relative inline-flex size-10 cursor-pointer items-center justify-center rounded-full hover:brightness-110 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+          >
+            {addRound.isPending ? (
+              <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden />
+            ) : (
+              <Check className="size-4" aria-hidden />
+            )}
+          </Button>
+        </div>
+      }
+    >
+      <div className="sticky top-0 z-50 h-0 shrink-0">
+        <Toast ref={toastRef} />
+      </div>
+      <fieldset
+        disabled={addRound.isPending}
+        inert={addRound.isPending}
+        aria-busy={addRound.isPending}
+        className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 pb-4 text-text-primary"
+      >
         <TabGroup
           selectedIndex={selectedIndex}
-          onChange={setSelectedIndex}
+          onChange={(index) => {
+            if (!addRound.isPending) setSelectedIndex(index);
+          }}
           className="flex min-h-0 flex-1 flex-col gap-3"
         >
           {/* Player tabs — horizontal scroll on overflow */}
@@ -139,6 +181,7 @@ export function AddRoundDialog({
                     <Tab
                       key={player.id}
                       aria-label={player.name}
+                      disabled={addRound.isPending}
                       title={player.name}
                       className={[
                         "relative z-10 inline-flex w-full min-w-12 cursor-pointer items-center gap-2 overflow-hidden",
@@ -178,7 +221,7 @@ export function AddRoundDialog({
               key="round-winner"
               value={winnerValue}
               onChange={handleWinnerSelect}
-              disabled={progress.winnerRequirement === "disabled"}
+              disabled={addRound.isPending || progress.winnerRequirement === "disabled"}
               className="@container/round-winner w-full min-w-0"
             >
               <SettingListRow
@@ -225,7 +268,9 @@ export function AddRoundDialog({
           <div className="relative flex min-h-0 flex-1">
             <SwipeableTabPanels
               selectedIndex={selectedIndex}
-              onChange={setSelectedIndex}
+              onChange={(index) => {
+                if (!addRound.isPending) setSelectedIndex(index);
+              }}
               className="dialog-scroll -mx-3 -my-3 flex min-h-0 flex-1 flex-col overflow-y-auto py-3"
             >
               {players.map((player) => {
@@ -265,43 +310,7 @@ export function AddRoundDialog({
             </SwipeableTabPanels>
           </div>
         </TabGroup>
-
-        {/* Bottom action bar */}
-        <div className="flex shrink-0 items-center gap-3 pt-1">
-          <Button
-            type="button"
-            aria-label="Cancel"
-            onClick={() => onClose(false)}
-            disabled={addRound.isPending}
-            className="glass relative inline-flex size-10 cursor-pointer items-center justify-center rounded-full hover:brightness-110 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
-          >
-            <X className="size-4" aria-hidden />
-          </Button>
-
-          <AddRoundProgressPopover
-            players={players}
-            draft={draft.draft}
-            tiebreaker={game.settings.tiebreaker}
-          />
-
-          <Button
-            type="button"
-            variant="ready"
-            aria-label="Save round"
-            onClick={handleSave}
-            disabled={!canSave}
-            className="glass relative inline-flex size-10 cursor-pointer items-center justify-center rounded-full hover:brightness-110 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
-          >
-            {addRound.isPending ? (
-              <Loader2 className="size-4 animate-spin" aria-hidden />
-            ) : (
-              <Check className="size-4" aria-hidden />
-            )}
-          </Button>
-        </div>
-
-        <Toast ref={toastRef} />
-      </div>
+      </fieldset>
     </Dialog>
   );
 }

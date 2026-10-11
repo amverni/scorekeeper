@@ -31,7 +31,7 @@ function revealFocusedControl(panel: HTMLElement) {
 }
 
 /** Fit only the overlay; page shells keep their stable viewport sizing. */
-export function useFloatingDialogViewport() {
+export function useFloatingDialogViewport(minBodyHeight = MIN_BODY_HEIGHT) {
   const [wrapper, setWrapper] = useState<HTMLDivElement | null>(null);
 
   useLayoutEffect(() => {
@@ -55,7 +55,7 @@ export function useFloatingDialogViewport() {
       const header = panel.querySelector<HTMLElement>(":scope > header");
       const actions = panel.querySelector<HTMLElement>(":scope > footer");
       const fixedHeight = (header?.offsetHeight ?? 0) + (actions?.offsetHeight ?? 0);
-      const whole = wrapper.clientHeight < fixedHeight + MIN_BODY_HEIGHT;
+      const whole = wrapper.clientHeight < fixedHeight + minBodyHeight;
       const previous = panel.dataset.dialogScroll;
       panel.dataset.dialogScroll = whole ? "whole" : "body";
       if (previous === "whole" && !whole) panel.scrollTop = 0;
@@ -105,7 +105,7 @@ export function useFloatingDialogViewport() {
       window.removeEventListener("resize", update);
       window.removeEventListener("orientationchange", update);
     };
-  }, [wrapper]);
+  }, [wrapper, minBodyHeight]);
 
   return { wrapperRef: setWrapper, wrapper };
 }

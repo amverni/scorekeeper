@@ -4,6 +4,7 @@ import type { Browser, Locator, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { setVisibleViewport } from "../../../test/visualViewport";
 
 let server: ViteDevServer;
 let browser: Browser;
@@ -221,8 +222,27 @@ describe.each(["light", "dark"] as const)("dialog bottom fade in %s mode", (colo
     });
     try {
       await startGame(page);
+      await page.addStyleTag({
+        content:
+          ":root { --safe-area-inset-top: 20px; --safe-area-inset-bottom: 34px; --safe-area-inset-left: 12px; --safe-area-inset-right: 18px; }",
+      });
       await page.getByRole("button", { name: "Add round 1", exact: true }).click();
       const dialog = page.getByRole("dialog");
+      const panel = dialog.locator(".dialog-panel");
+      const geometry = await panel.boundingBox();
+      if (!geometry) throw new Error("Missing floating Phase Round");
+      expect(geometry.y).toBe(36);
+      expect(geometry.height).toBe(514);
+      expect(geometry.x).toBeGreaterThanOrEqual(28);
+      expect(geometry.x + geometry.width).toBeLessThanOrEqual(356);
+      expect(await panel.evaluate((element) => getComputedStyle(element).backdropFilter)).toBe(
+        "none",
+      );
+      expect(
+        await dialog
+          .locator(".dialog-backdrop")
+          .evaluate((element) => getComputedStyle(element).backgroundColor),
+      ).toBe("rgba(0, 0, 0, 0)");
       const lastContent = dialog
         .getByRole("tabpanel", { name: "Amy", exact: true })
         .getByText("Hold to decrease.", { exact: true });
@@ -230,8 +250,10 @@ describe.each(["light", "dark"] as const)("dialog bottom fade in %s mode", (colo
       const scroller = scrollAreaFor(lastContent);
       await expectBottomFade(scroller);
       await expectRenderedFade(page, scroller);
-      const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
+      const cancel = dialog.getByRole("button", { name: "Close", exact: true });
+      const save = dialog.getByRole("button", { name: "Save round", exact: true });
       const footerBounds = await cancel.boundingBox();
+      const saveBounds = await save.boundingBox();
       expect(
         await cancel.evaluate((element) => {
           let current: Element | null = element;
@@ -249,6 +271,36 @@ describe.each(["light", "dark"] as const)("dialog bottom fade in %s mode", (colo
       await expectClearAtEnd(scroller, lastCard);
       await expectCardEdgeUnaffected(page, scroller, lastCard);
       expect(await cancel.boundingBox()).toEqual(footerBounds);
+      expect(await save.boundingBox()).toEqual(saveBounds);
+      await panel.evaluate((element) => {
+        element.style.transform = "translateY(-24px)";
+      });
+      expect((await save.boundingBox())?.y).toBe((saveBounds?.y ?? 0) - 24);
+      await panel.evaluate((element) => {
+        element.style.removeProperty("transform");
+      });
+      await dialog.getByRole("tab", { name: "Ben", exact: true }).click();
+      await dialog.getByRole("button", { name: "Failed", exact: true }).click();
+      await dialog.getByRole("tab", { name: "Amy", exact: true }).click();
+      await setVisibleViewport(page, { width: 390, height: 180, offsetLeft: 0, offsetTop: 60 });
+      const failed = dialog.getByRole("button", { name: "Failed", exact: true });
+      await failed.click();
+      const failedBounds = await failed.boundingBox();
+      if (!failedBounds) throw new Error("Missing cramped Round result");
+      expect(failedBounds.height).toBeGreaterThanOrEqual(24);
+      await save.focus();
+      await page.evaluate(() => new Promise(requestAnimationFrame));
+      const cramped = await panel.boundingBox();
+      const reachableSave = await save.boundingBox();
+      if (!cramped || !reachableSave) throw new Error("Missing cramped Phase actions");
+      expect(reachableSave.y).toBeGreaterThanOrEqual(cramped.y + 4);
+      expect(reachableSave.y + reachableSave.height).toBeLessThanOrEqual(
+        cramped.y + cramped.height - 4,
+      );
+      expect(await panel.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+      await setVisibleViewport(page, { width: 390, height: 600, offsetLeft: 0, offsetTop: 0 });
+      await expect.poll(() => panel.evaluate((element) => element.scrollTop)).toBe(0);
+      expect(await save.boundingBox()).toEqual(saveBounds);
       await cancel.click();
       await dialog.waitFor({ state: "detached" });
     } finally {

@@ -103,7 +103,8 @@ export function GenericAddRoundDialog({
       isPending={roundDialog.isPending}
       onSubmit={() => roundDialog.handleSubmit(form.handleSubmit)}
       submitError={mode === "points" ? null : roundDialog.submitError}
-      actions={
+      minBodyHeight={mode === "points" ? 240 : undefined}
+      actions={(formId) => (
         <form.Subscribe
           selector={(state) => ({
             canSave:
@@ -114,7 +115,7 @@ export function GenericAddRoundDialog({
           })}
         >
           {({ canSave, submitting }) => (
-            <GenericRoundDialogActions onClose={onClose} submitting={submitting} canSave={canSave}>
+            <GenericRoundDialogActions formId={formId} submitting={submitting} canSave={canSave}>
               {mode === "singleRoundWinner" && (
                 <output aria-live="polite" className="text-sm text-text-secondary">
                   {Number(canSave)}/1 winner selected
@@ -123,7 +124,7 @@ export function GenericAddRoundDialog({
             </GenericRoundDialogActions>
           )}
         </form.Subscribe>
-      }
+      )}
     >
       {mode === "singleRoundWinner" ? (
         <form.Field name="winnerId">
@@ -142,7 +143,9 @@ export function GenericAddRoundDialog({
       ) : (
         <TabGroup
           selectedIndex={selectedIndex}
-          onChange={setSelectedIndex}
+          onChange={(index) => {
+            if (!roundDialog.isPending) setSelectedIndex(index);
+          }}
           className="flex min-h-0 flex-1 flex-col"
         >
           <div ref={tabListRef} className="-mx-2 shrink-0 overflow-x-auto px-2 py-1">
@@ -166,7 +169,9 @@ export function GenericAddRoundDialog({
           </div>
           <SwipeableTabPanels
             selectedIndex={selectedIndex}
-            onChange={setSelectedIndex}
+            onChange={(index) => {
+              if (!roundDialog.isPending) setSelectedIndex(index);
+            }}
             className="dialog-scroll -mx-2 min-h-0 flex-1"
           >
             {players.map((player, index) => (

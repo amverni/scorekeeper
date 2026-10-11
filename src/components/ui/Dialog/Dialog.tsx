@@ -19,6 +19,8 @@ interface AppDialogProps extends Omit<DialogProps<"div">, "children"> {
   dismissible?: boolean;
   presentation?: "drawer" | "floating";
   sizing?: "content" | "workspace";
+  bodyScroll?: "shared" | "custom";
+  minBodyHeight?: number;
   header?: ReactNode;
   actions?: ReactNode;
   onBack?: () => void;
@@ -87,6 +89,8 @@ export function Dialog(props: AppDialogProps) {
     dismissible = true,
     presentation = "drawer",
     sizing = "content",
+    bodyScroll = "shared",
+    minBodyHeight,
     header,
     actions,
     onBack,
@@ -96,7 +100,8 @@ export function Dialog(props: AppDialogProps) {
   const floating = presentation === "floating";
   const [rendered, setRendered] = useState(Boolean(open && readyToOpen));
   if (open && readyToOpen && !rendered) setRendered(true);
-  const { wrapperRef: floatingWrapperRef, wrapper: floatingWrapper } = useFloatingDialogViewport();
+  const { wrapperRef: floatingWrapperRef, wrapper: floatingWrapper } =
+    useFloatingDialogViewport(minBodyHeight);
   useDialogBackgroundLock(floating && rendered);
 
   const mergedPanelClasses = [
@@ -341,19 +346,24 @@ export function Dialog(props: AppDialogProps) {
               <div
                 className={[
                   "dialog-body min-h-0 flex flex-col px-4",
+                  bodyScroll === "custom" && "dialog-body-custom",
                   sizing === "workspace" && "flex-1",
                 ]
                   .filter(Boolean)
                   .join(" ")}
               >
-                <DialogScrollArea
-                  aria-label={rest["aria-label"] ?? "Dialog content"}
-                  className={["overscroll-none pb-4", sizing === "workspace" && "flex-1"]
-                    .filter(Boolean)
-                    .join(" ")}
-                >
-                  {children}
-                </DialogScrollArea>
+                {bodyScroll === "custom" ? (
+                  children
+                ) : (
+                  <DialogScrollArea
+                    aria-label={rest["aria-label"] ?? "Dialog content"}
+                    className={["overscroll-none pb-4", sizing === "workspace" && "flex-1"]
+                      .filter(Boolean)
+                      .join(" ")}
+                  >
+                    {children}
+                  </DialogScrollArea>
+                )}
               </div>
               {actions && <footer className="shrink-0 p-4 pt-0">{actions}</footer>}
             </>

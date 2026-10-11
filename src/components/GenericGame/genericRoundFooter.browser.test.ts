@@ -4,6 +4,7 @@ import type { Browser, Locator, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { setVisibleViewport } from "../../test/visualViewport";
 import type { GenericGameSettings } from "../../types";
 
 let server: ViteDevServer;
@@ -21,6 +22,7 @@ beforeAll(async () => {
 
 const longErrorSettings = [
   { mode: "passFail", tiebreaker: null, dealer: false },
+  { mode: "singleRoundWinner", tiebreaker: null, dealer: false },
   { mode: "points", pointsDirection: "high", tiebreaker: null, dealer: false },
   { mode: "points", pointsDirection: "high", tiebreaker: { direction: "low" }, dealer: false },
 ] satisfies GenericGameSettings[];
@@ -48,6 +50,9 @@ it.each(
       });
     });
     const dialog = await openRound(page, gameSettings, 12);
+    if (gameSettings.mode === "singleRoundWinner") {
+      await dialog.getByRole("radio", { name: "Player 12", exact: true }).click();
+    }
     await failNextSave(
       page,
       "Round storage unavailable. Keep this draft and try saving again. ".repeat(20),
@@ -125,20 +130,34 @@ async function openRound(page: Page, settings: GenericGameSettings, playerCount:
 }
 
 async function expectPinnedActions(dialog: Locator, bottomInset: number) {
-  const panel = await dialog.locator(".dialog-panel").boundingBox();
-  if (!panel) throw new Error("Missing Round dialog panel");
-  for (const name of ["Close", "Save"]) {
-    const action = await dialog.getByRole("button", { name, exact: true }).boundingBox();
-    if (!action) throw new Error(`Missing ${name} action`);
-    // Existing form/action padding leaves 20px below an unpressed control.
-    expect(panel.y + panel.height - action.y - action.height).toBeCloseTo(bottomInset + 20, 0);
+  const panelElement = dialog.locator(".dialog-panel");
+  const whole = await panelElement.evaluate(
+    (element) => getComputedStyle(element).overflowY === "auto",
+  );
+  if (whole) {
+    await dialog.getByRole("button", { name: "Save", exact: true }).focus();
+    await dialog.page().evaluate(() => new Promise(requestAnimationFrame));
   }
-  expect(
-    await dialog.locator(".dialog-content").evaluate((element) => ({
-      overflow: element.scrollHeight - element.clientHeight,
-      scrollTop: element.scrollTop,
-    })),
-  ).toEqual({ overflow: 0, scrollTop: 0 });
+  const panel = await panelElement.boundingBox();
+  if (!panel) throw new Error("Missing Round dialog panel");
+  const close = dialog.getByRole("button", { name: "Close", exact: true });
+  expect(await close.count()).toBe(1);
+  const closeBounds = await close.boundingBox();
+  const save = await dialog.getByRole("button", { name: "Save", exact: true }).boundingBox();
+  if (!closeBounds || !save) throw new Error("Missing Round actions");
+  if (!whole) expect(closeBounds.y - panel.y).toBeCloseTo(16, 0);
+  expect(panel.y + panel.height - save.y - save.height).toBeGreaterThanOrEqual(16);
+  expect(panel.y + panel.height - save.y - save.height).toBeLessThanOrEqual(32);
+  expect(panel.y + panel.height).toBeLessThanOrEqual(
+    (dialog.page().viewportSize()?.height ?? 0) - bottomInset - 16,
+  );
+  if (!whole)
+    expect(
+      await dialog.locator(".dialog-body").evaluate((element) => ({
+        overflow: element.scrollHeight - element.clientHeight,
+        scrollTop: element.scrollTop,
+      })),
+    ).toEqual({ overflow: 0, scrollTop: 0 });
 }
 
 async function failNextSave(page: Page, message: string) {
@@ -166,15 +185,13 @@ async function expectBodyClearOfActions(dialog: Locator, lastControl: Locator) {
   }
   const bodyBounds = await body.boundingBox();
   const lastBounds = await lastControl.boundingBox();
-  const closeBounds = await dialog
-    .getByRole("button", { name: "Close", exact: true })
-    .boundingBox();
-  if (!bodyBounds || !lastBounds || !closeBounds) throw new Error("Missing Round body geometry");
+  const saveBounds = await dialog.getByRole("button", { name: "Save", exact: true }).boundingBox();
+  if (!bodyBounds || !lastBounds || !saveBounds) throw new Error("Missing Round body geometry");
   expect(lastBounds.y).toBeGreaterThanOrEqual(bodyBounds.y);
   expect(lastBounds.y + lastBounds.height).toBeLessThanOrEqual(
     bodyBounds.y + bodyBounds.height - 10,
   );
-  expect(bodyBounds.y + bodyBounds.height).toBeLessThan(closeBounds.y);
+  expect(bodyBounds.y + bodyBounds.height).toBeLessThan(saveBounds.y);
 }
 
 const settings: GenericGameSettings[] = [
@@ -183,6 +200,62 @@ const settings: GenericGameSettings[] = [
   { mode: "singleRoundWinner", tiebreaker: null, dealer: false },
   { mode: "passFail", tiebreaker: null, dealer: false },
 ];
+
+it.each(
+  settings,
+)("keeps $mode controls useful through cramped-height fallback and restoration", async (gameSettings) => {
+  const page = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+    reducedMotion: "reduce",
+  });
+  try {
+    const dialog = await openRound(page, gameSettings, 12);
+    const panel = dialog.locator(".dialog-panel");
+    const save = dialog.getByRole("button", { name: "Save", exact: true });
+    const close = dialog.getByRole("button", { name: "Close", exact: true });
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await setVisibleViewport(page, { width: 390, height: 180, offsetLeft: 0, offsetTop: 60 });
+      const bounds = await panel.boundingBox();
+      if (!bounds) throw new Error("Missing cramped workspace");
+      expect(bounds.y).toBe(76);
+      expect(bounds.height).toBe(148);
+      const control =
+        gameSettings.mode === "points"
+          ? dialog.getByRole("button", { name: "7", exact: true })
+          : dialog.getByRole(gameSettings.mode === "singleRoundWinner" ? "radio" : "button", {
+              name: "Player 12",
+              exact: true,
+            });
+      await control.click();
+      const controlBounds = await control.boundingBox();
+      if (!controlBounds) throw new Error("Missing entry control");
+      expect(controlBounds.width).toBeGreaterThanOrEqual(24);
+      expect(controlBounds.height).toBeGreaterThanOrEqual(24);
+      expect(controlBounds.y).toBeGreaterThanOrEqual(bounds.y);
+      expect(controlBounds.y + controlBounds.height).toBeLessThanOrEqual(bounds.y + bounds.height);
+      await save.focus();
+      await page.evaluate(() => new Promise(requestAnimationFrame));
+      const saveBounds = await save.boundingBox();
+      if (!saveBounds) throw new Error("Missing cramped Save");
+      expect(saveBounds.y).toBeGreaterThanOrEqual(bounds.y + 4);
+      expect(saveBounds.y + saveBounds.height).toBeLessThanOrEqual(bounds.y + bounds.height - 4);
+      expect(await panel.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+      await close.scrollIntoViewIfNeeded();
+      expect((await close.boundingBox())?.y).toBeGreaterThanOrEqual(bounds.y);
+      await setVisibleViewport(page, { width: 390, height: 844, offsetLeft: 0, offsetTop: 0 });
+      await expect.poll(() => panel.evaluate((element) => element.scrollTop)).toBe(0);
+      await expectPinnedActions(dialog, 0);
+    }
+    await save.click();
+    await dialog.waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Expand Round 1", exact: true }).waitFor();
+    await page.reload();
+    await page.getByRole("button", { name: "Expand Round 1", exact: true }).waitFor();
+  } finally {
+    await page.close();
+  }
+}, 60_000);
 
 it.each([
   { width: 320, height: 480, bottom: 0, left: 0, right: 0 },
@@ -206,7 +279,36 @@ it.each([
         await expectPinnedActions(dialog, viewport.bottom);
         const panelBounds = await dialog.locator(".dialog-panel").boundingBox();
         if (!panelBounds) throw new Error("Missing Round dialog");
-        expect(panelBounds.height).toBeCloseTo(viewport.height * 0.75 + viewport.bottom, 0);
+        expect(panelBounds.y).toBeCloseTo(16, 0);
+        expect(panelBounds.height).toBeCloseTo(viewport.height - viewport.bottom - 32, 0);
+        expect(panelBounds.x).toBeGreaterThanOrEqual(viewport.left + 16);
+        expect(panelBounds.x + panelBounds.width).toBeLessThanOrEqual(
+          viewport.width - viewport.right - 16,
+        );
+        for (const colorScheme of ["light", "dark"] as const) {
+          await page.emulateMedia({ colorScheme });
+          expect(
+            await dialog
+              .locator(".dialog-panel")
+              .evaluate((panel) => getComputedStyle(panel).backdropFilter),
+          ).toBe("none");
+          expect(
+            await dialog.locator(".dialog-panel").evaluate((panel) => {
+              const probe = document.createElement("div");
+              probe.style.backgroundColor = "var(--color-app-background)";
+              document.body.append(probe);
+              const matches =
+                getComputedStyle(probe).backgroundColor === getComputedStyle(panel).backgroundColor;
+              probe.remove();
+              return matches;
+            }),
+          ).toBe(true);
+          expect(
+            await dialog
+              .locator(".dialog-backdrop")
+              .evaluate((element) => getComputedStyle(element).backgroundColor),
+          ).toBe("rgba(0, 0, 0, 0)");
+        }
         const lastName = `Player ${playerCount}`;
         const lastControl =
           gameSettings.mode === "points"

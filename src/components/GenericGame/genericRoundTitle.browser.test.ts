@@ -79,7 +79,7 @@ it.each([
             : dialog.getByRole("button", { name: "Maya", exact: true });
       // Sample both bounds in one frame so the shared entrance transform cancels out.
       const playerOffset = await firstPlayer.evaluate((element) => {
-        const content = element.closest(".dialog-content");
+        const content = element.closest(".dialog-body");
         if (!content) throw new Error("Missing Round content");
         return element.getBoundingClientRect().y - content.getBoundingClientRect().y;
       });

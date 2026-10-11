@@ -1,9 +1,10 @@
 /// <reference types="node" />
 
-import type { Browser } from "playwright";
+import type { Browser, Locator } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { holdRoundStorage, releaseRoundStorage } from "../../test/roundStorage";
 import type { GenericGameSettings } from "../../types";
 import { expectReadyAction } from "../ui/Button/readyActionTestUtils";
 
@@ -20,7 +21,35 @@ beforeAll(async () => {
   browser = await webkit.launch();
 }, 60_000);
 
-it("replaces Save with a reduced-motion-aware spinner while retaining a failed draft for retry", async () => {
+const settings: GenericGameSettings[] = [
+  { mode: "points", pointsDirection: "high", tiebreaker: null, dealer: false },
+  { mode: "points", pointsDirection: "high", tiebreaker: { direction: "low" }, dealer: false },
+  { mode: "singleRoundWinner", tiebreaker: null, dealer: false },
+  { mode: "passFail", tiebreaker: null, dealer: false },
+];
+
+async function expectDraft(dialog: Locator, settings: GenericGameSettings, saved = false) {
+  if (settings.mode === "points") {
+    expect(await dialog.getByRole("status", { name: "Maya Points", exact: true }).innerText()).toBe(
+      saved ? "0" : "7",
+    );
+    if (settings.tiebreaker) {
+      expect(
+        await dialog.getByRole("status", { name: "Maya Tiebreaker", exact: true }).innerText(),
+      ).toBe(saved ? "0" : "3");
+    }
+  } else {
+    expect(
+      await dialog
+        .getByRole(settings.mode === "passFail" ? "button" : "radio", { name: "Maya", exact: true })
+        .getAttribute(settings.mode === "passFail" ? "aria-pressed" : "aria-checked"),
+    ).toBe(String(!saved));
+  }
+}
+
+it.each(
+  settings,
+)("allows pending $mode closure and recovers a failed draft without duplicate saves", async (gameSettings) => {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   try {
     await page.goto(`${appUrl}#/scorekeeper`);
@@ -30,7 +59,7 @@ it("replaces Save with a reduced-motion-aware spinner while retaining a failed d
       const player = await playersApi.create({ name: "Maya", color: "Jam", isFavorite: 0 });
       return (await genericGamesApi.create({
         players: [player.id],
-        settings: { mode: "points", pointsDirection: "high", tiebreaker: null, dealer: false },
+        settings: ${JSON.stringify(gameSettings)},
       })).id;
     })()`);
     await page.goto(`${appUrl}#/scorekeeper/game/${gameId}`);
@@ -39,54 +68,27 @@ it("replaces Save with a reduced-motion-aware spinner while retaining a failed d
     const dialog = page.getByRole("dialog", { name: "Add Round", exact: true });
     const close = dialog.getByRole("button", { name: "Close", exact: true });
     const save = dialog.getByRole("button", { name: "Save", exact: true });
-    await dialog.getByRole("button", { name: "7", exact: true }).click();
+    if (gameSettings.mode === "points") {
+      await dialog.getByRole("button", { name: "7", exact: true }).click();
+      if (gameSettings.tiebreaker) {
+        await dialog.getByRole("button", { name: "Maya Tiebreaker", exact: true }).click();
+        await dialog.getByRole("button", { name: "3", exact: true }).click();
+      }
+    } else {
+      await dialog
+        .getByRole(gameSettings.mode === "passFail" ? "button" : "radio", {
+          name: "Maya",
+          exact: true,
+        })
+        .click();
+    }
     await expectReadyAction(save, close, true);
 
-    // Hold real storage at the IndexedDB boundary, without replacing the save lifecycle.
-    await page.evaluate(
-      (id) =>
-        new Promise<void>((resolve, reject) => {
-          const request = indexedDB.open("phase10-db");
-          request.onerror = () => reject(request.error);
-          request.onsuccess = () => {
-            const db = request.result;
-            const transaction = db.transaction("games", "readwrite");
-            let locked = true;
-            window.addEventListener(
-              "release-round-storage",
-              () => {
-                locked = false;
-              },
-              { once: true },
-            );
-            transaction.oncomplete = () => db.close();
-            transaction.onabort = () => {
-              db.close();
-              reject(transaction.error);
-            };
-            const hold = () => {
-              if (locked) transaction.objectStore("games").get(id).onsuccess = hold;
-            };
-            hold();
-            resolve();
-          };
-        }),
-      gameId,
-    );
-    await page.evaluate(() => {
-      const add = IDBObjectStore.prototype.add;
-      IDBObjectStore.prototype.add = function (value, key) {
-        if (this.name === "rounds") {
-          IDBObjectStore.prototype.add = add;
-          throw new DOMException("Round storage unavailable", "QuotaExceededError");
-        }
-        return add.call(this, value, key);
-      };
-    });
+    await holdRoundStorage(page, "Round storage unavailable");
     await save.click();
     const spinner = save.locator("svg[aria-hidden=true]");
     await expect.poll(() => save.isDisabled()).toBe(true);
-    expect(await close.isDisabled()).toBe(true);
+    expect(await close.isEnabled()).toBe(true);
     for (const colorScheme of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme });
       await expectReadyAction(save, close, false);
@@ -102,22 +104,64 @@ it("replaces Save with a reduced-motion-aware spinner while retaining a failed d
       .poll(() => spinner.evaluate((element) => getComputedStyle(element).animationName))
       .toBe("none");
     await page.keyboard.press("Escape");
-    expect(await save.isVisible()).toBe(true);
+    await dialog.waitFor({ state: "detached" });
+    await add.click();
+    await expectDraft(dialog, gameSettings);
     expect(await save.isDisabled()).toBe(true);
+    const entry =
+      gameSettings.mode === "points"
+        ? dialog.getByRole("button", { name: "7", exact: true })
+        : dialog.getByRole(gameSettings.mode === "passFail" ? "button" : "radio", {
+            name: "Maya",
+            exact: true,
+          });
+    expect(await entry.isDisabled()).toBe(true);
+    await dialog.locator("form").evaluate((form) => {
+      if (!(form instanceof HTMLFormElement)) throw new Error("Missing Round form");
+      form.requestSubmit();
+    });
+    await close.click();
+    await dialog.waitFor({ state: "detached" });
 
-    await page.evaluate(() => window.dispatchEvent(new Event("release-round-storage")));
+    await releaseRoundStorage(page);
+    await add.click();
     await dialog.getByRole("alert").filter({ hasText: "Round storage unavailable" }).waitFor();
-    expect(await dialog.locator("output").first().innerText()).toBe("7");
+    await expectDraft(dialog, gameSettings);
     expect(await save.isEnabled()).toBe(true);
     expect(await close.isEnabled()).toBe(true);
     expect(await save.locator("svg.lucide-check").count()).toBe(1);
     await expectReadyAction(save, close, true);
-    await save.click();
+    await page.mouse.click(4, 4);
     await dialog.waitFor({ state: "detached" });
-    await page.getByRole("cell", { name: "Maya, Round 1: 7 Points", exact: true }).waitFor();
+    await add.click();
+    await dialog.getByRole("alert").filter({ hasText: "Round storage unavailable" }).waitFor();
+    await expectDraft(dialog, gameSettings);
+    await holdRoundStorage(page);
+    await save.click();
+    await expect.poll(() => save.isDisabled()).toBe(true);
+    await page.mouse.click(4, 4);
+    await dialog.waitFor({ state: "detached" });
+    await add.click();
+    await expectDraft(dialog, gameSettings);
+    expect(await save.isDisabled()).toBe(true);
+    expect(await entry.isDisabled()).toBe(true);
+    await releaseRoundStorage(page);
+    await dialog.waitFor({ state: "detached" });
+    await page
+      .getByRole("cell", {
+        name:
+          gameSettings.mode === "points"
+            ? `Maya, Round 1: 7 Points${gameSettings.tiebreaker ? ", 3 Tiebreaker" : ""}`
+            : `Maya, Round 1: ${gameSettings.mode === "passFail" ? "Passed" : "Won"}`,
+        exact: true,
+      })
+      .waitFor();
     expect(await page.getByRole("button", { name: "Expand Round 2", exact: true }).count()).toBe(0);
     await add.click();
-    expect(await dialog.locator("output").first().innerText()).toBe("0");
+    await expectDraft(dialog, gameSettings, true);
+    await page.reload();
+    await page.getByRole("button", { name: "Expand Round 1", exact: true }).waitFor();
+    expect(await page.getByRole("button", { name: "Expand Round 2", exact: true }).count()).toBe(0);
   } finally {
     await page.close();
   }
@@ -127,13 +171,6 @@ afterAll(async () => {
   await browser?.close();
   await server?.close();
 });
-
-const settings: GenericGameSettings[] = [
-  { mode: "points", pointsDirection: "high", tiebreaker: null, dealer: false },
-  { mode: "points", pointsDirection: "high", tiebreaker: { direction: "low" }, dealer: false },
-  { mode: "singleRoundWinner", tiebreaker: null, dealer: false },
-  { mode: "passFail", tiebreaker: null, dealer: false },
-];
 
 it.each([
   { width: 320, height: 568 },
@@ -226,7 +263,7 @@ it.each([
           .poll(async () => (await action.boundingBox())?.width ?? 0)
           .toBeGreaterThan(before.width + 1);
         const pressed = await action.boundingBox();
-        const content = await dialog.locator(".dialog-content").boundingBox();
+        const content = await dialog.locator(".dialog-panel").boundingBox();
         if (!pressed || !content) throw new Error("Missing footer press geometry");
         expect(pressed.x).toBeGreaterThan(content.x);
         expect(pressed.x + pressed.width).toBeLessThan(content.x + content.width);
@@ -238,11 +275,13 @@ it.each([
       const closeBounds = await close.boundingBox();
       const saveBounds = await save.boundingBox();
       if (!closeBounds || !saveBounds) throw new Error("Missing footer positions");
-      expect(closeBounds.x + closeBounds.width).toBeLessThan(saveBounds.x);
+      expect(closeBounds.y + closeBounds.height).toBeLessThan(saveBounds.y);
 
-      await close.focus();
+      await save.focus();
       // macOS WebKit requires Option-Tab to include buttons without full keyboard access.
       await page.keyboard.press(process.platform === "darwin" ? "Alt+Tab" : "Tab");
+      expect(await close.evaluate((element) => element === document.activeElement)).toBe(true);
+      await page.keyboard.press(process.platform === "darwin" ? "Shift+Alt+Tab" : "Shift+Tab");
       expect(await save.evaluate((element) => element === document.activeElement)).toBe(true);
       expect(
         await save.evaluate((element) => {
@@ -254,7 +293,7 @@ it.each([
           };
         }),
       ).toEqual({ focusVisible: true, style: "solid", width: "2px" });
-      await page.keyboard.press(process.platform === "darwin" ? "Shift+Alt+Tab" : "Shift+Tab");
+      await close.focus();
       await page.keyboard.press("Enter");
       await dialog.waitFor({ state: "detached" });
       await expect

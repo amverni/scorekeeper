@@ -884,7 +884,7 @@ it("moves Players only after saving, using numbered Phases, Round Skip and Sit O
       { name: "Ada Stone", result: "Failed" },
       { name: "Bo Reed", result: "Sat Out" },
     ]);
-    await entry.getByRole("button", { name: "Cancel", exact: true }).click();
+    await entry.getByRole("button", { name: "Close", exact: true }).click();
     await entry.waitFor({ state: "detached" });
     card = await openCard(page);
     expect(await names(card, 1)).toEqual(["Zoe Jones", "Alex Stone", "Ada Stone", "Bo Reed"]);

@@ -322,7 +322,10 @@ const numericLayouts = [
 
 async function expectNumericFit(dialog: Locator) {
   const body = dialog.locator("[data-swipe-navigation-root]");
-  for (const container of [body, dialog.locator(".dialog-content")]) {
+  const whole = await dialog
+    .locator(".dialog-panel")
+    .evaluate((element) => getComputedStyle(element).overflowY === "auto");
+  for (const container of [body, dialog.locator(".dialog-body")]) {
     expect(
       await container.evaluate((element) => ({
         overflow: element.scrollHeight - element.clientHeight,
@@ -346,6 +349,7 @@ async function expectNumericFit(dialog: Locator) {
     expect(bounds.width).toBeGreaterThanOrEqual(24);
     expect(bounds.width).toBeCloseTo(bounds.height, 0);
     if (await key.isDisabled()) continue;
+    if (whole) await key.scrollIntoViewIfNeeded();
     expect(
       await key.evaluate((element) => {
         const bounds = element.getBoundingClientRect();
@@ -365,7 +369,7 @@ async function expectNumericFit(dialog: Locator) {
 
 it.each(
   numericLayouts,
-)("fits numeric entry without scrolling with a long roster and Safe Areas at $width x $height in $colorScheme (Tiebreaker $tiebreaker)", async ({
+)("fits numeric entry, using modal scrolling only when cramped, with a long roster and Safe Areas at $width x $height in $colorScheme (Tiebreaker $tiebreaker)", async ({
   width,
   height,
   colorScheme,
@@ -420,7 +424,8 @@ it.each(
     await expectNumericFit(dialog);
     const panelBounds = await dialog.locator(".dialog-panel").boundingBox();
     if (!panelBounds) throw new Error("Missing numeric dialog panel");
-    expect(panelBounds.height).toBeCloseTo(height * 0.75 + 34, 0);
+    expect(panelBounds.y).toBe(36);
+    expect(panelBounds.height).toBe(height - 20 - 34 - 32);
     for (const name of names) {
       const playerTab = dialog.getByRole("tab", { name, exact: true });
       await playerTab.click();
