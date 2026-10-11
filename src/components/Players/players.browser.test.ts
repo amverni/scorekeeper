@@ -4,6 +4,7 @@ import type { Browser, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { holdPlayerStorage, releasePlayerStorage } from "../../test/playerStorage";
 import { setVisibleViewport } from "../../test/visualViewport";
 import type { Player } from "../../types";
 
@@ -44,6 +45,7 @@ describe.each(["scorekeeper", "phaseCompan10n"])("%s focused Player modal", (exp
       const dialog = page.getByRole("dialog", { name: "Create player", exact: true });
       const name = dialog.getByRole("textbox", { name: "Name", exact: true });
       await name.waitFor();
+      expect((await dialog.locator(".dialog-panel").boundingBox())?.height).toBeLessThan(812);
       await name.fill("Keyboard pilot");
       await name.evaluate((element) => {
         if (!(element instanceof HTMLInputElement)) throw new Error("Missing Player name input");
@@ -160,42 +162,7 @@ it("keeps a focused Player draft recoverable through a pending and failed save",
     const name = dialog.getByRole("textbox", { name: "Name", exact: true });
     await name.fill("Recoverable keyboard pilot");
     await setVisibleViewport(page, { width: 390, height: 420, offsetLeft: 0, offsetTop: 60 });
-    await page.evaluate(() => {
-      const add = IDBObjectStore.prototype.add;
-      IDBObjectStore.prototype.add = function (...args) {
-        if (this.name === "players") {
-          IDBObjectStore.prototype.add = add;
-          throw new DOMException("Player storage unavailable", "UnknownError");
-        }
-        return add.apply(this, args);
-      };
-      return new Promise<void>((resolve, reject) => {
-        const request = indexedDB.open("phase10-db");
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => {
-          const db = request.result;
-          const transaction = db.transaction("players", "readwrite");
-          let held = true;
-          window.addEventListener(
-            "release-player-storage",
-            () => {
-              held = false;
-            },
-            { once: true },
-          );
-          transaction.oncomplete = () => db.close();
-          transaction.onabort = () => {
-            db.close();
-            reject(transaction.error);
-          };
-          const hold = () => {
-            if (held) transaction.objectStore("players").get("fixture").onsuccess = hold;
-          };
-          hold();
-          resolve();
-        };
-      });
-    });
+    await holdPlayerStorage(page, "Player storage unavailable");
     await dialog.getByRole("button", { name: "Save", exact: true }).click();
     await dialog.getByRole("button", { name: "Saving...", exact: true }).waitFor();
     const close = dialog.getByRole("button", { name: "Close", exact: true });
@@ -203,7 +170,7 @@ it("keeps a focused Player draft recoverable through a pending and failed save",
     await page.keyboard.press("Escape");
     await page.mouse.click(2, 2);
     expect(await dialog.getAttribute("data-dialog-open")).toBe("true");
-    await page.evaluate(() => window.dispatchEvent(new Event("release-player-storage")));
+    await releasePlayerStorage(page);
     await dialog
       .getByRole("alert")
       .getByText("Player storage unavailable", { exact: true })
@@ -214,7 +181,7 @@ it("keeps a focused Player draft recoverable through a pending and failed save",
     await dialog.waitFor({ state: "detached" });
     await page.getByRole("button", { name: "Recoverable keyboard pilot", exact: true }).waitFor();
   } finally {
-    await page.evaluate(() => window.dispatchEvent(new Event("release-player-storage")));
+    await releasePlayerStorage(page);
     await page.close();
   }
 }, 60_000);

@@ -1,9 +1,11 @@
 /// <reference types="node" />
 
-import type { Browser, Locator } from "playwright";
+import type { Browser, Locator, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { holdPlayerStorage, releasePlayerStorage } from "../../../test/playerStorage";
+import { setVisibleViewport } from "../../../test/visualViewport";
 
 let server: ViteDevServer;
 let browser: Browser;
@@ -31,6 +33,37 @@ async function waitForSlide(slider: Locator) {
   });
 }
 
+async function box(locator: Locator) {
+  const bounds = await locator.boundingBox();
+  if (!bounds) throw new Error("Missing Player flow bounds");
+  return bounds;
+}
+
+async function settle(page: Page) {
+  await page.evaluate(() =>
+    Promise.allSettled(document.getAnimations().map((animation) => animation.finished)),
+  );
+}
+
+async function pixels(page: Page, clip: { x: number; y: number; width: number; height: number }) {
+  const image = await page.screenshot();
+  return page.evaluate(
+    async ({ image, clip }) => {
+      const bitmap = new Image();
+      bitmap.src = `data:image/png;base64,${image}`;
+      await bitmap.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Missing screenshot canvas");
+      context.drawImage(bitmap, 0, 0);
+      return Array.from(context.getImageData(clip.x, clip.y, clip.width, clip.height).data);
+    },
+    { image: image.toString("base64"), clip },
+  );
+}
+
 describe.each(["/scorekeeper/create", "/phaseCompan10n/create"])("%s", (route) => {
   describe.each([
     { width: 390, height: 844 },
@@ -48,6 +81,14 @@ describe.each(["/scorekeeper/create", "/phaseCompan10n/create"])("%s", (route) =
         const slider = dialog.locator(".add-player-slider");
         const search = dialog.getByRole("textbox");
         await search.fill("Amy");
+        await settle(page);
+        const panel = dialog.locator(".dialog-panel");
+        const restingPanel = await box(panel);
+        const close = dialog.getByRole("button", { name: "Close", exact: true });
+        const restingClose = await box(close);
+        expect(restingPanel.y).toBeGreaterThanOrEqual(16);
+        expect(restingPanel.y + restingPanel.height).toBeLessThanOrEqual(viewport.height - 16);
+        expect(await dialog.getByRole("heading").count()).toBe(0);
 
         for (let attempt = 0; attempt < 3; attempt++) {
           await dialog.getByRole("button", { name: "Create new player", exact: true }).tap();
@@ -72,6 +113,14 @@ describe.each(["/scorekeeper/create", "/phaseCompan10n/create"])("%s", (route) =
           ).toBeLessThanOrEqual(1);
           expect(await name.evaluate((element) => element === document.activeElement)).toBe(true);
           expect(await name.inputValue()).toBe("Amy");
+          expect(await box(panel)).toEqual(restingPanel);
+          expect(await box(close)).toEqual(restingClose);
+          const header = dialog.locator("header");
+          expect(await header.getByRole("button", { name: "Back to search" }).count()).toBe(1);
+          expect(await header.getByRole("button", { name: "Close", exact: true }).count()).toBe(1);
+          expect(
+            await dialog.getByRole("heading", { name: "New Player", exact: true }).count(),
+          ).toBe(1);
 
           await back.tap();
           await slider.and(dialog.locator("[data-view='search']")).waitFor({ state: "attached" });
@@ -87,9 +136,199 @@ describe.each(["/scorekeeper/create", "/phaseCompan10n/create"])("%s", (route) =
           );
           expect(await search.inputValue()).toBe("Amy");
         }
+        await close.tap();
+        await dialog.waitFor({ state: "detached" });
+        await page.getByRole("button", { name: "Add Player", exact: true }).tap();
+        await search.waitFor();
+        expect(await search.inputValue()).toBe("");
+        expect(await dialog.getByRole("button", { name: "Back to search" }).count()).toBe(0);
       } finally {
         await page.close();
       }
     }, 30_000);
   });
+
+  it("fits both internal views above the keyboard and restores their stable workspace", async () => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      reducedMotion: "reduce",
+    });
+    try {
+      await page.goto(`${appUrl}#${route}`);
+      await page.evaluate(() => {
+        document.documentElement.style.setProperty("--safe-area-inset-top", "20px");
+        document.documentElement.style.setProperty("--safe-area-inset-bottom", "24px");
+        document.documentElement.style.setProperty("--safe-area-inset-left", "12px");
+        document.documentElement.style.setProperty("--safe-area-inset-right", "8px");
+      });
+      await page.getByRole("button", { name: "Add Player", exact: true }).tap();
+      const dialog = page.getByRole("dialog");
+      const panel = dialog.locator(".dialog-panel");
+      const search = dialog.getByRole("textbox");
+      await search.fill("Keyboard Player");
+      await settle(page);
+      const original = await box(panel);
+      expect(original.x).toBeGreaterThanOrEqual(28);
+      expect(original.x + original.width).toBeLessThanOrEqual(366);
+      expect(original.y).toBe(36);
+      expect(original.y + original.height).toBe(804);
+      await setVisibleViewport(page, { width: 390, height: 420, offsetLeft: 0, offsetTop: 60 });
+      await setVisibleViewport(page, { width: 390, height: 257, offsetLeft: 0, offsetTop: 60 });
+      await dialog.getByRole("button", { name: "Create new player" }).tap();
+      const name = dialog.getByRole("textbox", { name: "Name", exact: true });
+      await name.waitFor();
+      await settle(page);
+      const save = dialog.getByRole("button", { name: "Save", exact: true });
+      await save.scrollIntoViewIfNeeded();
+      expect(await panel.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+      await setVisibleViewport(page, { width: 390, height: 420, offsetLeft: 0, offsetTop: 60 });
+      const fitted = await box(panel);
+      expect(fitted.y).toBe(76);
+      expect(fitted.y + fitted.height).toBe(464);
+      expect(await name.inputValue()).toBe("Keyboard Player");
+      const close = dialog.getByRole("button", { name: "Close", exact: true });
+      const saveBounds = await box(save);
+      const closeBounds = await box(close);
+      const region = dialog.getByRole("region", { name: "Create player form", exact: true });
+      await region.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+      expect(await region.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+      expect(await box(save)).toEqual(saveBounds);
+      expect(await box(close)).toEqual(closeBounds);
+      await setVisibleViewport(page, { width: 390, height: 180, offsetLeft: 0, offsetTop: 60 });
+      await save.scrollIntoViewIfNeeded();
+      expect(await panel.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+      const visibleSave = await box(save);
+      expect(visibleSave.y).toBeGreaterThanOrEqual(76);
+      expect(visibleSave.y + visibleSave.height).toBeLessThanOrEqual(224);
+      await setVisibleViewport(page, { width: 390, height: 420, offsetLeft: 0, offsetTop: 60 });
+      await dialog.getByRole("button", { name: "Back to search" }).tap();
+      await settle(page);
+      expect(await box(panel)).toEqual(fitted);
+      expect(await search.inputValue()).toBe("Keyboard Player");
+      expect(await search.evaluate((element) => element === document.activeElement)).toBe(true);
+      await setVisibleViewport(page, { width: 390, height: 844, offsetLeft: 0, offsetTop: 0 });
+      expect(await box(panel)).toEqual(original);
+    } finally {
+      await page.close();
+    }
+  }, 30_000);
+
+  it.each([
+    "light",
+    "dark",
+  ] as const)("shows both edges of the scroll-region keyboard focus ring in %s", async (colorScheme) => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      colorScheme,
+      reducedMotion: "reduce",
+    });
+    try {
+      await page.goto(`${appUrl}#${route}`);
+      await page.getByRole("button", { name: "Add Player", exact: true }).click();
+      const dialog = page.getByRole("dialog");
+      for (const label of ["Player search results", "Create player form"]) {
+        if (label === "Create player form") {
+          await dialog.getByRole("button", { name: "Create new player" }).click();
+          await dialog.getByRole("textbox", { name: "Name", exact: true }).waitFor();
+        }
+        await settle(page);
+        const region = dialog.getByRole("region", { name: label, exact: true });
+        await page.keyboard.press("Tab");
+        await region.focus();
+        expect(await region.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
+        const bounds = await box(region);
+        for (const x of [Math.floor(bounds.x) + 12, Math.ceil(bounds.x + bounds.width) - 14]) {
+          const clip = { x, y: Math.ceil(bounds.y) + 40, width: 2, height: 20 };
+          await region.focus();
+          const focused = await pixels(page, clip);
+          await dialog.getByRole("button", { name: "Close", exact: true }).focus();
+          const blurred = await pixels(page, clip);
+          expect(
+            focused.filter((channel, index) => Math.abs(channel - blurred[index]) > 10).length,
+          ).toBeGreaterThan(10);
+        }
+      }
+    } finally {
+      await page.close();
+    }
+  }, 30_000);
+
+  it("blocks leaving Create Player during a save, preserves failure feedback, and selects once on retry", async () => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      reducedMotion: "reduce",
+    });
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    try {
+      await page.goto(`${appUrl}#${route}`);
+      await page.getByRole("button", { name: "Add Player", exact: true }).tap();
+      const dialog = page.getByRole("dialog");
+      const search = dialog.getByRole("textbox");
+      await search.fill("Recoverable Player");
+      await dialog.getByRole("button", { name: "Create new player" }).tap();
+      const name = dialog.getByRole("textbox", { name: "Name", exact: true });
+      await name.waitFor();
+      await dialog.getByRole("switch", { name: "Favorite", exact: true }).click();
+      await setVisibleViewport(page, { width: 390, height: 420, offsetLeft: 0, offsetTop: 60 });
+      const failure = `Player storage unavailable. ${"Retry keeps this draft. ".repeat(40)}`;
+      await holdPlayerStorage(page, failure);
+      const save = dialog.getByRole("button", { name: "Save", exact: true });
+      const saveBounds = await box(save);
+      const back = dialog.getByRole("button", { name: "Back to search" });
+      const close = dialog.getByRole("button", { name: "Close", exact: true });
+      await save.click();
+      await dialog.getByRole("button", { name: "Saving...", exact: true }).waitFor();
+      expect(await back.isDisabled()).toBe(true);
+      expect(await close.isDisabled()).toBe(true);
+      await page.keyboard.press("Escape");
+      await page.mouse.click(2, 2);
+      expect(await dialog.getAttribute("data-dialog-open")).toBe("true");
+      await releasePlayerStorage(page);
+      await dialog.getByRole("alert").getByText(failure, { exact: true }).waitFor();
+      expect(await name.inputValue()).toBe("Recoverable Player");
+      expect(await back.isEnabled()).toBe(true);
+      expect(await close.isEnabled()).toBe(true);
+      expect(await box(save)).toEqual(saveBounds);
+      const region = dialog.getByRole("region", { name: "Create player form", exact: true });
+      await region.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+      expect(await box(save)).toEqual(saveBounds);
+      await save.click();
+      await dialog.getByRole("textbox").waitFor();
+      const selected = dialog.getByRole("button", { name: "Recoverable Player", exact: true });
+      await selected.waitFor();
+      expect(await selected.isDisabled()).toBe(true);
+      expect(await selected.count()).toBe(1);
+      expect(await dialog.getByRole("button", { name: "Back to search" }).count()).toBe(0);
+      expect(await search.inputValue()).toBe("Recoverable Player");
+      await dialog.getByRole("button", { name: "Create new player" }).tap();
+      await name.waitFor();
+      expect(
+        await dialog.getByRole("switch", { name: "Favorite" }).getAttribute("aria-checked"),
+      ).toBe("false");
+      expect(await dialog.getByRole("alert").count()).toBe(0);
+      await name.fill("Duplicate check");
+      await back.tap();
+      await dialog.getByRole("button", { name: "Create new player" }).tap();
+      await name.waitFor();
+      expect(await name.inputValue()).toBe("Recoverable Player");
+      expect(errors).toEqual([]);
+      await close.tap();
+      await dialog.waitFor({ state: "detached" });
+      await page.getByRole("button", { name: "Add Player", exact: true }).tap();
+      expect(await search.inputValue()).toBe("");
+      expect(
+        await dialog.getByRole("button", { name: "Recoverable Player", exact: true }).isDisabled(),
+      ).toBe(true);
+    } finally {
+      await releasePlayerStorage(page);
+      await page.close();
+    }
+  }, 30_000);
 });

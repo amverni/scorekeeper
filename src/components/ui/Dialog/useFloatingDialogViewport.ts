@@ -80,10 +80,17 @@ export function useFloatingDialogViewport(minBodyHeight = MIN_BODY_HEIGHT) {
     }
     update();
     const observer = new ResizeObserver(measure);
-    observer.observe(wrapper);
-    for (const region of panel.querySelectorAll(":scope > header, :scope > footer")) {
-      observer.observe(region);
+    function observeFixedRegions() {
+      observer.disconnect();
+      if (wrapper) observer.observe(wrapper);
+      for (const region of panel.querySelectorAll(":scope > header, :scope > footer")) {
+        observer.observe(region);
+      }
+      measure();
     }
+    observeFixedRegions();
+    const structureObserver = new MutationObserver(observeFixedRegions);
+    structureObserver.observe(panel, { childList: true });
     function preserveZoom(event: TouchEvent) {
       // Headless UI's iOS document lock cancels moves without a scroll owner.
       // Internal pinch gestures must stay native, even in short content.
@@ -97,6 +104,7 @@ export function useFloatingDialogViewport(minBodyHeight = MIN_BODY_HEIGHT) {
     window.addEventListener("orientationchange", update);
     return () => {
       observer.disconnect();
+      structureObserver.disconnect();
       panel.removeEventListener("touchmove", preserveZoom);
       panel.removeEventListener("focusin", reveal);
       if (frame !== undefined) cancelAnimationFrame(frame);

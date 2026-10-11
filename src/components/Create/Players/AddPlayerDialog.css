@@ -9,6 +9,42 @@
   transform: translateX(-100%);
 }
 
+.dialog-panel .add-player-page .player-search-results:not(:has(.dialog-scroll)) {
+  --dialog-scroll-mask: linear-gradient(
+    to bottom,
+    transparent 0,
+    black 20px,
+    black calc(100% - var(--dialog-fade-height)),
+    transparent
+  );
+}
+
+.dialog-panel[data-dialog-scroll="whole"] .add-player-viewport,
+.dialog-panel[data-dialog-scroll="whole"] .add-player-slider,
+.dialog-panel[data-dialog-scroll="whole"] .add-player-page {
+  height: auto;
+  overflow: visible;
+}
+
+.dialog-panel[data-dialog-scroll="whole"] .add-player-slider {
+  display: block;
+  transform: none;
+}
+
+.dialog-panel[data-dialog-scroll="whole"] .add-player-page[aria-hidden="true"] {
+  display: none;
+}
+
+.dialog-panel[data-dialog-scroll="whole"] .add-player-page .dialog-scroll-frame {
+  max-height: none;
+}
+
+.dialog-panel[data-dialog-scroll="whole"] .add-player-page .dialog-scroll {
+  overflow: visible;
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .add-player-slider {
     transition: none;

@@ -5,7 +5,8 @@ import { useDeferredValue, useState } from "react";
 import { phaseSetsApi } from "../../../data/api/phaseSets";
 import { phaseSetListOptions } from "../../../data/hooks/usePhaseSets";
 import type { Phase, PhaseSetId } from "../../../types";
-import { Dialog, InlineError, List, SearchBar } from "../../ui";
+import { Dialog, DialogScrollArea, InlineError, List, SearchBar } from "../../ui";
+import "./PhaseSelectionDialog.css";
 
 export interface SwitchPhaseSetDialogProps {
   open: boolean;
@@ -48,8 +49,15 @@ export function SwitchPhaseSetDialog({ open, onClose, onSelectPhases }: SwitchPh
     : "No phase sets yet";
 
   return (
-    <Dialog open={open} onClose={onClose} aria-label="Switch phase set">
-      <div className="flex h-full flex-col px-4 pb-4">
+    <Dialog
+      open={open}
+      onClose={onClose}
+      aria-label="Switch phase set"
+      presentation="floating"
+      bodyScroll="custom"
+      className="phase-selection-dialog"
+    >
+      <div className="flex min-h-0 flex-col pb-4">
         <SearchBar
           value={searchTerm}
           onValueChange={setSearchTerm}
@@ -58,7 +66,7 @@ export function SwitchPhaseSetDialog({ open, onClose, onSelectPhases }: SwitchPh
         />
 
         {/* Phase set list */}
-        <div className="dialog-scroll min-h-0 flex-1 overflow-y-auto -mx-4 px-4 pt-2 pb-2.5">
+        <DialogScrollArea aria-label="Phase Set search results">
           {selectError && <InlineError message={selectError} />}
           {isError ? (
             <InlineError message="Unable to load phase sets." onRetry={() => refetch()} />
@@ -76,7 +84,7 @@ export function SwitchPhaseSetDialog({ open, onClose, onSelectPhases }: SwitchPh
               ))}
             </List>
           )}
-        </div>
+        </DialogScrollArea>
       </div>
     </Dialog>
   );

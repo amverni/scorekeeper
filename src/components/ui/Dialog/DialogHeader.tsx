@@ -6,17 +6,25 @@ interface DialogHeaderProps {
   children?: ReactNode;
   onClose: () => void;
   onBack?: () => void;
+  backLabel?: string;
   dismissible: boolean;
 }
 
-export function DialogHeader({ children, onClose, onBack, dismissible }: DialogHeaderProps) {
+export function DialogHeader({
+  children,
+  onClose,
+  onBack,
+  backLabel = "Go back",
+  dismissible,
+}: DialogHeaderProps) {
   return (
     <header className="flex shrink-0 items-center gap-3 p-4">
       {onBack && (
         <Button
           onClick={onBack}
+          disabled={!dismissible}
           className="size-11 shrink-0 p-0 data-focus:outline-solid data-focus:outline-text-primary!"
-          aria-label="Go back"
+          aria-label={backLabel}
         >
           <ArrowLeft aria-hidden="true" className="size-5" />
         </Button>

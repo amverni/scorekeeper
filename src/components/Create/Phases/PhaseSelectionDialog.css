@@ -1,0 +1,9 @@
+.phase-selection-dialog[data-dialog-scroll="whole"] .dialog-scroll-frame {
+  max-height: none;
+}
+
+.phase-selection-dialog[data-dialog-scroll="whole"] .dialog-scroll {
+  overflow: visible;
+  mask-image: none;
+  -webkit-mask-image: none;
+}

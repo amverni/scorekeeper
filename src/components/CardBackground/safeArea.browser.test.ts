@@ -218,7 +218,7 @@ describe("safe-area layout in WebKit", () => {
     }
   }, 30_000);
 
-  it("keeps the dialog's glass continuous below the viewport during dragging without extending content", async () => {
+  it("keeps Add Player inside usable Safe Areas without a drawer skirt or moving the page", async () => {
     const page = await openPage(700);
     try {
       await page.addStyleTag({
@@ -227,31 +227,24 @@ describe("safe-area layout in WebKit", () => {
       await page.getByRole("button", { name: "Add Player", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Add player", exact: true });
       await dialog.waitFor({ state: "attached" });
-      await expect.poll(async () => (await bounds(page, ".dialog-glass")).y).toBe(141);
-      const surface = await bounds(page, ".dialog-glass");
+      await expect.poll(async () => (await bounds(page, ".dialog-panel")).y).toBe(16);
+      const surface = await bounds(page, ".dialog-panel");
       expect(surface.width).toBe(351);
-      expect(surface.y + surface.height).toBeGreaterThanOrEqual(1400);
-      const content = await dialog.locator("section").boundingBox();
-      if (!content) throw new Error("Missing dialog content");
-      expect(content.y + content.height).toBeLessThanOrEqual(666);
-      expect(
-        await page
-          .locator(".dialog-glass")
-          .evaluate((element) => getComputedStyle(element).pointerEvents),
-      ).toBe("none");
-
-      // Drag the visible handle, first stretching upward, then below dismissal threshold.
-      await page.mouse.move(195, surface.y + 14);
-      await page.mouse.down();
-      await page.mouse.move(195, surface.y - 26, { steps: 4 });
-      expect((await bounds(page, ".dialog-glass")).y).toBeLessThan(surface.y);
-      await page.mouse.move(195, surface.y + 94, { steps: 4 });
-      const dragged = await bounds(page, ".dialog-glass");
-      expect(dragged.y).toBeCloseTo(surface.y + 80, 1);
-      expect(dragged.y + dragged.height).toBeGreaterThan(1400);
-      await page.mouse.up();
-      await expect.poll(async () => (await bounds(page, ".dialog-glass")).y).toBe(141);
-      await page.keyboard.press("Escape");
+      expect(surface.y + surface.height).toBe(650);
+      expect(await dialog.locator(".dialog-glass").count()).toBe(0);
+      const panel = dialog.locator(".dialog-panel");
+      expect(await panel.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe(
+        await page.evaluate(() => getComputedStyle(document.body).backgroundColor),
+      );
+      const close = dialog.getByRole("button", { name: "Close", exact: true });
+      const closeBounds = await close.boundingBox();
+      const content = dialog.getByRole("region", { name: "Player search results", exact: true });
+      await content.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+      expect(await close.boundingBox()).toEqual(closeBounds);
+      expect(await panel.boundingBox()).toEqual(surface);
+      await close.click();
       await dialog.waitFor({ state: "detached" });
       await expect
         .poll(async () =>

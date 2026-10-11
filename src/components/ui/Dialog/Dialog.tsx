@@ -24,6 +24,7 @@ interface AppDialogProps extends Omit<DialogProps<"div">, "children"> {
   header?: ReactNode;
   actions?: ReactNode;
   onBack?: () => void;
+  backLabel?: string;
   readyToOpen?: boolean;
 }
 
@@ -94,6 +95,7 @@ export function Dialog(props: AppDialogProps) {
     header,
     actions,
     onBack,
+    backLabel,
     readyToOpen = true,
     ...rest
   } = props;
@@ -339,6 +341,7 @@ export function Dialog(props: AppDialogProps) {
               <DialogHeader
                 onClose={() => onClose?.(false)}
                 onBack={onBack}
+                backLabel={backLabel}
                 dismissible={dismissible}
               >
                 {header}

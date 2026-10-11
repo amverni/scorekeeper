@@ -9,6 +9,7 @@ import { formatPhaseDisplayName } from "../../../utils";
 import {
   Button,
   Dialog,
+  DialogScrollArea,
   FilterListbox,
   InlineError,
   List,
@@ -16,6 +17,7 @@ import {
   SearchBar,
 } from "../../ui";
 import { useAddPhase, useGamePhases } from "../CreateGameContext";
+import "./PhaseSelectionDialog.css";
 
 export interface AddPhasesDialogProps {
   open: boolean;
@@ -82,8 +84,15 @@ export function AddPhasesDialog({ open, onClose }: AddPhasesDialogProps) {
   const phaseSetLabel = allPhaseSets.find((ps) => ps.id === phaseSetId)?.name ?? "All";
 
   return (
-    <Dialog open={open} onClose={onClose} aria-label="Add phases">
-      <div className="flex h-full flex-col px-4 pb-4">
+    <Dialog
+      open={open}
+      onClose={onClose}
+      aria-label="Add phases"
+      presentation="floating"
+      bodyScroll="custom"
+      className="phase-selection-dialog"
+    >
+      <div className="flex min-h-0 flex-col pb-4">
         <SearchBar
           value={searchTerm}
           onValueChange={setSearchTerm}
@@ -139,7 +148,7 @@ export function AddPhasesDialog({ open, onClose }: AddPhasesDialogProps) {
         </div>
 
         {/* Phase list */}
-        <div className="dialog-scroll min-h-0 flex-1 overflow-y-auto -mx-4 px-4 pt-2 pb-2.5">
+        <DialogScrollArea aria-label="Phase search results">
           {isError ? (
             <InlineError message="Unable to load phases." onRetry={() => refetch()} />
           ) : (
@@ -157,7 +166,7 @@ export function AddPhasesDialog({ open, onClose }: AddPhasesDialogProps) {
               ))}
             </List>
           )}
-        </div>
+        </DialogScrollArea>
       </div>
     </Dialog>
   );

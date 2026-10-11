@@ -34,8 +34,10 @@ async function startGame(page: Page) {
     const dialog = page.getByRole("dialog", { name: "Create player", exact: true });
     await dialog.getByRole("textbox", { name: "Name", exact: true }).fill(name);
     await dialog.getByRole("button", { name: "Save", exact: true }).click();
-    await page.keyboard.press("Escape");
-    await dialog.waitFor({ state: "detached" });
+    const search = page.getByRole("dialog", { name: "Add player", exact: true });
+    await search.getByRole("button", { name, exact: true }).waitFor();
+    await search.getByRole("button", { name: "Close", exact: true }).click();
+    await search.waitFor({ state: "detached" });
   }
   await page.getByRole("button", { name: "Start", exact: true }).click();
   await page.getByRole("region", { name: "Scoreboard", exact: true }).waitFor();
@@ -394,7 +396,22 @@ describe.each(["light", "dark"] as const)("dialog bottom fade in %s mode", (colo
       const editor = page.getByRole("dialog", { name: "Create player", exact: true });
       const save = editor.getByRole("button", { name: "Save", exact: true });
       await save.waitFor();
-      await expectClearAtEnd(scrollAreaFor(save), save);
+      const formRegion = editor.getByRole("region", { name: "Create player form", exact: true });
+      const favorite = editor.getByRole("switch", { name: "Favorite", exact: true });
+      await expectClearAtEnd(formRegion, favorite);
+      const saveBounds = await save.boundingBox();
+      await formRegion.evaluate((element) => {
+        element.scrollTop = 0;
+      });
+      expect(await save.boundingBox()).toEqual(saveBounds);
+      expect(
+        await save.evaluate((element) => {
+          for (let owner = element.parentElement; owner; owner = owner.parentElement) {
+            if (getComputedStyle(owner).maskImage !== "none") return false;
+          }
+          return true;
+        }),
+      ).toBe(true);
       await editor.getByRole("textbox", { name: "Name", exact: true }).fill("Maya");
       await save.click();
       await search.getByPlaceholder(/^Search players/).waitFor();

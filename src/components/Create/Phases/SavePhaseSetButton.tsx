@@ -22,11 +22,14 @@ export function SavePhaseSetButton({ disabled = false }: SavePhaseSetButtonProps
       >
         <SaveIcon className="size-4" />
       </Button>
-      <Dialog open={open} onClose={() => setOpen(false)} aria-label="Save phase set">
-        <div className="flex h-full flex-col px-4 pt-3 pb-4">
-          <h2 className="text-lg font-semibold">Save phase set</h2>
-          <p className="mt-2 text-sm text-text-secondary">Save phase set flow coming soon.</p>
-        </div>
+      <Dialog
+        open={open}
+        onClose={() => setOpen(false)}
+        aria-label="Save phase set"
+        presentation="floating"
+        header={<h2 className="text-lg font-semibold">Save phase set</h2>}
+      >
+        <p className="text-sm text-text-secondary">Save phase set flow coming soon.</p>
       </Dialog>
     </>
   );

@@ -1,7 +1,7 @@
 import { Field, Fieldset, Label, Legend } from "@headlessui/react";
 import { useForm } from "@tanstack/react-form";
-import { ArrowLeft, Trash } from "lucide-react";
-import { useId, useState } from "react";
+import { Trash } from "lucide-react";
+import { type ReactNode, useId, useState } from "react";
 import { playersApi } from "../../data/api/players";
 import { getRandomColorName } from "../../data/constants/colors";
 import { useCreatePlayer, useDeletePlayer, useUpdatePlayer } from "../../data/hooks/usePlayers";
@@ -30,6 +30,13 @@ export interface PlayerEditorProps {
     onClose: () => void;
     afterLeave: () => void;
   };
+  /** Compose the form into an existing multi-view modal without copying its state. */
+  render?: (editor: {
+    content: ReactNode;
+    actions: ReactNode;
+    isPending: boolean;
+    startCreate: (name: string) => void;
+  }) => ReactNode;
 }
 
 export function PlayerEditor({
@@ -39,6 +46,7 @@ export function PlayerEditor({
   onCreated,
   onDeleted,
   dialog,
+  render,
 }: PlayerEditorProps) {
   const isEditing = !!player;
   const createPlayer = useCreatePlayer();
@@ -47,13 +55,14 @@ export function PlayerEditor({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const nameErrorId = useId();
   const formId = useId();
+  const [defaultValues] = useState(() => ({
+    name: player?.name ?? defaultName ?? "",
+    color: player?.color ?? getRandomColorName(),
+    isFavorite: player?.isFavorite ?? 0,
+  }));
 
   const form = useForm({
-    defaultValues: {
-      name: player?.name ?? defaultName ?? "",
-      color: player?.color ?? getRandomColorName(),
-      isFavorite: player?.isFavorite ?? 0,
-    },
+    defaultValues,
     validators: {
       onSubmitAsync: async ({ value }) => {
         const errors = await playersApi.validate(
@@ -89,6 +98,11 @@ export function PlayerEditor({
     },
   });
 
+  function startCreate(name: string) {
+    setSubmitError(null);
+    form.reset({ name, color: getRandomColorName(), isFavorite: 0 }, { keepDefaultValues: true });
+  }
+
   function handleDelete() {
     if (!player || deletePlayer.isPending) return;
     if (!window.confirm(`Delete ${player.name}?`)) return;
@@ -108,7 +122,6 @@ export function PlayerEditor({
     >
       {([canSubmit, isSubmitting]) => (
         <div className="flex flex-col gap-2">
-          {submitError && <InlineError message={submitError} />}
           <div className="flex gap-2">
             {isEditing && (
               <Button
@@ -136,25 +149,10 @@ export function PlayerEditor({
   );
 
   const content = (
-    <div className={dialog ? "flex flex-col" : "relative flex h-full flex-col"}>
-      {/* Header */}
-      {!dialog && (
-        <div className="flex items-center gap-2 p-3 pb-0">
-          <Button onClick={onBack} className="h-9 w-9 shrink-0 p-0" aria-label="Back to search">
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <h2 className="text-base font-medium text-text-secondary">
-            {isEditing ? "Edit Player" : "New Player"}
-          </h2>
-        </div>
-      )}
-
-      {/* Form */}
+    <div className="flex flex-col">
       <form
         id={formId}
-        className={
-          dialog ? "flex flex-col" : "dialog-scroll flex flex-1 flex-col overflow-y-auto p-4"
-        }
+        className="flex flex-col"
         onSubmit={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -164,7 +162,7 @@ export function PlayerEditor({
           });
         }}
       >
-        <Fieldset className={dialog ? "flex flex-col gap-4" : "flex flex-1 flex-col gap-4"}>
+        <Fieldset className="flex flex-col gap-4">
           <Legend className="sr-only">{isEditing ? "Edit Player" : "New Player"}</Legend>
 
           {/* Name */}
@@ -234,38 +232,37 @@ export function PlayerEditor({
             </form.Field>
           </List>
 
-          {/* Spacer */}
-          {!dialog && <div className="flex-1" />}
-
-          {/* Actions */}
-          {!dialog && actions}
+          {submitError && <InlineError message={submitError} />}
         </Fieldset>
       </form>
     </div>
   );
 
-  if (!dialog) return content;
   return (
     <form.Subscribe selector={(state) => state.isSubmitting}>
-      {(isSubmitting) => (
-        <Dialog
-          open={dialog.open}
-          onClose={dialog.onClose}
-          afterLeave={dialog.afterLeave}
-          dismissible={!isSubmitting && !deletePlayer.isPending}
-          aria-label={isEditing ? "Edit player" : "Create player"}
-          presentation="floating"
-          sizing="workspace"
-          header={
-            <h2 className="text-base font-medium text-text-secondary">
-              {isEditing ? "Edit Player" : "New Player"}
-            </h2>
-          }
-          actions={actions}
-        >
-          {content}
-        </Dialog>
-      )}
+      {(isSubmitting) => {
+        const isPending = isSubmitting || deletePlayer.isPending;
+        if (render) return render({ content, actions, isPending, startCreate });
+        if (!dialog) return content;
+        return (
+          <Dialog
+            open={dialog.open}
+            onClose={dialog.onClose}
+            afterLeave={dialog.afterLeave}
+            dismissible={!isPending}
+            aria-label={isEditing ? "Edit player" : "Create player"}
+            presentation="floating"
+            header={
+              <h2 className="text-base font-medium text-text-secondary">
+                {isEditing ? "Edit Player" : "New Player"}
+              </h2>
+            }
+            actions={actions}
+          >
+            {content}
+          </Dialog>
+        );
+      }}
     </form.Subscribe>
   );
 }

@@ -9,7 +9,7 @@ import {
 } from "react";
 import { playerListOptions } from "../../data/hooks/usePlayers";
 import type { Player } from "../../types";
-import { InlineError, List, ScrollFade, SearchBar } from "../ui";
+import { DialogScrollArea, InlineError, List, ScrollFade, SearchBar } from "../ui";
 
 export interface PlayersSearchProps {
   /** Ref forwarded to the search input for focus management. */
@@ -19,6 +19,7 @@ export interface PlayersSearchProps {
   /** Optional render function for extra action buttons. Receives the current search term. */
   actions?: (searchTerm: string) => ReactNode;
   error?: string;
+  inDialog?: boolean;
 }
 
 /**
@@ -31,6 +32,7 @@ export function PlayersSearch({
   renderRow,
   actions,
   error,
+  inDialog = false,
 }: PlayersSearchProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const internalInputRef = useRef<HTMLInputElement>(null);
@@ -51,6 +53,24 @@ export function PlayersSearch({
   const emptyMessage = deferredSearch
     ? `No players matching "${deferredSearch}"`
     : "No players yet";
+  const results = (
+    <>
+      {error && (
+        <div className="mb-2">
+          <InlineError message={error} />
+        </div>
+      )}
+      {isError ? (
+        <InlineError message="Unable to load players." onRetry={() => refetch()} />
+      ) : (
+        <List isLoading={isLoading} shimmerRows={4} emptyMessage={emptyMessage}>
+          {players?.map((player) => (
+            <Fragment key={player.id}>{renderRow(player)}</Fragment>
+          ))}
+        </List>
+      )}
+    </>
+  );
 
   return (
     <div className="h-full w-full shrink-0 flex flex-col">
@@ -65,22 +85,15 @@ export function PlayersSearch({
       </SearchBar>
 
       {/* Results - negative margin lets shadow bleed, inner padding restores layout */}
-      <ScrollFade className="min-h-0 flex-1 -mx-6 px-6 pt-2 pb-[calc(0.5rem+var(--page-shell-edge-offset,var(--slant)))]">
-        {error && (
-          <div className="mb-2">
-            <InlineError message={error} />
-          </div>
-        )}
-        {isError ? (
-          <InlineError message="Unable to load players." onRetry={() => refetch()} />
-        ) : (
-          <List isLoading={isLoading} shimmerRows={4} emptyMessage={emptyMessage}>
-            {players?.map((player) => (
-              <Fragment key={player.id}>{renderRow(player)}</Fragment>
-            ))}
-          </List>
-        )}
-      </ScrollFade>
+      {inDialog ? (
+        <DialogScrollArea aria-label="Player search results" className="player-search-results">
+          {results}
+        </DialogScrollArea>
+      ) : (
+        <ScrollFade className="min-h-0 flex-1 -mx-6 px-6 pt-2 pb-[calc(0.5rem+var(--page-shell-edge-offset,var(--slant)))]">
+          {results}
+        </ScrollFade>
+      )}
     </div>
   );
 }
