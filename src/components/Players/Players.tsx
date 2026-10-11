@@ -6,7 +6,7 @@ import type { Player, ScorekeeperExperience } from "../../types";
 import { CardBackground } from "../CardBackground/CardBackground";
 import { HeaderLogo } from "../Logo/HeaderLogo";
 import { ScorekeeperShell } from "../ScorekeeperShell/ScorekeeperShell";
-import { Button, Dialog } from "../ui";
+import { Button } from "../ui";
 import { PlayerEditor } from "./PlayerEditor";
 import { PlayerListRow } from "./PlayerListRow";
 import { PlayersSearch } from "./PlayersSearch";
@@ -18,6 +18,7 @@ export function Players({ experience }: { experience: ScorekeeperExperience }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [defaultName, setDefaultName] = useState("");
   const [editingPlayer, setEditingPlayer] = useState<Player | undefined>();
+  const [editorMounted, setEditorMounted] = useState(false);
 
   function handleClose() {
     setDialogOpen(false);
@@ -26,10 +27,12 @@ export function Players({ experience }: { experience: ScorekeeperExperience }) {
   function handleAfterLeave() {
     setDefaultName("");
     setEditingPlayer(undefined);
+    setEditorMounted(false);
   }
 
   function handleEdit(player: Player) {
     setEditingPlayer(player);
+    setEditorMounted(true);
     setDialogOpen(true);
   }
 
@@ -59,6 +62,7 @@ export function Players({ experience }: { experience: ScorekeeperExperience }) {
               <Button
                 onClick={() => {
                   setDefaultName(searchTerm);
+                  setEditorMounted(true);
                   setDialogOpen(true);
                 }}
                 className="h-9 w-9 shrink-0 p-0"
@@ -68,19 +72,15 @@ export function Players({ experience }: { experience: ScorekeeperExperience }) {
               </Button>
             )}
           />
-          <Dialog
-            open={dialogOpen}
-            onClose={handleClose}
-            afterLeave={handleAfterLeave}
-            aria-label={editingPlayer ? "Edit player" : "Create player"}
-          >
+          {editorMounted && (
             <PlayerEditor
               defaultName={defaultName}
               player={editingPlayer}
               onBack={handleClose}
               onDeleted={handleClose}
+              dialog={{ open: dialogOpen, onClose: handleClose, afterLeave: handleAfterLeave }}
             />
-          </Dialog>
+          )}
         </div>
       }
       footerContent={

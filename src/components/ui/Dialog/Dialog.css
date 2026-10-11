@@ -54,17 +54,31 @@
 }
 
 .dialog-floating-wrapper {
+  --dialog-viewport-left: 0px;
+  --dialog-viewport-top: 0px;
+  --dialog-viewport-width: 100vw;
+  --dialog-viewport-height: 100svh;
+  --dialog-viewport-layout-width: 100vw;
+  --dialog-viewport-layout-height: 100svh;
+  --dialog-usable-left: max(var(--dialog-viewport-left), var(--safe-area-inset-left));
+  --dialog-usable-top: max(var(--dialog-viewport-top), var(--safe-area-inset-top));
+  --dialog-usable-right: min(
+    calc(var(--dialog-viewport-left) + var(--dialog-viewport-width)),
+    calc(var(--dialog-viewport-layout-width) - var(--safe-area-inset-right))
+  );
+  --dialog-usable-bottom: min(
+    calc(var(--dialog-viewport-top) + var(--dialog-viewport-height)),
+    calc(var(--dialog-viewport-layout-height) - var(--safe-area-inset-bottom))
+  );
   position: fixed;
-  inset: 0;
+  left: calc(var(--dialog-usable-left) + 16px);
+  top: calc(var(--dialog-usable-top) + 16px);
+  width: max(0px, calc(var(--dialog-usable-right) - var(--dialog-usable-left) - 32px));
+  height: max(0px, calc(var(--dialog-usable-bottom) - var(--dialog-usable-top) - 32px));
   z-index: 10;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100svh;
-  padding: calc(var(--safe-area-inset-top) + 16px)
-    calc(var(--safe-area-inset-right) + 16px)
-    calc(var(--safe-area-inset-bottom) + 16px)
-    calc(var(--safe-area-inset-left) + 16px);
 }
 
 .dialog-panel-floating {
@@ -84,6 +98,25 @@
 
 .dialog-panel-workspace .dialog-scroll-frame {
   flex: 1;
+}
+
+.dialog-panel-floating[data-dialog-scroll="whole"] {
+  display: block;
+  overflow-y: auto;
+  overscroll-behavior: none;
+}
+
+.dialog-panel-floating[data-dialog-scroll="whole"] .dialog-body,
+.dialog-panel-floating[data-dialog-scroll="whole"] .dialog-scroll-frame {
+  display: block;
+  max-height: none;
+}
+
+.dialog-panel-floating[data-dialog-scroll="whole"] .dialog-body > .dialog-scroll-frame > .dialog-scroll {
+  overflow: visible;
+  max-height: none;
+  mask-image: none;
+  -webkit-mask-image: none;
 }
 
 /* Fade the scroll owner, not its fixed siblings or a second enclosing viewport.

@@ -4,6 +4,7 @@ import type { Browser, Locator, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { setVisibleViewport } from "../../test/visualViewport";
 
 let server: ViteDevServer;
 let browser: Browser;
@@ -337,6 +338,247 @@ describe.each([
           return [style.outlineStyle, style.outlineColor];
         }),
       ).toEqual(["solid", colorScheme === "light" ? "rgb(26, 26, 26)" : "rgb(255, 255, 255)"]);
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+
+  it("fits keyboard dimensions and offsets inside intersecting Safe Areas without reflowing the app", async () => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      colorScheme,
+      reducedMotion: "reduce",
+    });
+    try {
+      await page.goto(`${appUrl}#/phaseCompan10n/phases`);
+      await page.evaluate(() => {
+        document.documentElement.style.setProperty("--safe-area-inset-top", "47px");
+        document.documentElement.style.setProperty("--safe-area-inset-right", "20px");
+        document.documentElement.style.setProperty("--safe-area-inset-bottom", "34px");
+        document.documentElement.style.setProperty("--safe-area-inset-left", "12px");
+      });
+      const background = page.locator(".page-shell");
+      const original = await box(background);
+      await page.getByRole("button", { name: "Original", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Original", exact: true });
+      await dialog.getByText("Phases (10)", { exact: true }).waitFor();
+      const panel = panelFor(dialog);
+      for (const visible of [
+        { width: 350, height: 360, offsetLeft: 30, offsetTop: 100 },
+        { width: 390, height: 420, offsetLeft: 0, offsetTop: 20 },
+        { width: 390, height: 844, offsetLeft: 0, offsetTop: 0 },
+      ]) {
+        await setVisibleViewport(page, visible);
+        const bounds = await box(panel);
+        const usable =
+          visible.offsetTop === 100
+            ? { left: 46, right: 354, top: 116, bottom: 444 }
+            : visible.height === 420
+              ? { left: 28, right: 354, top: 63, bottom: 424 }
+              : { left: 28, right: 354, top: 63, bottom: 794 };
+        expect(bounds.x).toBeGreaterThanOrEqual(usable.left);
+        expect(bounds.x + bounds.width).toBeLessThanOrEqual(usable.right);
+        expect(bounds.y).toBeGreaterThanOrEqual(usable.top);
+        expect(bounds.y + bounds.height).toBeLessThanOrEqual(usable.bottom);
+        expect(bounds.x + bounds.width / 2).toBeCloseTo((usable.left + usable.right) / 2, 0);
+        expect(bounds.y + bounds.height / 2).toBeCloseTo((usable.top + usable.bottom) / 2, 0);
+        expect(await box(background)).toEqual(original);
+      }
+      await dialog.getByRole("button", { name: "Close", exact: true }).click();
+      await dialog.waitFor({ state: "detached" });
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+
+  it("freezes pre-scrolled app content through viewport changes and repeated modal lifetimes", async () => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      colorScheme,
+    });
+    try {
+      await page.goto(`${appUrl}#/phaseCompan10n/phases`);
+      await page.getByRole("tab", { name: "Phases", exact: true }).click();
+      const trigger = page.getByRole("button", {
+        name: "1 run of 9",
+        exact: true,
+        includeHidden: true,
+      });
+      await trigger.scrollIntoViewIfNeeded();
+      const scroller = trigger.locator("xpath=ancestor::*[contains(@class,'dialog-scroll')][1]");
+      await scroller.evaluate((element) => {
+        element.scrollTop = 100;
+      });
+      const position = await scroller.evaluate((element) => element.scrollTop);
+      expect(position).toBeGreaterThan(0);
+      const shell = page.locator(".page-shell");
+      const originalBounds = await box(shell);
+      const header = shell.locator(".page-shell-header");
+      const footer = shell.locator(".page-shell-footer");
+      const main = shell.locator(".page-shell-main");
+      const interior = [await box(header), await box(footer), await box(main)];
+      for (let attempt = 0; attempt < 2; attempt++) {
+        await trigger.click();
+        const dialog = page.getByRole("dialog", { name: "1 run of 9", exact: true });
+        await dialog.getByRole("button", { name: "Close", exact: true }).waitFor();
+        await settle(page);
+        await page.mouse.move(10, 200);
+        await page.mouse.wheel(0, -600);
+        await page.waitForTimeout(100);
+        expect(await scroller.evaluate((element) => element.scrollTop)).toBe(position);
+        await page.setViewportSize({ width: 844, height: 390 });
+        await setVisibleViewport(page, {
+          width: 844,
+          height: 280,
+          offsetTop: 60,
+          offsetLeft: 0,
+        });
+        expect(await box(shell)).toEqual(originalBounds);
+        expect([await box(header), await box(footer), await box(main)]).toEqual(interior);
+        expect(await scroller.evaluate((element) => element.scrollTop)).toBe(position);
+        expect(await dialog.getAttribute("data-dialog-open")).toBe("true");
+        await dialog.getByRole("button", { name: "Close", exact: true }).focus();
+        const backgroundTab = page.getByRole("tab", { name: "Phase Sets", includeHidden: true });
+        await backgroundTab.evaluate((element) => {
+          if (!(element instanceof HTMLElement)) throw new Error("Missing background tab");
+          element.focus();
+        });
+        await expect
+          .poll(() =>
+            dialog.evaluate((element) => ({
+              inside: element.contains(document.activeElement),
+              inert: document.getElementById("root")?.inert,
+            })),
+          )
+          .toEqual({ inside: true, inert: true });
+        await page.setViewportSize({ width: 390, height: 844 });
+        await setVisibleViewport(page, {
+          width: 390,
+          height: 844,
+          offsetTop: 0,
+          offsetLeft: 0,
+        });
+        await dialog.getByRole("button", { name: "Close", exact: true }).click();
+        await dialog.waitFor({ state: "detached" });
+        await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBe(position);
+        expect(await box(shell)).toEqual(originalBounds);
+      }
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+
+  it("preserves a scrolled document and leaves internal touch selection and zoom gestures native", async () => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      colorScheme,
+      hasTouch: true,
+      reducedMotion: "reduce",
+    });
+    try {
+      await page.addInitScript(() => {
+        Object.defineProperty(navigator, "platform", { value: "iPhone" });
+      });
+      await page.goto(`${appUrl}#/phaseCompan10n/phases`);
+      await page.addStyleTag({
+        content:
+          "html, body { height: 1100px; overflow: auto; } #root { height: 844px; min-height: 0; }",
+      });
+      await page.evaluate(() => window.scrollTo(0, 120));
+      expect(await page.evaluate(() => window.scrollY)).toBe(120);
+      const shell = page.locator(".page-shell");
+      const original = await box(shell);
+      await page.getByRole("button", { name: "Original", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Original", exact: true });
+      await dialog.getByText("Phases (10)", { exact: true }).waitFor();
+      await settle(page);
+      await page.mouse.move(2, 200);
+      await page.mouse.wheel(0, 500);
+      expect(await page.evaluate(() => window.scrollY)).toBe(120);
+      expect(await box(shell)).toEqual(original);
+      expect(
+        await page.locator("#root").evaluate((element) => {
+          const event = new Event("touchmove", { bubbles: true, cancelable: true });
+          Object.defineProperty(event, "touches", { value: [{ identifier: 1 }] });
+          element.dispatchEvent(event);
+          return event.defaultPrevented;
+        }),
+      ).toBe(true);
+      await setVisibleViewport(page, { width: 390, height: 300, offsetLeft: 0, offsetTop: 60 });
+      const region = dialog.getByRole("region", { name: "Original", exact: true });
+      const gestures = await region.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        const touch = {
+          identifier: 1,
+          target: element,
+          clientX: bounds.x + 20,
+          clientY: bounds.y + 20,
+        };
+        const pinch = {
+          identifier: 2,
+          target: element,
+          clientX: bounds.x + 50,
+          clientY: bounds.y + 20,
+        };
+        return [[touch], [touch, pinch]].map((touches) => {
+          let prevented = false;
+          for (const type of ["touchstart", "touchmove", "touchend"]) {
+            const event = new Event(type, { bubbles: true, cancelable: true });
+            Object.defineProperties(event, {
+              touches: { value: type === "touchend" ? [] : touches },
+              changedTouches: { value: touches },
+            });
+            element.dispatchEvent(event);
+            if (type === "touchmove") prevented = event.defaultPrevented;
+          }
+          return prevented;
+        });
+      });
+      expect(gestures).toEqual([false, false]);
+      await setVisibleViewport(page, { width: 390, height: 844, offsetLeft: 0, offsetTop: 0 });
+      expect(
+        await region.evaluate((element) => {
+          const event = new Event("touchmove", { bubbles: true, cancelable: true });
+          Object.defineProperty(event, "touches", {
+            value: [{ identifier: 1 }, { identifier: 2 }],
+          });
+          element.dispatchEvent(event);
+          return event.defaultPrevented;
+        }),
+      ).toBe(false);
+      await dialog.getByRole("button", { name: "Close", exact: true }).click();
+      await dialog.waitFor({ state: "detached" });
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(120);
+      expect(await box(shell)).toEqual(original);
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+
+  it("uses the layout viewport when VisualViewport is unavailable", async () => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      colorScheme,
+      reducedMotion: "reduce",
+    });
+    try {
+      await page.addInitScript(() => {
+        Object.defineProperty(window, "visualViewport", { value: undefined });
+      });
+      await page.goto(`${appUrl}#/phaseCompan10n/phases`);
+      await page.getByRole("button", { name: "Original", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Original", exact: true });
+      await dialog.getByText("Phases (10)", { exact: true }).waitFor();
+      await page.setViewportSize({ width: 844, height: 390 });
+      const insets = { top: 20, right: 44, bottom: 21, left: 44 };
+      await page.evaluate((insets) => {
+        for (const [edge, value] of Object.entries(insets)) {
+          document.documentElement.style.setProperty(`--safe-area-inset-${edge}`, `${value}px`);
+        }
+      }, insets);
+      await expectClearance(page, panelFor(dialog), insets);
+      await dialog.getByRole("button", { name: "Close", exact: true }).click();
+      await dialog.waitFor({ state: "detached" });
     } finally {
       await page.close();
     }

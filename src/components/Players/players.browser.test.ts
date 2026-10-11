@@ -3,7 +3,8 @@
 import type { Browser, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { setVisibleViewport } from "../../test/visualViewport";
 import type { Player } from "../../types";
 
 let server: ViteDevServer;
@@ -25,6 +26,198 @@ afterAll(async () => {
   await browser?.close();
   await server?.close();
 });
+
+describe.each(["scorekeeper", "phaseCompan10n"])("%s focused Player modal", (experience) => {
+  it.each([
+    "light",
+    "dark",
+  ] as const)("keeps fields and fixed actions reachable, falls back to whole-modal scrolling, and restores in %s", async (colorScheme) => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      colorScheme,
+      hasTouch: true,
+      reducedMotion: "reduce",
+    });
+    try {
+      await page.goto(`${appUrl}#/${experience}/players`);
+      await page.getByRole("button", { name: "Create new player" }).click();
+      const dialog = page.getByRole("dialog", { name: "Create player", exact: true });
+      const name = dialog.getByRole("textbox", { name: "Name", exact: true });
+      await name.waitFor();
+      await name.fill("Keyboard pilot");
+      await name.evaluate((element) => {
+        if (!(element instanceof HTMLInputElement)) throw new Error("Missing Player name input");
+        element.setSelectionRange(2, 8);
+      });
+      await setVisibleViewport(page, { width: 390, height: 420, offsetLeft: 0, offsetTop: 60 });
+      expect(
+        await name.evaluate((element) =>
+          element instanceof HTMLInputElement ? [element.selectionStart, element.selectionEnd] : [],
+        ),
+      ).toEqual([2, 8]);
+      const panel = dialog.locator(".dialog-panel");
+      const bounds = await panel.boundingBox();
+      if (!bounds) throw new Error("Missing Player modal");
+      expect(bounds.y).toBe(76);
+      expect(bounds.y + bounds.height).toBe(464);
+      const save = dialog.getByRole("button", { name: "Save", exact: true });
+      const close = dialog.getByRole("button", { name: "Close", exact: true });
+      const initialSave = await save.boundingBox();
+      const initialClose = await close.boundingBox();
+      const region = dialog.getByRole("region", { name: "Create player", exact: true });
+      await region.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+      expect(await save.boundingBox()).toEqual(initialSave);
+      expect(await close.boundingBox()).toEqual(initialClose);
+      expect(await region.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+
+      for (const height of [257, 258]) {
+        await setVisibleViewport(page, { width: 390, height, offsetLeft: 0, offsetTop: 60 });
+        await save.scrollIntoViewIfNeeded();
+        const scrollTop = await panel.evaluate((element) => element.scrollTop);
+        if (height === 257) expect(scrollTop).toBeGreaterThan(0);
+        else expect(scrollTop).toBe(0);
+      }
+
+      await setVisibleViewport(page, { width: 390, height: 180, offsetLeft: 0, offsetTop: 60 });
+      await save.scrollIntoViewIfNeeded();
+      const cramped = await panel.boundingBox();
+      const visibleSave = await save.boundingBox();
+      if (!cramped || !visibleSave) throw new Error("Missing cramped controls");
+      expect(cramped.y).toBe(76);
+      expect(cramped.height).toBe(148);
+      expect(visibleSave.y).toBeGreaterThanOrEqual(cramped.y + 4);
+      expect(visibleSave.y + visibleSave.height).toBeLessThanOrEqual(
+        cramped.y + cramped.height - 4,
+      );
+      expect(await panel.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+      await page.mouse.move(
+        visibleSave.x + visibleSave.width / 2,
+        visibleSave.y + visibleSave.height / 2,
+      );
+      await page.mouse.down();
+      const pressed = await save.boundingBox();
+      if (!pressed) throw new Error("Missing pressed Save control");
+      expect(pressed.height).toBeGreaterThan(visibleSave.height);
+      expect(pressed.y).toBeGreaterThanOrEqual(cramped.y);
+      expect(pressed.y + pressed.height).toBeLessThanOrEqual(cramped.y + cramped.height);
+      await page.mouse.move(cramped.x + 8, cramped.y + 8);
+      await page.mouse.up();
+      await save.focus();
+      await name.focus();
+      await expect
+        .poll(() =>
+          name.evaluate((element) => {
+            const rect = element.getBoundingClientRect();
+            return (
+              element === document.activeElement &&
+              element.contains(
+                document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2),
+              )
+            );
+          }),
+        )
+        .toBe(true);
+      const label = dialog.getByText("Name", { exact: true });
+      const labelBounds = await label.boundingBox();
+      if (!labelBounds) throw new Error("Missing focused field label");
+      expect(labelBounds.y).toBeGreaterThanOrEqual(76);
+      expect(await name.inputValue()).toBe("Keyboard pilot");
+
+      await setVisibleViewport(page, { width: 390, height: 420, offsetLeft: 0, offsetTop: 60 });
+      await expect.poll(() => panel.evaluate((element) => element.scrollTop)).toBe(0);
+      const restoredClose = await close.boundingBox();
+      await region.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+      expect(await close.boundingBox()).toEqual(restoredClose);
+      await setVisibleViewport(page, { width: 390, height: 844, offsetLeft: 0, offsetTop: 0 });
+      await save.click();
+      await dialog.waitFor({ state: "detached" });
+      await page.getByRole("button", { name: "Keyboard pilot", exact: true }).waitFor();
+      await page.getByRole("button", { name: "Create new player" }).click();
+      await name.waitFor();
+      expect(await name.inputValue()).toBe("");
+      await close.click();
+      await dialog.waitFor({ state: "detached" });
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+});
+
+it("keeps a focused Player draft recoverable through a pending and failed save", async () => {
+  const page = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    reducedMotion: "reduce",
+  });
+  try {
+    await page.goto(`${appUrl}#/scorekeeper/players`);
+    await page.getByRole("button", { name: "Create new player" }).click();
+    const dialog = page.getByRole("dialog", { name: "Create player", exact: true });
+    const name = dialog.getByRole("textbox", { name: "Name", exact: true });
+    await name.fill("Recoverable keyboard pilot");
+    await setVisibleViewport(page, { width: 390, height: 420, offsetLeft: 0, offsetTop: 60 });
+    await page.evaluate(() => {
+      const add = IDBObjectStore.prototype.add;
+      IDBObjectStore.prototype.add = function (...args) {
+        if (this.name === "players") {
+          IDBObjectStore.prototype.add = add;
+          throw new DOMException("Player storage unavailable", "UnknownError");
+        }
+        return add.apply(this, args);
+      };
+      return new Promise<void>((resolve, reject) => {
+        const request = indexedDB.open("phase10-db");
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+          const db = request.result;
+          const transaction = db.transaction("players", "readwrite");
+          let held = true;
+          window.addEventListener(
+            "release-player-storage",
+            () => {
+              held = false;
+            },
+            { once: true },
+          );
+          transaction.oncomplete = () => db.close();
+          transaction.onabort = () => {
+            db.close();
+            reject(transaction.error);
+          };
+          const hold = () => {
+            if (held) transaction.objectStore("players").get("fixture").onsuccess = hold;
+          };
+          hold();
+          resolve();
+        };
+      });
+    });
+    await dialog.getByRole("button", { name: "Save", exact: true }).click();
+    await dialog.getByRole("button", { name: "Saving...", exact: true }).waitFor();
+    const close = dialog.getByRole("button", { name: "Close", exact: true });
+    expect(await close.isDisabled()).toBe(true);
+    await page.keyboard.press("Escape");
+    await page.mouse.click(2, 2);
+    expect(await dialog.getAttribute("data-dialog-open")).toBe("true");
+    await page.evaluate(() => window.dispatchEvent(new Event("release-player-storage")));
+    await dialog
+      .getByRole("alert")
+      .getByText("Player storage unavailable", { exact: true })
+      .waitFor();
+    expect(await name.inputValue()).toBe("Recoverable keyboard pilot");
+    expect(await close.isEnabled()).toBe(true);
+    await dialog.getByRole("button", { name: "Save", exact: true }).click();
+    await dialog.waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Recoverable keyboard pilot", exact: true }).waitFor();
+  } finally {
+    await page.evaluate(() => window.dispatchEvent(new Event("release-player-storage")));
+    await page.close();
+  }
+}, 60_000);
 
 it("manages saved Players without displaying or writing lifetime Win Counts", async () => {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true });

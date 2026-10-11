@@ -10,6 +10,8 @@ import {
 import "./Dialog.css";
 import { DialogHeader } from "./DialogHeader";
 import { DialogScrollArea } from "./DialogScrollArea";
+import { useDialogBackgroundLock } from "./useDialogBackgroundLock";
+import { useFloatingDialogViewport } from "./useFloatingDialogViewport";
 
 interface AppDialogProps extends Omit<DialogProps<"div">, "children"> {
   children?: ReactNode;
@@ -94,6 +96,8 @@ export function Dialog(props: AppDialogProps) {
   const floating = presentation === "floating";
   const [rendered, setRendered] = useState(Boolean(open && readyToOpen));
   if (open && readyToOpen && !rendered) setRendered(true);
+  const { wrapperRef: floatingWrapperRef, wrapper: floatingWrapper } = useFloatingDialogViewport();
+  useDialogBackgroundLock(floating && rendered);
 
   const mergedPanelClasses = [
     panelClasses,
@@ -306,7 +310,7 @@ export function Dialog(props: AppDialogProps) {
     <HeadlessDialog
       {...rest}
       static
-      open={rendered}
+      open={rendered && (!floating || floatingWrapper !== null)}
       data-dialog-open={Boolean(open)}
       onClose={(value) => {
         if (dismissible) onClose?.(value);
@@ -320,7 +324,10 @@ export function Dialog(props: AppDialogProps) {
           .join(" ")}
       />
 
-      <div className={floating ? "dialog-floating-wrapper" : wrapperClasses}>
+      <div
+        ref={floating ? floatingWrapperRef : undefined}
+        className={floating ? "dialog-floating-wrapper" : wrapperClasses}
+      >
         <DialogPanel ref={panelRef} className={mergedPanelClasses}>
           {floating ? (
             <>
@@ -332,7 +339,10 @@ export function Dialog(props: AppDialogProps) {
                 {header}
               </DialogHeader>
               <div
-                className={["min-h-0 flex flex-col px-4", sizing === "workspace" && "flex-1"]
+                className={[
+                  "dialog-body min-h-0 flex flex-col px-4",
+                  sizing === "workspace" && "flex-1",
+                ]
                   .filter(Boolean)
                   .join(" ")}
               >

@@ -299,7 +299,7 @@ describe("scorekeeper navigation", () => {
           .getByRole("switch", { name: "Favorite", exact: true })
           .getAttribute("aria-checked"),
       ).toBe("false");
-      await editor.getByRole("button", { name: "Back to search", exact: true }).click();
+      await editor.getByRole("button", { name: "Close", exact: true }).click();
       await editor.waitFor({ state: "hidden" });
       await page
         .getByRole("button", { name: "Add Maya Updated to favorites", exact: true })

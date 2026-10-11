@@ -8,6 +8,7 @@ import { useCreatePlayer, useDeletePlayer, useUpdatePlayer } from "../../data/ho
 import type { Player } from "../../types";
 import { Button } from "../ui/Button/Button";
 import { ColorPicker } from "../ui/ColorPicker/ColorPicker";
+import { Dialog } from "../ui/Dialog/Dialog";
 import { InlineError } from "../ui/InlineError/InlineError";
 import { Input } from "../ui/Input/Input";
 import { List } from "../ui/List/List";
@@ -24,6 +25,11 @@ export interface PlayerEditorProps {
   onCreated?: (player: Player) => void;
   /** Called after a player is successfully deleted (edit mode only). */
   onDeleted?: () => void;
+  dialog?: {
+    open: boolean;
+    onClose: () => void;
+    afterLeave: () => void;
+  };
 }
 
 export function PlayerEditor({
@@ -32,6 +38,7 @@ export function PlayerEditor({
   onBack,
   onCreated,
   onDeleted,
+  dialog,
 }: PlayerEditorProps) {
   const isEditing = !!player;
   const createPlayer = useCreatePlayer();
@@ -39,6 +46,7 @@ export function PlayerEditor({
   const deletePlayer = useDeletePlayer();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const nameErrorId = useId();
+  const formId = useId();
 
   const form = useForm({
     defaultValues: {
@@ -94,21 +102,59 @@ export function PlayerEditor({
     });
   }
 
-  return (
-    <div className="relative flex h-full flex-col">
+  const actions = (
+    <form.Subscribe
+      selector={(state) => [state.canSubmit && !!state.values.name.trim(), state.isSubmitting]}
+    >
+      {([canSubmit, isSubmitting]) => (
+        <div className="flex flex-col gap-2">
+          {submitError && <InlineError message={submitError} />}
+          <div className="flex gap-2">
+            {isEditing && (
+              <Button
+                type="button"
+                onClick={handleDelete}
+                className="glass-danger px-4 py-2 text-sm text-white"
+                aria-label="Delete player"
+                disabled={deletePlayer.isPending || isSubmitting}
+              >
+                <Trash className="h-4 w-4" />
+              </Button>
+            )}
+            <Button
+              type="submit"
+              form={formId}
+              disabled={!canSubmit || isSubmitting || deletePlayer.isPending}
+              className="w-full px-4 py-2 text-sm active:scale-102!"
+            >
+              {isSubmitting ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </div>
+      )}
+    </form.Subscribe>
+  );
+
+  const content = (
+    <div className={dialog ? "flex flex-col" : "relative flex h-full flex-col"}>
       {/* Header */}
-      <div className="flex items-center gap-2 p-3 pb-0">
-        <Button onClick={onBack} className="h-9 w-9 shrink-0 p-0" aria-label="Back to search">
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <h2 className="text-base font-medium text-text-secondary">
-          {isEditing ? "Edit Player" : "New Player"}
-        </h2>
-      </div>
+      {!dialog && (
+        <div className="flex items-center gap-2 p-3 pb-0">
+          <Button onClick={onBack} className="h-9 w-9 shrink-0 p-0" aria-label="Back to search">
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <h2 className="text-base font-medium text-text-secondary">
+            {isEditing ? "Edit Player" : "New Player"}
+          </h2>
+        </div>
+      )}
 
       {/* Form */}
       <form
-        className="dialog-scroll flex flex-1 flex-col overflow-y-auto p-4"
+        id={formId}
+        className={
+          dialog ? "flex flex-col" : "dialog-scroll flex flex-1 flex-col overflow-y-auto p-4"
+        }
         onSubmit={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -118,7 +164,7 @@ export function PlayerEditor({
           });
         }}
       >
-        <Fieldset className="flex flex-1 flex-col gap-4">
+        <Fieldset className={dialog ? "flex flex-col gap-4" : "flex flex-1 flex-col gap-4"}>
           <Legend className="sr-only">{isEditing ? "Edit Player" : "New Player"}</Legend>
 
           {/* Name */}
@@ -189,43 +235,37 @@ export function PlayerEditor({
           </List>
 
           {/* Spacer */}
-          <div className="flex-1" />
+          {!dialog && <div className="flex-1" />}
 
           {/* Actions */}
-          <div className="flex flex-col gap-2">
-            {submitError && <InlineError message={submitError} />}
-            <div className="flex gap-2">
-              {isEditing && (
-                <Button
-                  type="button"
-                  onClick={handleDelete}
-                  className="glass-danger px-4 py-2 text-sm text-white"
-                  aria-label="Delete player"
-                  disabled={deletePlayer.isPending}
-                >
-                  <Trash className="h-4 w-4" />
-                </Button>
-              )}
-              <form.Subscribe
-                selector={(state) => [
-                  state.canSubmit && !!state.values.name.trim(),
-                  state.isSubmitting,
-                ]}
-              >
-                {([canSubmit, isSubmitting]) => (
-                  <Button
-                    type="submit"
-                    disabled={!canSubmit || isSubmitting}
-                    className="w-full px-4 py-2 text-sm active:scale-102!"
-                  >
-                    {isSubmitting ? "Saving..." : "Save"}
-                  </Button>
-                )}
-              </form.Subscribe>
-            </div>
-          </div>
+          {!dialog && actions}
         </Fieldset>
       </form>
     </div>
+  );
+
+  if (!dialog) return content;
+  return (
+    <form.Subscribe selector={(state) => state.isSubmitting}>
+      {(isSubmitting) => (
+        <Dialog
+          open={dialog.open}
+          onClose={dialog.onClose}
+          afterLeave={dialog.afterLeave}
+          dismissible={!isSubmitting && !deletePlayer.isPending}
+          aria-label={isEditing ? "Edit player" : "Create player"}
+          presentation="floating"
+          sizing="workspace"
+          header={
+            <h2 className="text-base font-medium text-text-secondary">
+              {isEditing ? "Edit Player" : "New Player"}
+            </h2>
+          }
+          actions={actions}
+        >
+          {content}
+        </Dialog>
+      )}
+    </form.Subscribe>
   );
 }
