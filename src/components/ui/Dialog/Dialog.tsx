@@ -322,7 +322,8 @@ export function Dialog(props: AppDialogProps) {
       {...rest}
       static
       open={rendered && (!floating || floatingWrapper !== null)}
-      data-dialog-open={Boolean(open)}
+      data-dialog-open={Boolean(open) && (!floating || floatingWrapper !== null)}
+      data-dialog-ready={!floating || floatingWrapper !== null}
       onClose={(value) => {
         if (dismissible) onClose?.(value);
       }}

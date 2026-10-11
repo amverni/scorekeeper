@@ -89,10 +89,12 @@ export function useFloatingDialogDismissal(
     if (!enabled || !panelElement) return;
     const panel = panelElement;
     panel.removeAttribute("data-dialog-released");
+    panel.removeAttribute("data-dialog-restoring");
     let gesture: Gesture | null = null;
     let capturedPointer: number | null = null;
 
     function restore(clearOffset = true) {
+      if (clearOffset && gesture?.dragging) panel?.setAttribute("data-dialog-restoring", "");
       gesture = null;
       panel?.removeAttribute("data-dialog-dragging");
       if (clearOffset) panel?.style.removeProperty("--dialog-drag-offset");
@@ -116,6 +118,7 @@ export function useFloatingDialogDismissal(
         return;
       }
       if (!permission.current || !eligibleTarget(target, panel, source === "mouse")) return;
+      panel.removeAttribute("data-dialog-restoring");
       gesture = {
         source,
         id,
@@ -251,6 +254,7 @@ export function useFloatingDialogDismissal(
       panel.removeEventListener("pointercancel", pointerCancel);
       panel.removeEventListener("lostpointercapture", pointerCancel);
       restore();
+      panel.removeAttribute("data-dialog-restoring");
       cancelRef.current = null;
     };
   }, [enabled, panelRef]);

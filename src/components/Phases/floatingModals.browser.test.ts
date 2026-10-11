@@ -4,6 +4,7 @@ import type { Browser, Locator, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { sampleDialogSlide } from "../../test/dialogMotion";
 import { touchGesture } from "../../test/touchGesture";
 import { setVisibleViewport } from "../../test/visualViewport";
 
@@ -123,6 +124,82 @@ describe.each([
   "light",
   "dark",
 ] as const)("floating management modals in %s appearance", (colorScheme) => {
+  it.each([
+    "2 sets of 3",
+    "Original",
+  ])("glides %s from just below the viewport and preserves downward closure on repeated opening", async (name) => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      colorScheme,
+    });
+    try {
+      await page.goto(`${appUrl}#/phaseCompan10n/phases`, { timeout: 60_000 });
+      if (name === "2 sets of 3") {
+        await page.getByRole("tab", { name: "Phases", exact: true }).click();
+      }
+      const insets = { top: 47, right: 0, bottom: 34, left: 0 };
+      await page.evaluate((insets) => {
+        for (const [edge, value] of Object.entries(insets)) {
+          document.documentElement.style.setProperty(`--safe-area-inset-${edge}`, `${value}px`);
+        }
+      }, insets);
+      const trigger = page.getByRole("button", { name, exact: true });
+      const dialog = page.getByRole("dialog", { name, exact: true });
+      const panel = panelFor(dialog);
+      for (let opening = 0; opening < 2; opening++) {
+        const { samples } = await sampleDialogSlide(page, () => trigger.click());
+        const travel = samples[0].y - samples[4].y;
+        expect(samples[0].y).toBeCloseTo(876, 0);
+        expect(samples[1].y).toBeLessThan(samples[0].y - travel * 0.01);
+        expect(samples[2].y - samples[4].y).toBeGreaterThan(travel * 0.25);
+        expect(samples[3].y - samples[4].y).toBeGreaterThan(travel * 0.08);
+        for (let index = 0; index < samples.length; index++) {
+          expect(samples[index]).toMatchObject({ scaleX: 1, scaleY: 1 });
+          expect(samples[index].width).toBeCloseTo(samples[4].width, 3);
+          expect(samples[index].height).toBeCloseTo(samples[4].height, 3);
+          if (index > 0) expect(samples[index].y).toBeLessThan(samples[index - 1].y);
+        }
+        await panel.evaluate((element) => {
+          for (const animation of element.getAnimations()) animation.finish();
+        });
+        await settle(page);
+        const resting = await expectClearance(page, panel, insets);
+        const exit = await sampleDialogSlide(
+          page,
+          () => dialog.getByRole("button", { name: "Close", exact: true }).click(),
+          [0, 75, 150, 225],
+        );
+        expect(exit.duration).toBe(300);
+        const exitTravel = exit.samples[4].y - resting.y;
+        expect(exit.samples[0].y).toBeCloseTo(resting.y, 3);
+        expect(exit.samples[4].y).toBeGreaterThanOrEqual(844);
+        expect(exit.samples[1].y - resting.y).toBeLessThan(exitTravel * 0.1);
+        expect(exit.samples[2].y - resting.y).toBeLessThan(exitTravel * 0.2);
+        expect(
+          await panel.evaluate((element) => getComputedStyle(element).transitionTimingFunction),
+        ).toBe("cubic-bezier(0.5, 0, 1, 0)");
+        for (let index = 0; index < exit.samples.length; index++) {
+          expect(exit.samples[index]).toMatchObject({ scaleX: 1, scaleY: 1 });
+          expect(exit.samples[index].width).toBeCloseTo(resting.width, 3);
+          expect(exit.samples[index].height).toBeCloseTo(resting.height, 3);
+          if (index > 0) expect(exit.samples[index].y).toBeGreaterThan(exit.samples[index - 1].y);
+        }
+        expect(await page.locator("#root").evaluate((element) => element.style.position)).toBe(
+          "fixed",
+        );
+        await panel.evaluate((element) => {
+          for (const animation of element.getAnimations()) animation.finish();
+        });
+        await dialog.waitFor({ state: "detached" });
+        await expect
+          .poll(() => page.locator("#root").evaluate((element) => element.style.position))
+          .toBe("");
+      }
+    } finally {
+      await page.close();
+    }
+  }, 90_000);
+
   it("dismisses a deliberate header pull at a consistent distance on short and tall panels", async () => {
     const page = await browser.newPage({
       viewport: { width: 390, height: 844 },
@@ -246,6 +323,21 @@ describe.each([
       const panel = panelFor(dialog);
       const resting = await box(panel);
       const header = dialog.getByRole("heading");
+      const returning = await sampleDialogSlide(page, () =>
+        touchGesture(header, [
+          { y: 0, time: 0 },
+          { y: 60, time: 500 },
+          { y: 60, time: 800 },
+        ]),
+      );
+      expect(returning.duration).toBe(300);
+      expect(returning.samples[0].y).toBeCloseTo(resting.y + 60, 3);
+      expect(returning.samples[2].y - resting.y).toBeLessThan(6);
+      expect(returning.samples[4].y).toBeCloseTo(resting.y, 3);
+      await panel.evaluate((element) => {
+        for (const animation of element.getAnimations()) animation.finish();
+      });
+      await settle(page);
       const cancelled = await touchGesture(
         header,
         [
@@ -428,29 +520,32 @@ describe.each([
       await setVisibleViewport(page, { width: 390, height: 1600, offsetLeft: 0, offsetTop: 0 });
       const panel = panelFor(dialog);
       const resting = await box(panel);
-      await page.addStyleTag({ content: ".dialog-panel { transition-duration: 10s; }" });
-      await touchGesture(dialog.getByRole("heading"), [
-        { y: 0, time: 0 },
-        { y: 120, time: 500 },
-        { y: 120, time: 700 },
-      ]);
-      const samples = await panel.evaluate((element) => {
-        const animation = element.getAnimations()[0];
-        if (!animation) throw new Error("Missing released-panel exit");
-        animation.pause();
-        return [0, 1000, 5000, 9999].map((time) => {
-          animation.currentTime = time;
-          const rect = element.getBoundingClientRect();
-          return { y: rect.y, width: rect.width, height: rect.height };
-        });
-      });
+      const { duration, samples } = await sampleDialogSlide(
+        page,
+        () =>
+          touchGesture(dialog.getByRole("heading"), [
+            { y: 0, time: 0 },
+            { y: 120, time: 500 },
+            { y: 120, time: 700 },
+          ]),
+        [0, 75, 150, 225],
+      );
+      expect(duration).toBe(300);
+      expect(
+        await panel.evaluate((element) => getComputedStyle(element).transitionTimingFunction),
+      ).toBe("ease-out");
       expect(samples[0].y).toBeCloseTo(resting.y + 120, 0);
-      expect(samples[1].y).toBeGreaterThan(samples[0].y + 50);
-      expect(samples[3].y).toBeGreaterThanOrEqual(1600);
-      for (const sample of samples) {
-        expect(sample.height).toBe(resting.height);
-        expect(sample.width).toBe(resting.width);
+      expect(samples[1].y).toBeGreaterThan(samples[0].y + (samples[4].y - samples[0].y) * 0.25);
+      expect(samples[4].y).toBeGreaterThanOrEqual(1600);
+      for (let index = 0; index < samples.length; index++) {
+        expect(samples[index]).toMatchObject({ scaleX: 1, scaleY: 1 });
+        expect(samples[index].height).toBeCloseTo(resting.height, 3);
+        expect(samples[index].width).toBeCloseTo(resting.width, 3);
+        if (index > 0) expect(samples[index].y).toBeGreaterThan(samples[index - 1].y);
       }
+      await panel.evaluate((element) => {
+        for (const animation of element.getAnimations()) animation.currentTime = 150;
+      });
       await trigger.evaluate((element) => {
         if (!(element instanceof HTMLElement)) throw new Error("Missing Phase trigger");
         element.click();
@@ -953,25 +1048,18 @@ describe.each([
       await page.goto(`${appUrl}#/phaseCompan10n/phases`);
       const trigger = page.getByRole("button", { name: "Delayed pilot Phase Set", exact: true });
       await trigger.waitFor();
-      await page.addStyleTag({ content: ".dialog-panel { transition-duration: 10s; }" });
       await holdPhaseStorage(page, "customPhases");
       await trigger.click();
       await page.waitForTimeout(100);
       expect(await page.getByRole("dialog").count()).toBe(0);
-      await page.evaluate(() => window.dispatchEvent(new Event("release-phase-storage")));
+      const { samples } = await sampleDialogSlide(
+        page,
+        () => page.evaluate(() => window.dispatchEvent(new Event("release-phase-storage"))),
+        [0, 105, 210, 315],
+      );
       const dialog = page.getByRole("dialog", { name: "Delayed pilot Phase Set", exact: true });
       const panel = panelFor(dialog);
       await dialog.getByText("24", { exact: true }).waitFor({ state: "attached" });
-      const samples = await panel.evaluate((element) => {
-        const animation = element.getAnimations()[0];
-        if (!animation) throw new Error("Missing Phase Set entry animation");
-        animation.pause();
-        return [0, 2500, 5000, 7500, 9999].map((time) => {
-          animation.currentTime = time;
-          const rect = element.getBoundingClientRect();
-          return { y: rect.y, width: rect.width, height: rect.height };
-        });
-      });
       expect(samples[0].y).toBeGreaterThanOrEqual(844);
       for (const sample of samples) {
         expect(sample.width).toBeCloseTo(351, 3);
@@ -991,6 +1079,93 @@ describe.each([
       await page.close();
     }
   }, 60_000);
+
+  it("reverses an interrupted native entrance and exit without releasing modal locks or retaining gesture state", async () => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      colorScheme,
+      reducedMotion: "no-preference",
+    });
+    try {
+      await page.goto(`${appUrl}#/phaseCompan10n/phases`, { timeout: 60_000 });
+      await page.getByRole("tab", { name: "Phases", exact: true }).click();
+      const trigger = page.getByRole("button", {
+        name: "2 sets of 3",
+        exact: true,
+        includeHidden: true,
+      });
+      const dialog = page.getByRole("dialog", { name: "2 sets of 3", exact: true });
+      const panel = panelFor(dialog);
+      const entry = await sampleDialogSlide(page, () => trigger.click());
+      await expect
+        .poll(() => dialog.evaluate((element) => element.contains(document.activeElement)))
+        .toBe(true);
+      await panel.evaluate((element) => {
+        for (const animation of element.getAnimations()) animation.currentTime = 150;
+      });
+      const leaving = await sampleDialogSlide(page, () =>
+        dialog.getByRole("button", { name: "Close", exact: true }).click(),
+      );
+      expect(leaving.samples[0].y).toBeCloseTo(entry.samples[2].y, 3);
+      expect(leaving.samples[4].y).toBeGreaterThanOrEqual(844);
+      await panel.evaluate((element) => {
+        for (const animation of element.getAnimations()) {
+          const duration = animation.effect?.getComputedTiming().duration;
+          if (typeof duration !== "number") throw new Error("Missing interrupted exit duration");
+          animation.currentTime = duration / 2;
+        }
+      });
+      const interrupted = await box(panel);
+      const reopening = await sampleDialogSlide(page, () =>
+        trigger.evaluate((element) => {
+          if (!(element instanceof HTMLElement)) throw new Error("Missing Phase trigger");
+          element.click();
+        }),
+      );
+      expect(reopening.samples[0].y).toBeCloseTo(interrupted.y, 3);
+      expect(reopening.samples[4].y).toBeCloseTo(entry.samples[4].y, 3);
+      for (const slide of [leaving, reopening]) {
+        for (const sample of slide.samples) {
+          expect(sample).toMatchObject({ scaleX: 1, scaleY: 1 });
+          expect(sample.width).toBeCloseTo(entry.samples[4].width, 3);
+          expect(sample.height).toBeCloseTo(entry.samples[4].height, 3);
+        }
+      }
+      expect(await page.locator("#root").evaluate((element) => element.style.position)).toBe(
+        "fixed",
+      );
+      expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(
+        true,
+      );
+      expect(await panel.getAttribute("data-dialog-dragging")).toBeNull();
+      expect(await panel.getAttribute("data-dialog-released")).toBeNull();
+      expect(await panel.getAttribute("data-dialog-restoring")).toBeNull();
+      await panel.evaluate((element) => {
+        for (const animation of element.getAnimations()) animation.finish();
+      });
+      await settle(page);
+      const close = dialog.getByRole("button", { name: "Close", exact: true });
+      await sampleDialogSlide(page, () => close.click());
+      expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(
+        true,
+      );
+      expect(await page.locator("#root").evaluate((element) => element.style.position)).toBe(
+        "fixed",
+      );
+      await page.evaluate(() => {
+        for (const animation of document.getAnimations()) animation.finish();
+      });
+      await dialog.waitFor({ state: "detached" });
+      await expect
+        .poll(() => page.locator("#root").evaluate((element) => element.style.position))
+        .toBe("");
+      await expect
+        .poll(() => trigger.evaluate((element) => element === document.activeElement))
+        .toBe(true);
+    } finally {
+      await page.close();
+    }
+  }, 90_000);
 
   it.each([
     "no-preference",
@@ -1066,7 +1241,7 @@ describe.each([
     try {
       await page.goto(`${appUrl}#/phaseCompan10n/phases`);
       await page.getByRole("tab", { name: "Phases", exact: true }).click();
-      await page.addStyleTag({ content: ".dialog-panel { transition-duration: 10s; }" });
+      await page.addStyleTag({ content: ".dialog-panel { transition-duration: 10s !important; }" });
       const trigger = page.getByRole("button", {
         name: "2 sets of 3",
         exact: true,
