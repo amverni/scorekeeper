@@ -24,6 +24,20 @@
   transition-timing-function: cubic-bezier(0, 1, 0.5, 1);
 }
 
+[data-dialog-open="true"] .dialog-panel-floating {
+  transition-duration: 420ms;
+  transition-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+[data-dialog-open="true"] .dialog-panel-floating[data-dialog-restoring] {
+  transition-duration: 300ms;
+  transition-timing-function: cubic-bezier(0, 1, 0.5, 1);
+}
+
+[data-dialog-ready="false"] .dialog-panel-floating {
+  transition: none;
+}
+
 @starting-style {
   [data-dialog-open="true"] .dialog-backdrop {
     opacity: 0;
@@ -82,6 +96,11 @@
 }
 
 .dialog-panel-floating {
+  /* Half the panel height plus the distance from its center to below the viewport. */
+  --dialog-exit-distance: calc(
+    var(--dialog-viewport-top) + var(--dialog-viewport-height) -
+    (var(--dialog-usable-top) + var(--dialog-usable-bottom)) / 2 + 50% + 32px
+  );
   height: auto;
   width: min(90vw, 100%);
   max-height: 100%;

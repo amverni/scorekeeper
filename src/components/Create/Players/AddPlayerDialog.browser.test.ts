@@ -4,6 +4,7 @@ import type { Browser, Locator, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { sampleDialogSlide } from "../../../test/dialogMotion";
 import { holdPlayerStorage, releasePlayerStorage } from "../../../test/playerStorage";
 import { setVisibleViewport } from "../../../test/visualViewport";
 
@@ -65,6 +66,73 @@ async function pixels(page: Page, clip: { x: number; y: number; width: number; h
 }
 
 describe.each(["/scorekeeper/create", "/phaseCompan10n/create"])("%s", (route) => {
+  it.each([
+    "light",
+    "dark",
+  ] as const)("glides a focused workspace at its fitted size above an already visible keyboard in %s", async (colorScheme) => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      colorScheme,
+      reducedMotion: "no-preference",
+    });
+    try {
+      await page.goto(`${appUrl}#${route}`, { timeout: 60_000 });
+      const background = page.locator(".page-shell");
+      const original = await box(background);
+      await page.evaluate(() => {
+        document.documentElement.style.setProperty("--safe-area-inset-top", "47px");
+        document.documentElement.style.setProperty("--safe-area-inset-bottom", "34px");
+      });
+      await setVisibleViewport(page, { width: 390, height: 420, offsetLeft: 0, offsetTop: 60 });
+      for (let opening = 0; opening < 2; opening++) {
+        const entry = await sampleDialogSlide(page, () =>
+          page.getByRole("button", { name: "Add Player", exact: true }).click(),
+        );
+        const dialog = page.getByRole("dialog");
+        const panel = dialog.locator(".dialog-panel");
+        const search = dialog.getByRole("textbox");
+        const resting = entry.samples[4];
+        expect(entry.samples[0].y).toBeCloseTo(512, 0);
+        expect(resting.y).toBeCloseTo(76, 3);
+        expect(resting.height).toBeCloseTo(388, 3);
+        expect(resting.width).toBeCloseTo(351, 3);
+        const travel = entry.samples[0].y - resting.y;
+        expect(entry.samples[1].y).toBeLessThan(entry.samples[0].y - travel * 0.01);
+        expect(entry.samples[2].y - resting.y).toBeGreaterThan(travel * 0.25);
+        expect(entry.samples[3].y - resting.y).toBeGreaterThan(travel * 0.08);
+        for (const sample of entry.samples) {
+          expect(sample).toMatchObject({ scaleX: 1, scaleY: 1 });
+          expect(sample.width).toBeCloseTo(resting.width, 3);
+          expect(sample.height).toBeCloseTo(resting.height, 3);
+        }
+        await search.fill("Keyboard glide");
+        await expect
+          .poll(() => search.evaluate((element) => element === document.activeElement))
+          .toBe(true);
+        expect(await box(background)).toEqual(original);
+        expect(await page.locator("#root").evaluate((element) => element.style.position)).toBe(
+          "fixed",
+        );
+        await panel.evaluate((element) => {
+          for (const animation of element.getAnimations()) animation.finish();
+        });
+        await settle(page);
+        const field = await box(search);
+        expect(field.y).toBeGreaterThanOrEqual(resting.y);
+        expect(field.y + field.height).toBeLessThanOrEqual(resting.y + resting.height);
+        await dialog.getByRole("button", { name: "Close", exact: true }).click();
+        await dialog.waitFor({ state: "detached" });
+        await expect
+          .poll(() => page.locator("#root").evaluate((element) => element.style.position))
+          .toBe("");
+        expect(await box(background)).toEqual(original);
+      }
+    } finally {
+      await page.close();
+    }
+  }, 90_000);
+
   describe.each([
     { width: 390, height: 844 },
     { width: 1280, height: 900 },

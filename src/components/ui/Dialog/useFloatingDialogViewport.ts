@@ -3,6 +3,22 @@ import { useLayoutEffect, useState } from "react";
 const MIN_BODY_HEIGHT = 96;
 const FOCUS_CLEARANCE = 8;
 
+function updateViewportStyle(wrapper: HTMLDivElement) {
+  const viewport = window.visualViewport;
+  const layout = document.documentElement;
+  const values = {
+    left: viewport?.offsetLeft ?? 0,
+    top: viewport?.offsetTop ?? 0,
+    width: viewport?.width ?? layout.clientWidth,
+    height: viewport?.height ?? layout.clientHeight,
+    "layout-width": layout.clientWidth,
+    "layout-height": layout.clientHeight,
+  };
+  for (const [key, value] of Object.entries(values)) {
+    wrapper.style.setProperty(`--dialog-viewport-${key}`, `${value}px`);
+  }
+}
+
 function revealFocusedControl(panel: HTMLElement) {
   const focused = document.activeElement;
   if (
@@ -34,6 +50,15 @@ function revealFocusedControl(panel: HTMLElement) {
 export function useFloatingDialogViewport(minBodyHeight = MIN_BODY_HEIGHT) {
   const [wrapper, setWrapper] = useState<HTMLDivElement | null>(null);
 
+  function attachWrapper(node: HTMLDivElement | null) {
+    // Resolve the closed position before the wrapper opens its motion/focus gate.
+    if (node) {
+      updateViewportStyle(node);
+      node.getBoundingClientRect();
+    }
+    setWrapper(node);
+  }
+
   useLayoutEffect(() => {
     if (!wrapper) return;
     const viewport = window.visualViewport;
@@ -59,31 +84,12 @@ export function useFloatingDialogViewport(minBodyHeight = MIN_BODY_HEIGHT) {
       const previous = panel.dataset.dialogScroll;
       panel.dataset.dialogScroll = whole ? "whole" : "body";
       if (previous === "whole" && !whole) panel.scrollTop = 0;
-      const restingTop =
-        wrapper.getBoundingClientRect().top + (wrapper.clientHeight - panel.offsetHeight) / 2;
-      const visibleBottom =
-        (viewport?.offsetTop ?? 0) + (viewport?.height ?? document.documentElement.clientHeight);
-      panel.style.setProperty(
-        "--dialog-exit-distance",
-        `${Math.max(0, visibleBottom - restingTop) + 32}px`,
-      );
       reveal();
     }
 
     function update() {
       if (!wrapper) return;
-      const layout = document.documentElement;
-      const values = {
-        left: viewport?.offsetLeft ?? 0,
-        top: viewport?.offsetTop ?? 0,
-        width: viewport?.width ?? layout.clientWidth,
-        height: viewport?.height ?? layout.clientHeight,
-        "layout-width": layout.clientWidth,
-        "layout-height": layout.clientHeight,
-      };
-      for (const [key, value] of Object.entries(values)) {
-        wrapper.style.setProperty(`--dialog-viewport-${key}`, `${value}px`);
-      }
+      updateViewportStyle(wrapper);
       measure();
     }
     update();
@@ -124,5 +130,5 @@ export function useFloatingDialogViewport(minBodyHeight = MIN_BODY_HEIGHT) {
     };
   }, [wrapper, minBodyHeight]);
 
-  return { wrapperRef: setWrapper, wrapper };
+  return { wrapperRef: attachWrapper, wrapper };
 }
