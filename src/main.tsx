@@ -5,18 +5,26 @@ import { RouterProvider } from "@tanstack/react-router";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { LogoThemeProvider } from "./components/Logo/LogoThemeProvider";
+import { useKeyboardFreeze } from "./components/PageShell/useKeyboardFreeze";
 import { QueryProvider } from "./components/QueryProvider/QueryProvider";
 import { router } from "./routes/-router";
 
 const rootElement = document.getElementById("root");
+function App() {
+  useKeyboardFreeze();
+  return (
+    <QueryProvider>
+      <LogoThemeProvider>
+        <RouterProvider router={router} />
+      </LogoThemeProvider>
+    </QueryProvider>
+  );
+}
+
 if (rootElement) {
   ReactDOM.createRoot(rootElement).render(
     <React.StrictMode>
-      <QueryProvider>
-        <LogoThemeProvider>
-          <RouterProvider router={router} />
-        </LogoThemeProvider>
-      </QueryProvider>
+      <App />
     </React.StrictMode>,
   );
 }

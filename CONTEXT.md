@@ -250,6 +250,12 @@ _Avoid_: Safe space
 The noninteractive continuation of a decorative background, surface, shadow, or similar visual through a Safe Area without moving interactive content into that area.
 _Avoid_: Overflow (when referring to this deliberate layout behavior)
 
+**Input Reveal**:
+The minimal repositioning of a Scorekeeper's view needed to make the focused input visible when the software keyboard opens or focus moves to another input. It permits the page and modal to move together, without keyboard-driven modal shrinking.
+
+**Keyboard Freeze**:
+The shared keyboard-open state after Input Reveal, with content scrolling paused inside and outside modals, no independent background movement, and modal swipe-to-dismiss paused. Further Input Reveal and explicit modal dismissal remain permitted; closing the software keyboard ends the freeze.
+
 ### Logo presentation
 
 **Logo Palette**:

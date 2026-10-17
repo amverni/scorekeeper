@@ -166,6 +166,10 @@ button.glass.glass-result:not(.glass-danger):not(.glass-error) {
    to match (e.g. Logo stripe skew) can read it, but the
    clip paths and panel geometry live entirely in CSS. */
 
+[data-keyboard-frozen] :is(#root, .dialog-floating-wrapper) {
+  translate: 0 var(--keyboard-reveal-y, 0px);
+}
+
 :root {
   --slant: 50px;
   --safe-area-inset-top: env(safe-area-inset-top, 0px);

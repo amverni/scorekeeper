@@ -1,4 +1,5 @@
 import { type RefObject, useEffectEvent, useLayoutEffect, useRef } from "react";
+import { getKeyboardViewport, KEYBOARD_VIEWPORT_CHANGE } from "../../PageShell/useKeyboardFreeze";
 
 const PULL_DISTANCE = 120;
 const FLICK_DISTANCE = 48;
@@ -112,6 +113,10 @@ export function useFloatingDialogDismissal(
     }
     cancelRef.current = restore;
 
+    function keyboardChanged() {
+      if (getKeyboardViewport()) restore();
+    }
+
     function begin(
       source: Gesture["source"],
       id: number,
@@ -124,7 +129,7 @@ export function useFloatingDialogDismissal(
         restore();
         return;
       }
-      if (!permission.current) return;
+      if (!permission.current || getKeyboardViewport()) return;
       const eligible = eligibleTarget(target, panel, source === "mouse");
       if (!eligible) return;
       panel.removeAttribute("data-dialog-restoring");
@@ -263,6 +268,7 @@ export function useFloatingDialogDismissal(
     panel.addEventListener("pointerup", pointerUp);
     panel.addEventListener("pointercancel", pointerCancel);
     panel.addEventListener("lostpointercapture", pointerCancel);
+    window.addEventListener(KEYBOARD_VIEWPORT_CHANGE, keyboardChanged);
     return () => {
       panel.removeEventListener("touchstart", touchStart);
       panel.removeEventListener("touchmove", touchMove);
@@ -273,6 +279,7 @@ export function useFloatingDialogDismissal(
       panel.removeEventListener("pointerup", pointerUp);
       panel.removeEventListener("pointercancel", pointerCancel);
       panel.removeEventListener("lostpointercapture", pointerCancel);
+      window.removeEventListener(KEYBOARD_VIEWPORT_CHANGE, keyboardChanged);
       restore(!panel.hasAttribute("data-dialog-released"));
       panel.removeAttribute("data-dialog-restoring");
       cancelRef.current = null;

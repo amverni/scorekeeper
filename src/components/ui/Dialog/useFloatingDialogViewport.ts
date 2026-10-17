@@ -1,25 +1,22 @@
 import { useLayoutEffect, useState } from "react";
+import {
+  getKeyboardViewport,
+  getVisibleViewport,
+  KEYBOARD_VIEWPORT_CHANGE,
+} from "../../PageShell/useKeyboardFreeze";
 
 const MIN_BODY_HEIGHT = 96;
 const FOCUS_CLEARANCE = 8;
 
 function updateViewportStyle(wrapper: HTMLDivElement) {
-  const viewport = window.visualViewport;
-  const layout = document.documentElement;
-  const values = {
-    left: viewport?.offsetLeft ?? 0,
-    top: viewport?.offsetTop ?? 0,
-    width: viewport?.width ?? layout.clientWidth,
-    height: viewport?.height ?? layout.clientHeight,
-    "layout-width": layout.clientWidth,
-    "layout-height": layout.clientHeight,
-  };
+  const values = getKeyboardViewport() ?? getVisibleViewport();
   for (const [key, value] of Object.entries(values)) {
     wrapper.style.setProperty(`--dialog-viewport-${key}`, `${value}px`);
   }
 }
 
 function revealFocusedControl(panel: HTMLElement) {
+  if (getKeyboardViewport()) return;
   const focused = document.activeElement;
   if (
     !(focused instanceof HTMLElement) ||
@@ -46,7 +43,7 @@ function revealFocusedControl(panel: HTMLElement) {
   }
 }
 
-/** Fit only the overlay; page shells keep their stable viewport sizing. */
+/** Fit the overlay, retaining its unoccluded geometry during Keyboard Freeze. */
 export function useFloatingDialogViewport(minBodyHeight = MIN_BODY_HEIGHT) {
   const [wrapper, setWrapper] = useState<HTMLDivElement | null>(null);
 
@@ -117,6 +114,7 @@ export function useFloatingDialogViewport(minBodyHeight = MIN_BODY_HEIGHT) {
     viewport?.addEventListener("scroll", update);
     window.addEventListener("resize", update);
     window.addEventListener("orientationchange", update);
+    window.addEventListener(KEYBOARD_VIEWPORT_CHANGE, update);
     return () => {
       observer.disconnect();
       structureObserver.disconnect();
@@ -127,6 +125,7 @@ export function useFloatingDialogViewport(minBodyHeight = MIN_BODY_HEIGHT) {
       viewport?.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
       window.removeEventListener("orientationchange", update);
+      window.removeEventListener(KEYBOARD_VIEWPORT_CHANGE, update);
     };
   }, [wrapper, minBodyHeight]);
 

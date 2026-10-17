@@ -55,7 +55,11 @@ it.each([
       await addRound.click();
       const dialog = page.getByRole("dialog", { name: "Add Round", exact: true });
       await dialog.getByRole("button", { name: "Save", exact: true }).waitFor();
-      // Wait for actionability; an animation snapshot can precede the entrance transition.
+      await expect.poll(() => dialog.getAttribute("data-dialog-open")).toBe("true");
+      await dialog.locator(".dialog-panel").evaluate(async (element) => {
+        element.getBoundingClientRect();
+        await Promise.allSettled(element.getAnimations().map((animation) => animation.finished));
+      });
       await dialog.getByRole("button", { name: "Close", exact: true }).click({ trial: true });
 
       const title = dialog.getByRole("heading", { name: "Add Round", exact: true });
