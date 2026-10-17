@@ -121,9 +121,7 @@ function getQuickCardButtonClasses({
   return [
     quickCardButtonBaseClasses,
     quickCardAccentClasses[accent],
-    selected
-      ? "tiebreaker-quick-card--selected bg-white/15! ring-1 ring-pt-blue-500/50 dark:bg-white/10!"
-      : "",
+    selected ? "tiebreaker-quick-card--selected ring-1 ring-pt-blue-500/50" : "",
   ]
     .filter(Boolean)
     .join(" ");

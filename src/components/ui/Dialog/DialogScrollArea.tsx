@@ -4,7 +4,7 @@ interface DialogScrollAreaProps extends ComponentProps<"section"> {
   "aria-label": string;
 }
 
-/** Keeps glass shadows and the focus ring outside the masked scroll content. */
+/** Keeps surface shadows and the focus ring outside the masked scroll content. */
 export function DialogScrollArea({ children, className, ...props }: DialogScrollAreaProps) {
   return (
     <div className="dialog-scroll-frame">

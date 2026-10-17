@@ -32,7 +32,7 @@ File-based routing via `@tanstack/router-plugin`. Route tree auto-generated at `
 
 ### UI layer
 
-- **`src/components/ui/`** — Shared primitives (Button, Dialog, List, etc.) wrapping Headless UI with glass morphism styling
+- **`src/components/ui/`** — Shared primitives (Button, Dialog, List, etc.) wrapping Headless UI with opaque surfaces, borders, and shadows
 - Feature components live in their own folders under `src/components/`
 - Styling uses Tailwind CSS v4 via Vite plugin with custom theme tokens in `src/index.css` (`@theme` block)
 
@@ -53,5 +53,6 @@ File-based routing via `@tanstack/router-plugin`. Route tree auto-generated at `
 ### Styling
 
 - Build class strings as arrays with `.join(" ")`
-- Use `.glass` CSS class for elevated UI elements
+- Use the existing `.glass` CSS class for elevated, opaque UI elements; its name is retained for existing consumers, not translucent glass
+- Surface variants use `--surface-bg`, `--surface-border`, and `--surface-shadow`; no surface filtering or shine. Preserve modal backdrop blur as a separate focus effect
 - Use theme tokens (`--color-pt-*`) from `src/index.css` instead of hardcoded values

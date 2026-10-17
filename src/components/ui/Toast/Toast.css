@@ -37,14 +37,14 @@
 }
 
 .toast-glass {
-  --_g-bg: rgba(180, 40, 40, 0.35);
-  --_g-border: rgba(255, 100, 100, 0.3);
+  --surface-bg: var(--color-button-danger);
+  --surface-border: rgba(255, 100, 100, 0.3);
+  color: var(--color-white);
 }
 
 @media (prefers-color-scheme: dark) {
   .toast-glass {
-    --_g-bg: rgba(200, 50, 50, 0.25);
-    --_g-border: rgba(255, 120, 120, 0.25);
+    --surface-border: rgba(255, 120, 120, 0.25);
   }
 }
 

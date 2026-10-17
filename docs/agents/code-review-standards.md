@@ -45,11 +45,12 @@ This file adds Phase 10 scoreboard standards on top of Matt's fixed smell baseli
 ## UI, accessibility, styling, and UX
 
 - Prefer shared UI primitives in `src/components/ui/` over raw native controls or direct Headless UI imports when a wrapper exists.
-- Wrappers should carry shared glass styling, interactive states, and accessibility behavior. Pass additional classes through `className`.
+- Wrappers should carry shared opaque surface styling, interactive states, and accessibility behavior. Pass additional classes through `className`.
 - Preserve keyboard access, focus trap/restore, visible focus, predictable tab order, accessible names, semantic roles, ARIA correctness, form labels, field errors, disabled affordances, and reduced-motion expectations.
 - Check setup and play flows for clear empty, loading, error, retry, recovery, destructive-action, mobile/touch, back, and cancel behavior.
 - Use Tailwind CSS v4 theme tokens from `src/index.css` instead of hardcoded color values.
-- Use `.glass` for elevated UI elements.
+- Use the existing `.glass` class for elevated UI elements with solid theme-token fills, borders, and shadows. Its legacy name does not permit translucent fills, surface filters, or shine overlays; this includes the selected-tab pill.
+- Preserve the blur behind open modals as a separate focus effect, not a glass-surface exception.
 - Build complex class strings as arrays with `.join(" ")`.
 - Keep reusable class combinations in shared constants when the same styling behavior appears in multiple places.
 - Use the project's icon libraries instead of text-character icons or hand-rolled inline SVGs when a library icon exists.

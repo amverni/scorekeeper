@@ -15,7 +15,7 @@ const glassSurfaceButtonClasses = [
 ].join(" ");
 
 /**
- * An opaque surface with the shared glass frame for compound controls whose
+ * An opaque surface with the shared border and shadow for compound controls whose
  * inner interactive regions should not render their own surface layers.
  */
 export function GlassSurface({ className, ...props }: GlassSurfaceProps) {

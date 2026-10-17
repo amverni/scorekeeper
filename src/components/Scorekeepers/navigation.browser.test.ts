@@ -85,7 +85,7 @@ describe("scorekeeper navigation", () => {
         await create.hover();
         await expect
           .poll(() => create.evaluate((element) => getComputedStyle(element).filter))
-          .toBe("brightness(1.1)");
+          .toBe("none");
         await page.keyboard.press("Enter");
         await page.getByRole("link", { name: "Cancel", exact: true }).waitFor();
         expect(page.url()).toBe(`${appUrl}#${home}/create`);

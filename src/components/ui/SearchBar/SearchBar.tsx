@@ -28,7 +28,7 @@ export interface SearchBarProps {
 }
 
 /**
- * A glass-styled search bar that wraps Headless UI's `Input`.
+ * An opaque search bar that wraps Headless UI's `Input`.
  *
  * Renders a rounded pill with a search icon, text input, and clear button.
  * Pass `children` to append extra action buttons after the clear button.

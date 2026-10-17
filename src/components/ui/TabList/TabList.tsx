@@ -34,13 +34,13 @@ interface TabListOwnProps {
 }
 
 /**
- * A frosted-glass tab bar that wraps Headless UI's `TabList`.
+ * An opaque segmented tab bar that wraps Headless UI's `TabList`.
  *
  * Accepts the same props as `@headlessui/react`'s `TabList` and layers on
- * the app's glass styling. Place `<Tab>` children inside just like you
+ * the app's shared surface styling. Place `<Tab>` children inside just like you
  * would with the Headless UI component.
  *
- * Automatically renders a sliding glass indicator that tracks the selected
+ * Automatically renders a sliding opaque indicator that tracks the selected
  * tab. The tab count is derived from `React.Children.count`.
  *
  * To pair with `<TabList.PrevButton>` / `<TabList.NextButton>`, wrap your

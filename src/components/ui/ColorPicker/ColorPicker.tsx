@@ -17,11 +17,7 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
       <span className="text-sm font-medium text-text-secondary">
         Avatar{selectedEntry ? ` · ${selectedEntry.name}` : ""}
       </span>
-      <div
-        className="glass relative rounded-xl p-2 [&::after]:opacity-0"
-        role="radiogroup"
-        aria-label="Avatar color"
-      >
+      <div className="glass relative rounded-xl p-2" role="radiogroup" aria-label="Avatar color">
         <div className="overflow-hidden rounded-lg">
           {Array.from({ length: Math.max(...COLOR_GRID.map((c) => c.length)) }, (_, row) => {
             const rowKey = COLOR_GRID.map((column) => column[row]?.hex ?? "empty").join(":");

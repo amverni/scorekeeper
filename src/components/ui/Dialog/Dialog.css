@@ -185,8 +185,8 @@
 
 @media (prefers-color-scheme: light) {
   .dialog-panel .glass {
-    --_g-border: rgba(0, 0, 0, 0.14);
-    --_g-shadow: 0 4px 10px rgba(0, 0, 0, 0.16),
+    --surface-border: rgba(0, 0, 0, 0.14);
+    --surface-shadow: 0 4px 10px rgba(0, 0, 0, 0.16),
       inset 0 1px 0 rgba(255, 255, 255, 0.16);
   }
 }
