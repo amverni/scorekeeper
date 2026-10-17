@@ -45,21 +45,19 @@ export function PhasesCardDialog({ gameId, open, onClose, phaseSet }: PhasesCard
       onClose={onClose}
       aria-label="Phases Card"
       bodyScroll="custom"
-      header={
-        <div className="flex shrink-0 justify-end">
-          <PhasesCardShareButton
-            target={{ source: "game-snapshot", name: phaseSet.name, phases, builtInPhaseSetId }}
-            className="size-10!"
-            disabled={
-              isLoading ||
-              builtInMatchLoading ||
-              isError ||
-              missingPhaseRecords ||
-              phases.length === 0
-            }
-            onError={(message) => toastRef.current?.show(message)}
-          />
-        </div>
+      headerAction={
+        <PhasesCardShareButton
+          target={{ source: "game-snapshot", name: phaseSet.name, phases, builtInPhaseSetId }}
+          className="size-10!"
+          disabled={
+            isLoading ||
+            builtInMatchLoading ||
+            isError ||
+            missingPhaseRecords ||
+            phases.length === 0
+          }
+          onError={(message) => toastRef.current?.show(message)}
+        />
       }
     >
       {isError || missingPhaseRecords || phasePlayersQuery.isError ? (

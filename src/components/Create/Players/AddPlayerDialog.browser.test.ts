@@ -566,6 +566,13 @@ describe.each(["/scorekeeper/create", "/phaseCompan10n/create"])("%s", (route) =
           expect(
             await dialog.getByRole("heading", { name: "New Player", exact: true }).count(),
           ).toBe(1);
+          const titleCenter = await header.getByRole("heading").evaluate((element) => {
+            const range = document.createRange();
+            range.selectNodeContents(element);
+            const { x, width } = range.getBoundingClientRect();
+            return x + width / 2;
+          });
+          expect(titleCenter).toBeCloseTo(panelBounds.x + panelBounds.width / 2, 0);
 
           await back.tap();
           await slider.and(dialog.locator("[data-view='search']")).waitFor({ state: "attached" });
