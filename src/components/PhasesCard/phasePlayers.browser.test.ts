@@ -71,6 +71,12 @@ it.each([
       );
       const closeBounds = await bounds(close);
       const shareBounds = await bounds(share);
+      expect(shareBounds.x + shareBounds.width / 2).toBeCloseTo(geometry.x + 16 + 22, 0);
+      expect(closeBounds.x + closeBounds.width / 2).toBeCloseTo(
+        geometry.x + geometry.width - 16 - 22,
+        0,
+      );
+      expect(await card.locator("header").getByRole("heading").count()).toBe(0);
       const list = card.getByRole("region", { name: "Phases Card phase list", exact: true });
       await list.focus();
       await page.keyboard.press("End");

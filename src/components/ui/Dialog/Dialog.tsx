@@ -15,6 +15,7 @@ interface AppDialogProps extends Omit<DialogProps<"div">, "children"> {
   bodyScroll?: "shared" | "custom";
   minBodyHeight?: number;
   header?: ReactNode;
+  headerAction?: ReactNode;
   actions?: ReactNode;
   onBack?: () => void;
   backLabel?: string;
@@ -41,6 +42,7 @@ export function Dialog(props: AppDialogProps) {
     bodyScroll = "shared",
     minBodyHeight,
     header,
+    headerAction,
     actions,
     onBack,
     backLabel,
@@ -102,6 +104,7 @@ export function Dialog(props: AppDialogProps) {
       <div ref={wrapperRef} className="dialog-floating-wrapper">
         <DialogPanel ref={panelRef} className={mergedPanelClasses}>
           <DialogHeader
+            headerAction={headerAction}
             onClose={() => onClose?.(false)}
             onBack={onBack}
             backLabel={backLabel}

@@ -54,6 +54,16 @@ async function visitModal(page: Page, trigger: Locator) {
   expect(bounds.y + bounds.height).toBeLessThanOrEqual(794);
   expect(bounds.x + bounds.width / 2).toBeCloseTo(195, 0);
   expect(bounds.y + bounds.height / 2).toBeCloseTo(428.5, 0);
+  const title = dialog.locator("header").getByRole("heading").and(page.locator(":not(.sr-only)"));
+  if (await title.count()) {
+    const textBounds = await title.evaluate((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const { x, width } = range.getBoundingClientRect();
+      return { x, width };
+    });
+    expect(textBounds.x + textBounds.width / 2).toBeCloseTo(bounds.x + bounds.width / 2, 0);
+  }
   const appearance = await panel.evaluate((element) => {
     const style = getComputedStyle(element);
     return {
@@ -208,3 +218,100 @@ it.each([
     await page.close();
   }
 }, 120_000);
+
+it.each([
+  { width: 320, height: 568 },
+  { width: 1280, height: 900 },
+])("keeps a long Phase Set title centered, single-line and fully named at $width px", async (viewport) => {
+  const page = await browser.newPage({ viewport, reducedMotion: "reduce" });
+  try {
+    await page.goto(appUrl);
+    const phaseSetName = await page.evaluate<string>(`(async () => {
+      const { phaseSetsApi } = await import("/scorekeeper/src/data/api/phaseSets.ts");
+      const phaseSet = await phaseSetsApi.create({
+        type: "saved",
+        name: "Weekend Players' favorite Phase Set with a very long name ".repeat(4).trim(),
+        phases: ["classic-1"],
+      });
+      return phaseSet.name;
+    })()`);
+    await page.goto(`${appUrl}#/phaseCompan10n/phases`);
+    await page.getByRole("button", { name: phaseSetName, exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: phaseSetName, exact: true });
+    const title = dialog.getByRole("heading", { name: phaseSetName, exact: true });
+    await title.waitFor();
+    await settle(page);
+    const panelBounds = await dialog.locator(".dialog-panel").boundingBox();
+    const titleBounds = await title.boundingBox();
+    const closeBounds = await dialog
+      .getByRole("button", { name: "Close", exact: true })
+      .boundingBox();
+    if (!panelBounds || !titleBounds || !closeBounds) throw new Error("Missing title geometry");
+    expect(titleBounds.x + titleBounds.width / 2).toBeCloseTo(
+      panelBounds.x + panelBounds.width / 2,
+      0,
+    );
+    expect(titleBounds.x + titleBounds.width).toBeLessThanOrEqual(closeBounds.x - 12);
+    const layout = await title.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        align: style.textAlign,
+        overflow: style.overflow,
+        ellipsis: style.textOverflow,
+        whiteSpace: style.whiteSpace,
+        lineHeight: Number.parseFloat(style.lineHeight),
+        truncated: element.scrollWidth > element.clientWidth,
+      };
+    });
+    expect(layout).toMatchObject({
+      align: "center",
+      overflow: "hidden",
+      ellipsis: "ellipsis",
+      whiteSpace: "nowrap",
+      truncated: true,
+    });
+    expect(titleBounds.height).toBeCloseTo(layout.lineHeight, 0);
+    expect((await dialog.locator("header").boundingBox())?.height).toBe(60);
+    await dialog.getByRole("button", { name: "Close", exact: true }).click();
+    await dialog.waitFor({ state: "detached" });
+  } finally {
+    await page.close();
+  }
+}, 30_000);
+
+it("keeps an existing static title on one line in a compact modal", async () => {
+  const page = await browser.newPage({
+    viewport: { width: 280, height: 568 },
+    reducedMotion: "reduce",
+  });
+  try {
+    await page.goto(`${appUrl}#/phaseCompan10n/create`);
+    await page.getByRole("tab", { name: "Phases", exact: true }).click();
+    await page.getByRole("button", { name: "Save phase set", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Save phase set", exact: true });
+    const title = dialog.getByRole("heading", { name: "Save phase set", exact: true });
+    await title.waitFor();
+    await settle(page);
+    expect((await dialog.locator("header").boundingBox())?.height).toBe(60);
+    expect(
+      await title.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          overflow: style.overflow,
+          ellipsis: style.textOverflow,
+          whiteSpace: style.whiteSpace,
+          truncated: element.scrollWidth > element.clientWidth,
+        };
+      }),
+    ).toEqual({
+      overflow: "hidden",
+      ellipsis: "ellipsis",
+      whiteSpace: "nowrap",
+      truncated: true,
+    });
+    await dialog.getByRole("button", { name: "Close", exact: true }).click();
+    await dialog.waitFor({ state: "detached" });
+  } finally {
+    await page.close();
+  }
+}, 30_000);
