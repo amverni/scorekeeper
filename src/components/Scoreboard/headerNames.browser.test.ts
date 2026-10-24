@@ -313,7 +313,8 @@ it.each(
       await toggles(page).first().click();
     }
 
-    await page.getByRole("link", { name: "Go home", exact: true }).click();
+    await page.getByRole("button", { name: "Menu", exact: true }).click();
+    await page.getByRole("link", { name: "Games", exact: true }).click();
     await scoreboard(page).waitFor({ state: "detached" });
     await page.goBack();
     await scoreboard(page).waitFor();

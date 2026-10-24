@@ -4,6 +4,7 @@ import type { Browser, Locator, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { returnToDashboard } from "../../test/gameNavigation";
 import { setVisibleViewport } from "../../test/visualViewport";
 import type { ActiveGame, Player, Round } from "../../types";
 import { makePhaseGraphGame, phaseGraphPlayers } from "../Standings/phaseGraphTestFixtures";
@@ -728,7 +729,7 @@ it("keeps empty rows compact and occupied stacks below the first line with respo
     }
 
     await closeDialog(page, card);
-    await page.getByRole("link", { name: "Go home", exact: true }).click();
+    await returnToDashboard(page);
     const gameLink = page.getByRole("link", { name: /^Continue game with/ });
     await gameLink.waitFor();
     expect(await gameLink.getByText(/^\+\d+$/).count()).toBe(1);

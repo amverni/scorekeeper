@@ -342,7 +342,7 @@ it.each([2, 7])("matches the capped header/footer width with %i Players", async 
         { left, right },
       );
       const bounds = await box(card);
-      const home = await box(page.getByRole("link", { name: "Go home", exact: true }));
+      const menu = await box(page.getByRole("button", { name: "Menu", exact: true }));
       const finish = await box(page.getByRole("button", { name: "Finish Game", exact: true }));
       const standings = await box(
         page.getByRole("button", { name: "Open Standings", exact: true }),
@@ -350,9 +350,9 @@ it.each([2, 7])("matches the capped header/footer width with %i Players", async 
       expect(bounds.width, `scoreboard width at ${width}px`).toBe(
         Math.min(width - left - right, 512) - 32,
       );
-      expect(bounds.x).toBeCloseTo(home.x, 1);
+      expect(bounds.x).toBeCloseTo(standings.x, 1);
       expect(bounds.x + bounds.width).toBeCloseTo(finish.x + finish.width, 1);
-      expect(bounds.x + bounds.width).toBeCloseTo(standings.x + standings.width, 1);
+      expect(bounds.x + bounds.width).toBeCloseTo(menu.x + menu.width, 1);
       expect(await card.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
         playerCount === 7,
       );

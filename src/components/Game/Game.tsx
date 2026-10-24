@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, ChartNoAxesColumn } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { ChartNoAxesColumn } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   gameDetailOptions,
@@ -10,6 +10,7 @@ import {
 } from "../../data/hooks/useGames";
 import type { GameId } from "../../types";
 import { CardBackground } from "../CardBackground/CardBackground";
+import { HomeMenu } from "../Home/HomeMenu";
 import { HeaderLogo } from "../Logo/HeaderLogo";
 import {
   PhasesCardDialog,
@@ -81,15 +82,9 @@ export function Game({ gameId }: GameProps) {
                   <PhasesCardEntryButtonContent />
                 </Button>
               )}
-              <Button
-                type="button"
-                className="page-shell-button ml-auto p-0"
-                aria-label="Open Standings"
-                disabled={!standingsReady}
-                onClick={() => setStandingsOpen(true)}
-              >
-                <ChartNoAxesColumn className="size-8" aria-hidden />
-              </Button>
+              <div className="ml-auto">
+                <HomeMenu experience="phaseCompan10n" />
+              </div>
             </div>
           </div>
         }
@@ -126,12 +121,13 @@ export function Game({ gameId }: GameProps) {
         footerContent={
           <div className="content-container flex h-full justify-between">
             <Button
-              as={Link}
-              to="/phaseCompan10n"
+              type="button"
               className="page-shell-button p-0"
-              aria-label="Go home"
+              aria-label="Open Standings"
+              disabled={!standingsReady}
+              onClick={() => setStandingsOpen(true)}
             >
-              <ArrowLeft className="size-8" aria-hidden />
+              <ChartNoAxesColumn className="size-8" aria-hidden />
             </Button>
             <FinishGameMenu
               open={finishOpen}

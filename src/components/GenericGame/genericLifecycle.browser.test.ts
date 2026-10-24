@@ -4,6 +4,7 @@ import type { Browser, Locator, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { returnToDashboard } from "../../test/gameNavigation";
 import type { GenericGame } from "../../types";
 
 let server: ViteDevServer;
@@ -103,7 +104,6 @@ it("browses mixed generic Games with snapshot avatars and distinct actions, and 
     await page.locator('[role="dialog"]').waitFor({ state: "detached" });
     expect(await page.getByRole("button", { name: "Finish Game", exact: true }).count()).toBe(0);
     expect(await page.getByRole("button", { name: "Add Round", exact: true }).count()).toBe(0);
-    await page.getByRole("link", { name: "Go home", exact: true }).click();
     await openGames(page);
     await completed.waitFor();
     expect(await gameLinks(page).first().getAttribute("aria-label")).toBe(
@@ -205,16 +205,16 @@ it("offers Pause and Delete without a saved Round and discards a draft only when
       .poll(() => finishButton.evaluate((element) => element === document.activeElement))
       .toBe(true);
 
-    const backBox = await page.getByRole("link", { name: "Go home", exact: true }).boundingBox();
+    const menuBox = await page.getByRole("button", { name: "Menu", exact: true }).boundingBox();
     const finishBox = await finishButton.boundingBox();
     const standingsBox = await page.getByRole("button", { name: "Open Standings" }).boundingBox();
-    if (!backBox || !finishBox || !standingsBox) throw new Error("Missing Game controls");
-    expect(backBox.x).toBeLessThan(195);
-    expect(backBox.y).toBeGreaterThan(422);
+    if (!menuBox || !finishBox || !standingsBox) throw new Error("Missing Game controls");
+    expect(menuBox.x).toBeGreaterThan(195);
+    expect(menuBox.y).toBeLessThan(422);
     expect(finishBox.x).toBeGreaterThan(195);
     expect(finishBox.y).toBeGreaterThan(422);
-    expect(standingsBox.x).toBeGreaterThan(195);
-    expect(standingsBox.y).toBeLessThan(422);
+    expect(standingsBox.x).toBeLessThan(195);
+    expect(standingsBox.y).toBeGreaterThan(422);
 
     const add = page.getByRole("button", { name: "Add Round", exact: true });
     await add.click();
@@ -349,7 +349,7 @@ it.each([
     await page.locator('[role="dialog"]').waitFor({ state: "detached" });
     await page.getByRole("button", { name: "Expand Round 1", exact: true }).click();
     expect(await standings.count()).toBe(0);
-    await page.getByRole("link", { name: "Go home", exact: true }).click();
+    await returnToDashboard(page);
     await page.getByText("No active games yet", { exact: true }).waitFor();
     await openGames(page);
     await page

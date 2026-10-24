@@ -74,13 +74,13 @@ async function expectSameWord(page: Page, expected: Awaited<ReturnType<typeof wo
 it.each([
   "light",
   "dark",
-] as const)("centers the loaded word with Standings above the stripes and clear of the letters in %s mode", async (colorScheme) => {
+] as const)("centers the loaded word with Menu above the stripes and clear of the letters in %s mode", async (colorScheme) => {
   const page = await browser.newPage({ colorScheme, timezoneId: "America/New_York" });
   await page.clock.setFixedTime(new Date("2026-10-06T16:00:00Z"));
   try {
     const id = await createGame(page);
     await page.goto(`${appUrl}#/scorekeeper/game/${id}`);
-    const button = page.getByRole("button", { name: "Open Standings", exact: true });
+    const button = page.getByRole("button", { name: "Menu", exact: true });
     await button.waitFor();
     let wordAspect: number | undefined;
     for (const [width, height, top, left, right] of [
@@ -165,8 +165,11 @@ it.each([
       expect(band.middleBottom).toBeLessThan(control.y + control.height);
       await button.hover();
       await page.mouse.down();
-      await expect.poll(async () => (await button.boundingBox())?.width).toBeCloseTo(size * 1.1, 1);
-      const pressed = await button.boundingBox();
+      expect((await button.boundingBox())?.width).toBe(size);
+      await expect
+        .poll(async () => (await button.locator("span").boundingBox())?.width)
+        .toBeCloseTo(size * 1.1, 1);
+      const pressed = await button.locator("span").boundingBox();
       if (!pressed) throw new Error("Missing pressed control");
       expect(pressed.x).toBeGreaterThan(word.right);
       expect(pressed.x + pressed.width).toBeLessThanOrEqual(width - right);
@@ -182,7 +185,7 @@ it.each([
       ).toBe(true);
       await page.mouse.move(0, 0);
       await page.mouse.up();
-      await expect.poll(async () => (await button.boundingBox())?.width).toBe(size);
+      await expect.poll(async () => (await button.locator("span").boundingBox())?.width).toBe(size);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
     }
     const tab = process.platform === "darwin" ? "Alt+Tab" : "Tab";
@@ -194,13 +197,14 @@ it.each([
       .poll(() => button.evaluate((element) => getComputedStyle(element).outlineStyle))
       .toBe("solid");
     await button.press("Enter");
-    const standings = page.getByRole("dialog", { name: "Standings", exact: true });
-    await standings.getByRole("list", { name: "Standings places", exact: true }).waitFor();
+    const navigation = page.getByRole("navigation");
+    await navigation.getByRole("link", { name: "Home", exact: true }).waitFor();
+    await page.keyboard.press(tab);
     await expect
-      .poll(() => standings.evaluate((element) => element.contains(document.activeElement)))
+      .poll(() => navigation.evaluate((element) => element.contains(document.activeElement)))
       .toBe(true);
     await page.keyboard.press("Escape");
-    await standings.waitFor({ state: "detached" });
+    await navigation.waitFor({ state: "detached" });
     await expect
       .poll(() => button.evaluate((element) => document.activeElement === element))
       .toBe(true);

@@ -45,7 +45,13 @@ back arrow. The generic Scorekeeper Dashboard lives at `/scorekeeper`, with
 without redirects. Game detail and mutation APIs reject the wrong Scorekeeper's
 records.
 
-Both dashboards put **Home** first in their menus to return to the shared chooser.
+Both dashboards and Game pages put **Home** first in their contextual menus to
+return to the shared chooser. Active and Completed Games keep Menu top-right
+and Standings bottom-left, replacing the Game's old Back action. The existing
+finish/pause control stays bottom-right and is available only for Active Games.
+Phase 10 keeps its Phases Card top-left while active, with unchanged sharing;
+Generic Games have no Phases Card. Menu destinations remain contextual to the
+Scorekeeper, and navigation alone never finishes a Game.
 Pause, setup Cancel, and back arrows within a Scorekeeper return to its dashboard.
 Both Scorekeeper Dashboards show only Active Games; each Games page includes that
 Scorekeeper's Active and retained Completed Games. Saved Player names, colors, and favorites

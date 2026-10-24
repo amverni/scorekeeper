@@ -4,6 +4,7 @@ import type { Browser, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { returnToDashboard } from "../../test/gameNavigation";
 
 let server: ViteDevServer;
 let browser: Browser;
@@ -111,7 +112,7 @@ describe("generic Points Games", () => {
       expect(await page.getByRole("button", { name: /Settings|Players/ }).count()).toBe(0);
       expect(await page.getByRole("button", { name: "Finish Game", exact: true }).count()).toBe(1);
       expect(await page.getByText(/Phase|Dealer|Tiebreaker/).count()).toBe(0);
-      await page.getByRole("link", { name: "Go home", exact: true }).click();
+      await returnToDashboard(page);
       const resume = page.getByRole("link", { name: "Continue game with Maya", exact: true });
       await resume.waitFor();
       expect(await resume.getAttribute("href")).toContain("#/scorekeeper/game/");
@@ -196,7 +197,7 @@ describe("generic Points Games", () => {
         await scoreboard.evaluate((element) => element.scrollWidth <= element.clientWidth),
       ).toBe(true);
       expect(await page.getByRole("button", { name: /Reorder|Remove|Settings/ }).count()).toBe(0);
-      await page.getByRole("link", { name: "Go home", exact: true }).click();
+      await returnToDashboard(page);
       await page.getByRole("link", { name: "Create Game", exact: true }).click();
       expect(await page.getByRole("button", { name: "Start", exact: true }).isDisabled()).toBe(
         true,
@@ -219,7 +220,7 @@ describe("generic Points Games", () => {
       await page.getByText("No active games yet", { exact: true }).waitFor();
       await page.goto(gameUrl);
       await page.getByText("Game not found in Scorekeeper.", { exact: true }).waitFor();
-      await page.getByRole("link", { name: "Go home", exact: true }).click();
+      await returnToDashboard(page);
       expect(page.url()).toBe(`${appUrl}#/scorekeeper`);
     } finally {
       await page.close();
@@ -244,7 +245,7 @@ describe("generic Points Games", () => {
       await page.getByRole("button", { name: "Start", exact: true }).click();
       await page.getByRole("table", { name: "Points scoreboard" }).waitFor();
       const genericUrl = page.url();
-      await page.getByRole("link", { name: "Go home", exact: true }).click();
+      await returnToDashboard(page);
       await page.getByRole("link", { name: "Continue game with Lee", exact: true }).waitFor();
       expect(await page.getByRole("link", { name: /^Continue game with / }).count()).toBe(1);
       await page.goto(`${appUrl}#/phaseCompan10n`);
@@ -266,7 +267,7 @@ describe("generic Points Games", () => {
       await page.goto(`${appUrl}#/scorekeeper`);
       await page.getByRole("link", { name: "Continue game with Lee Updated", exact: true }).click();
       await page.getByRole("columnheader", { name: /Lee Updated/ }).waitFor();
-      await page.getByRole("link", { name: "Go home", exact: true }).click();
+      await returnToDashboard(page);
       await page.getByRole("link", { name: "Create Game", exact: true }).click();
       await page.getByRole("button", { name: "Maya", exact: true }).waitFor();
       expect(await page.getByRole("button", { name: "Lee Updated", exact: true }).count()).toBe(0);
@@ -280,7 +281,7 @@ describe("generic Points Games", () => {
       expect(await page.getByRole("table").count()).toBe(0);
       await page.goto(genericUrl.replace("/scorekeeper/game/", "/phaseCompan10n/game/"));
       await page.getByText("This Game is no longer available.", { exact: true }).waitFor();
-      await page.getByRole("link", { name: "Go home", exact: true }).click();
+      await returnToDashboard(page);
       await page.getByRole("link", { name: "Create Game", exact: true }).waitFor();
       expect(page.url()).toBe(`${appUrl}#/phaseCompan10n`);
       await page.goto(`${appUrl}#/scorekeeper`);
@@ -324,7 +325,7 @@ describe("generic Points Games", () => {
       await page.evaluate(() => window.dispatchEvent(new Event("restore-test-storage")));
       await page.getByRole("button", { name: "Try again", exact: true }).click();
       await page.getByText("Game not found in Scorekeeper.", { exact: true }).waitFor();
-      await page.getByRole("link", { name: "Go home", exact: true }).click();
+      await returnToDashboard(page);
       expect(page.url()).toBe(`${appUrl}#/scorekeeper`);
     } finally {
       await page.close();
@@ -350,7 +351,7 @@ describe("generic Points Games", () => {
       await page.getByRole("button", { name: "Rowan", exact: true }).click();
       await page.getByRole("button", { name: "Start", exact: true }).click();
       await page.getByRole("columnheader", { name: /Rowan/ }).waitFor();
-      await page.getByRole("link", { name: "Go home", exact: true }).click();
+      await returnToDashboard(page);
       await page.getByRole("link", { name: "Continue game with Rowan", exact: true }).waitFor();
       expect(await page.getByRole("link", { name: /^Continue game with / }).count()).toBe(1);
     } finally {

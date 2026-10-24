@@ -4,6 +4,7 @@ import type { Browser, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { returnToDashboard } from "../../test/gameNavigation";
 import type { GenericGame, GenericRound, PlayerIdentity } from "../../types";
 
 let server: ViteDevServer;
@@ -146,7 +147,7 @@ it.each([
     expect(await standings.innerText()).not.toContain("Tiebreaker");
     await standings.getByRole("button", { name: "Close", exact: true }).click();
     await standings.waitFor({ state: "detached" });
-    await page.getByRole("link", { name: "Go home", exact: true }).click();
+    await returnToDashboard(page);
     await page.getByRole("link", { name: "Create Game", exact: true }).click();
     await page.getByRole("tab", { name: "Settings", exact: true }).click();
     expect(await page.getByLabel("Scoring Mode", { exact: true }).innerText()).toContain("Points");

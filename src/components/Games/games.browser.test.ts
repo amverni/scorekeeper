@@ -4,6 +4,7 @@ import type { Browser, Locator, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { returnToDashboard } from "../../test/gameNavigation";
 
 let server: ViteDevServer;
 let browser: Browser;
@@ -70,7 +71,6 @@ it("browses mixed Games with distinct actions and snapshot avatars, opens Standi
     expect(await standings.innerText()).not.toContain("Amelia");
     await page.keyboard.press("Escape");
     await standings.waitFor({ state: "hidden" });
-    await page.getByRole("link", { name: "Go home", exact: true }).click();
     await openGames(page);
     await completed.waitFor();
     expect(await gameLinks(page).first().getAttribute("aria-label")).toBe(
@@ -87,7 +87,6 @@ it("browses mixed Games with distinct actions and snapshot avatars, opens Standi
     if (!destination) throw new Error("Missing Game link");
     await page.goto(new URL(destination, appUrl).href);
     await page.getByText("This Game is no longer available.", { exact: true }).waitFor();
-    await page.getByRole("link", { name: "Go home", exact: true }).click();
     await page.getByRole("button", { name: "Menu", exact: true }).click();
     await page.getByRole("link", { name: "Players", exact: true }).click();
     await page.getByRole("button", { name: "Dana", exact: true }).click();
@@ -206,7 +205,7 @@ it("refreshes cached Home, Games and removed detail data after the twenty-first 
     await page.getByRole("tabpanel", { name: "Standings", exact: true }).waitFor();
     await page.keyboard.press("Escape");
     await page.getByRole("dialog").waitFor({ state: "detached" });
-    await page.getByRole("link", { name: "Go home", exact: true }).click();
+    await returnToDashboard(page);
     await page.getByRole("link", { name: "Continue game with Dana", exact: true }).click();
     await page.getByRole("button", { name: "Add round 1", exact: true }).click();
     await page.getByRole("button", { name: /Round Winner/ }).click();
@@ -215,7 +214,7 @@ it("refreshes cached Home, Games and removed detail data after the twenty-first 
     await page.getByRole("tabpanel", { name: "Standings", exact: true }).waitFor();
     await page.keyboard.press("Escape");
     await page.getByRole("dialog").waitFor({ state: "detached" });
-    await page.getByRole("link", { name: "Go home", exact: true }).click();
+    await returnToDashboard(page);
     await page.getByRole("link", { name: "Continue game with Casey", exact: true }).waitFor();
     await expect.poll(() => gameLinks(page).count()).toBe(1);
     await openGames(page);

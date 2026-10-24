@@ -4,6 +4,7 @@ import type { Browser, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { returnToDashboard } from "../../test/gameNavigation";
 
 let server: ViteDevServer;
 let browser: Browser;
@@ -212,7 +213,10 @@ describe("scorekeeper navigation", () => {
         await page.reload();
         await page.getByText(readyText, { exact: true }).waitFor();
         expect(page.url()).toBe(`${appUrl}#${route}`);
-        if (route !== "/scorekeeper") {
+        if (route.startsWith("/scorekeeper/game/")) {
+          await returnToDashboard(page);
+          expect(page.url()).toBe(`${appUrl}#/scorekeeper`);
+        } else if (route !== "/scorekeeper") {
           const back = page.getByRole("link", {
             name: route === "/scorekeeper/create" ? "Cancel" : "Go home",
             exact: true,
@@ -323,7 +327,7 @@ describe("scorekeeper navigation", () => {
       expect(gameUrl).toMatch(/#\/phaseCompan10n\/game\/[^/]+$/);
       await page.reload();
       await page.getByRole("button", { name: "Open Standings", exact: true }).waitFor();
-      await page.getByRole("link", { name: "Go home", exact: true }).click();
+      await returnToDashboard(page);
       const gameLink = page.locator('a[href*="/phaseCompan10n/game/"]');
       await gameLink.waitFor();
       await gameLink.click();
@@ -335,7 +339,7 @@ describe("scorekeeper navigation", () => {
       );
       await page.goto(`${appUrl}#/phaseCompan10n/game/missing-game`);
       await page.getByText("This Game is no longer available.", { exact: true }).waitFor();
-      await page.getByRole("link", { name: "Go home", exact: true }).click();
+      await returnToDashboard(page);
       await page.getByRole("link", { name: "Create Game", exact: true }).waitFor();
       expect(page.url()).toBe(`${appUrl}#/phaseCompan10n`);
     } finally {

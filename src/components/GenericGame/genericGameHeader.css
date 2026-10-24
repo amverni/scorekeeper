@@ -4,7 +4,7 @@
 }
 
 .generic-game-header-logo {
-  /* Preserve symmetric logo clearance, even when Standings is absent. */
+  /* Keep the logo centered independently of the Menu control. */
   padding-inline: calc(
     4rem + max(var(--safe-area-inset-left), var(--safe-area-inset-right))
   );

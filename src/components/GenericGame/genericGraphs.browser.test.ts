@@ -4,6 +4,7 @@ import type { Browser, Locator, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { returnToDashboard } from "../../test/gameNavigation";
 import { swipeTabPanel } from "../../test/swipeTabPanel";
 import { setVisibleViewport } from "../../test/visualViewport";
 import type { GenericGameSettings } from "../../types";
@@ -426,7 +427,7 @@ it.each([
     expect(await standings.getAttribute("aria-selected")).toBe("true");
     await dialog.getByRole("button", { name: "Close", exact: true }).click();
     await dialog.waitFor({ state: "detached" });
-    await page.getByRole("link", { name: "Go home", exact: true }).click();
+    await returnToDashboard(page);
     await page.getByRole("link", { name: /Maya.*Rowan/ }).click();
     await open.click();
     expect(await standings.getAttribute("aria-selected")).toBe("true");

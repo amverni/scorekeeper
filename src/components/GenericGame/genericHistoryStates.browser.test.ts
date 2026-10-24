@@ -4,6 +4,7 @@ import type { Browser, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { returnToDashboard } from "../../test/gameNavigation";
 
 let server: ViteDevServer;
 let browser: Browser;
@@ -130,13 +131,13 @@ it("refreshes cached generic Home, Games and pruned scoreboard data after the tw
       "-2",
     );
 
-    await page.getByRole("link", { name: "Go home", exact: true }).click();
+    await returnToDashboard(page);
     await page.getByRole("link", { name: "Continue game with Dana", exact: true }).click();
     await finishGame(page);
     await closeStandings(page);
     expect(await page.getByRole("button", { name: "Add Round", exact: true }).count()).toBe(0);
     expect(await page.getByRole("button", { name: "Finish Game", exact: true }).count()).toBe(0);
-    await page.getByRole("link", { name: "Go home", exact: true }).click();
+    await returnToDashboard(page);
     await page.getByRole("link", { name: "Continue game with Casey", exact: true }).waitFor();
     await expect.poll(() => gameLinks(page).count()).toBe(1);
     await openGames(page);
@@ -213,7 +214,6 @@ it("blocks shared Player deletion for Active Games in either Scorekeeper and rel
     await page.goto(`${appUrl}#/scorekeeper/game/${genericId}`);
     await finishGame(page);
     await closeStandings(page);
-    await page.getByRole("link", { name: "Go home", exact: true }).click();
     await page.getByRole("button", { name: "Menu", exact: true }).click();
     await page.getByRole("link", { name: "Players", exact: true }).click();
     await deletePlayer(page, "Amy");

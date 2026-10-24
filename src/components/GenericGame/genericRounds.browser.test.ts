@@ -4,6 +4,7 @@ import type { Browser, Locator, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { returnToDashboard } from "../../test/gameNavigation";
 
 let server: ViteDevServer;
 let browser: Browser;
@@ -189,7 +190,7 @@ it("discards unsaved entries on leaving or reloading the scoreboard and restores
     await expect
       .poll(() => add.evaluate((element) => element === document.activeElement))
       .toBe(true);
-    await page.getByRole("link", { name: "Go home", exact: true }).click();
+    await returnToDashboard(page);
     await page.getByRole("link", { name: "Continue game with Maya", exact: true }).click();
     await add.click();
     expect(await dialog.getByRole("status", { name: "Maya Points", exact: true }).innerText()).toBe(

@@ -271,7 +271,7 @@ it("centers header controls together without moving the independent logo across 
       const buttonBounds = await box(button);
       const headerBounds = await box(header);
       const mainBounds = await box(main);
-      const homeBounds = await box(page.getByRole("link", { name: "Go home", exact: true }));
+      const menuBounds = await box(page.getByRole("button", { name: "Menu", exact: true }));
       const standingsBounds = await box(
         page.getByRole("button", { name: "Open Standings", exact: true }),
       );
@@ -279,14 +279,11 @@ it("centers header controls together without moving the independent logo across 
         page.getByRole("button", { name: "Finish Game", exact: true }),
       );
       expect(buttonBounds.y + buttonBounds.height / 2).toBeCloseTo(
-        standingsBounds.y + standingsBounds.height / 2,
+        menuBounds.y + menuBounds.height / 2,
         1,
       );
-      expect(buttonBounds.x).toBeCloseTo(homeBounds.x, 1);
-      expect(standingsBounds.x + standingsBounds.width).toBeCloseTo(
-        finishBounds.x + finishBounds.width,
-        1,
-      );
+      expect(buttonBounds.x).toBeCloseTo(standingsBounds.x, 1);
+      expect(menuBounds.x + menuBounds.width).toBeCloseTo(finishBounds.x + finishBounds.width, 1);
       if (width <= 390) expect(buttonBounds.x).toBe(left + 16);
       const size = height <= 700 ? 44 : 56;
       expect(buttonBounds.width).toBeGreaterThanOrEqual((48 / 56) * size);

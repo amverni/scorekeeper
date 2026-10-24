@@ -36,7 +36,7 @@ export function HomeMenu({ experience }: { experience: ScorekeeperExperience }) 
           in an inner span that grows uniformly from center on press. */}
       <PopoverButton
         aria-label="Menu"
-        className="page-shell-button relative rounded-full group cursor-pointer focus:outline-none data-[focus]:outline-2 data-[focus]:outline-offset-2 data-[focus]:outline-white/60"
+        className="page-shell-button relative rounded-full group cursor-pointer focus:outline-none data-[focus]:outline-2 data-[focus]:outline-offset-2 data-focus:outline-solid data-focus:outline-text-secondary!"
       >
         <span className="absolute inset-0 inline-flex items-center justify-center rounded-full glass transition-transform group-hover:brightness-110 group-active:scale-110">
           <Menu className="size-6 relative z-10" aria-hidden="true" />

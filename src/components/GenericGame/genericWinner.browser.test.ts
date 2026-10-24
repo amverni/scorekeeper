@@ -4,6 +4,7 @@ import type { Browser, Locator, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { returnToDashboard } from "../../test/gameNavigation";
 import type { GenericGame } from "../../types";
 
 let server: ViteDevServer;
@@ -166,7 +167,7 @@ it("selects the mode in fresh setup and records one winner with reselection, ret
       await page.getByRole("cell", { name: "Amy, Round 2: Lost, Dealer", exact: true }).innerText(),
     ).toContain("Accumulated Wins: 1");
     expect(await page.getByRole("columnheader", { name: /Renamed/ }).count()).toBe(0);
-    await page.getByRole("link", { name: "Go home", exact: true }).click();
+    await returnToDashboard(page);
     expect(await page.getByRole("link", { name: /Continue game with/ }).count()).toBe(0);
     await page.getByRole("button", { name: "Menu", exact: true }).click();
     await page.getByRole("link", { name: "Games", exact: true }).click();
@@ -218,7 +219,7 @@ it("keeps solo entry explicit, discards drafts on navigation and reload, and fin
     expect(await solo.isChecked()).toBe(true);
     await page.keyboard.press("Escape");
     await entry.waitFor({ state: "hidden" });
-    await page.getByRole("link", { name: "Go home", exact: true }).click();
+    await returnToDashboard(page);
     await page.getByRole("link", { name: "Continue game with Solo", exact: true }).click();
     await add.click();
     expect(await solo.isChecked()).toBe(false);

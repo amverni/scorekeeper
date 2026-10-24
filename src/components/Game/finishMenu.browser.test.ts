@@ -44,7 +44,7 @@ async function seed(page: Page, owner: ScorekeeperId) {
       players: [amy.id, bob.id],
       ${
         owner === "phase10"
-          ? 'phaseSet: { id: "short", type: "temporary", name: "Short", phases: ["phase-1", "phase-2"] }, settings: { tiebreaker: "roundsWon", roundSkipPenalty: 0, sitOutPenalty: 0 }'
+          ? 'phaseSet: { id: "short", type: "temporary", name: "Short", phases: ["classic-1", "classic-2"] }, settings: { tiebreaker: "roundsWon", roundSkipPenalty: 0, sitOutPenalty: 0 }'
           : 'settings: { mode: "points", pointsDirection: "high", tiebreaker: null, dealer: false }'
       }
     });
@@ -89,6 +89,134 @@ function readGame(page: Page, owner: ScorekeeperId, id: string) {
 
 it.each(
   owners,
+)("keeps %s navigation in the same safe corners before and after completion", async (owner) => {
+  const page = await newPage();
+  try {
+    const { game } = await seed(page, owner);
+    const url = `${appUrl}#${gamePath(owner, game.id)}`;
+    await page.evaluate(`(async () => {
+      ${
+        owner === "phase10"
+          ? `const { roundsApi } = await import("/scorekeeper/src/data/api/rounds.ts");
+             await roundsApi.add({ gameId: ${JSON.stringify(game.id)}, roundWinnerId: ${JSON.stringify(game.players[0])},
+               scores: ${JSON.stringify(game.players)}.map(playerId => ({ playerId, phaseStatus: "completed", score: 0 })) });`
+          : `const { genericRoundsApi } = await import("/scorekeeper/src/data/api/genericRounds.ts");
+             await genericRoundsApi.add({ gameId: ${JSON.stringify(game.id)}, mode: "points",
+               scores: ${JSON.stringify(game.players)}.map(playerId => ({ playerId, points: "5" })) });`
+      }
+    })()`);
+    for (const status of ["active", "completed"]) {
+      await page.goto(url);
+      if (status === "completed") {
+        await page.getByRole("tabpanel", { name: "Standings", exact: true }).waitFor();
+        await page.keyboard.press("Escape");
+        await page.getByRole("dialog").waitFor({ state: "detached" });
+      }
+      const menu = page.getByRole("button", { name: "Menu", exact: true });
+      const standings = page.getByRole("button", { name: "Open Standings", exact: true });
+      await menu.waitFor();
+      await expect.poll(() => standings.isEnabled()).toBe(true);
+      expect(await page.getByRole("link", { name: "Go home", exact: true }).count()).toBe(0);
+      expect(await flag(page).count()).toBe(status === "active" ? 1 : 0);
+      expect(
+        await page.getByRole("button", { name: "Open Phases Card", exact: true }).count(),
+      ).toBe(owner === "phase10" && status === "active" ? 1 : 0);
+      for (const [width, height] of [
+        [320, 568],
+        [390, 844],
+        [1280, 900],
+      ]) {
+        await page.setViewportSize({ width, height });
+        await page.addStyleTag({
+          content:
+            ":root { --safe-area-inset-top: 12px; --safe-area-inset-right: 20px; --safe-area-inset-bottom: 24px; --safe-area-inset-left: 16px; }",
+        });
+        const top = await menu.boundingBox();
+        const bottom = await standings.boundingBox();
+        if (!top || !bottom) throw new Error("Missing Game navigation");
+        expect(top.x).toBeGreaterThan(width / 2);
+        expect(top.y).toBeGreaterThanOrEqual(12);
+        expect(top.y + top.height).toBeLessThan(height / 2);
+        expect(bottom.x).toBeLessThan(width / 2);
+        expect(bottom.y).toBeGreaterThan(height / 2);
+        for (const bounds of [top, bottom]) {
+          expect(bounds.x).toBeGreaterThanOrEqual(16);
+          expect(bounds.x + bounds.width).toBeLessThanOrEqual(width - 20);
+          expect(bounds.y + bounds.height).toBeLessThanOrEqual(height - 24);
+          expect(bounds.width).toBeGreaterThanOrEqual(44);
+          expect(bounds.height).toBeGreaterThanOrEqual(44);
+        }
+      }
+      await menu.focus();
+      await page.keyboard.press("Enter");
+      await page.getByRole("navigation").waitFor();
+      expect(await page.getByRole("navigation").getByRole("link").allTextContents()).toEqual(
+        owner === "phase10"
+          ? ["Home", "Games", "Players", "Phases", "Settings"]
+          : ["Home", "Games", "Players"],
+      );
+      await page.keyboard.press("Escape");
+      await expect
+        .poll(() => menu.evaluate((element) => element === document.activeElement))
+        .toBe(true);
+      await standings.focus();
+      await page.keyboard.press("Enter");
+      await page.getByRole("tabpanel", { name: "Standings", exact: true }).waitFor();
+      await page.keyboard.press("Escape");
+      await page.getByRole("dialog").waitFor({ state: "detached" });
+      await expect
+        .poll(() => standings.evaluate((element) => element === document.activeElement))
+        .toBe(true);
+      const savedGame = await readGame(page, owner, game.id);
+      const readRounds = () =>
+        page.evaluate(`(async () => {
+        const { ${owner === "phase10" ? "roundsApi" : "genericRoundsApi"}: api } =
+          await import("/scorekeeper/src/data/api/${owner === "phase10" ? "rounds" : "genericRounds"}.ts");
+        return api.getByGameId(${JSON.stringify(game.id)});
+      })()`);
+      const savedRounds = await readRounds();
+      const destinations =
+        owner === "phase10"
+          ? ["Home", "Games", "Players", "Phases", "Settings"]
+          : ["Home", "Games", "Players"];
+      for (const destination of destinations) {
+        await menu.click();
+        const link = page.getByRole("link", { name: destination, exact: true });
+        const path = destination === "Home" ? "/" : `${home(owner)}/${destination.toLowerCase()}`;
+        expect(await link.getAttribute("href")).toBe(`/scorekeeper/#${path}`);
+        await link.click();
+        await page.waitForURL(`${appUrl}#${path}`);
+        await page.reload();
+        await page
+          .getByRole(destination === "Home" ? "heading" : "link", {
+            name: destination === "Home" ? "Scorekeepers" : "Go home",
+            exact: true,
+          })
+          .waitFor();
+        expect(await readGame(page, owner, game.id)).toEqual(savedGame);
+        expect(await readRounds()).toEqual(savedRounds);
+        await page.goto(url);
+        if (status === "completed") {
+          await page.getByRole("tabpanel", { name: "Standings", exact: true }).waitFor();
+          await page.keyboard.press("Escape");
+          await page.getByRole("dialog").waitFor({ state: "detached" });
+        }
+        await expect.poll(() => standings.isEnabled()).toBe(true);
+      }
+      if (status === "active") {
+        await page.evaluate(`(async () => {
+          ${apiImport(owner)}
+          await api.finish(${JSON.stringify(game.id)});
+        })()`);
+      }
+    }
+  } finally {
+    await page.close();
+  }
+}, 120_000);
+
+it.each(
+  owners,
 )("anchors the compact %s menu safely with input-aware focus on dismissal", async (owner) => {
   const page = await newPage();
   try {
@@ -100,7 +228,9 @@ it.each(
       content:
         ":root { --safe-area-inset-top: 12px; --safe-area-inset-right: 20px; --safe-area-inset-bottom: 24px; --safe-area-inset-left: 16px; }",
     });
-    const back = await page.getByRole("link", { name: "Go home", exact: true }).boundingBox();
+    const back = await page
+      .getByRole("button", { name: "Open Standings", exact: true })
+      .boundingBox();
     const before = await flag(page).boundingBox();
     if (!before || !back) throw new Error("Missing footer controls");
     await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
@@ -287,8 +417,10 @@ it.each(
     );
     await page.keyboard.press("Escape");
     await entry.waitFor({ state: "detached" });
-    const back = await page.getByRole("link", { name: "Go home", exact: true }).boundingBox();
-    if (!back) throw new Error("Missing Home control");
+    const back = await page
+      .getByRole("button", { name: "Open Standings", exact: true })
+      .boundingBox();
+    if (!back) throw new Error("Missing Standings control");
     await flag(page).click();
     await page.evaluate(`(async () => {
       ${apiImport(owner)}

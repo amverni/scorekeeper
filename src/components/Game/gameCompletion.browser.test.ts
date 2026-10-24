@@ -646,7 +646,7 @@ it("keeps header buttons centered together with clearance above the slant", asyn
       const iconSize = height <= 700 ? 24 : 32;
       for (const control of [
         standings,
-        page.getByRole("link", { name: "Go home", exact: true }),
+        page.getByRole("button", { name: "Menu", exact: true }),
         page.getByRole("button", { name: "Finish Game", exact: true }),
       ]) {
         expect(await control.boundingBox()).toMatchObject({ width: size, height: size });
@@ -656,17 +656,16 @@ it("keeps header buttons centered together with clearance above the slant", asyn
         });
       }
       const header = await page.locator(".page-shell-header").boundingBox();
-      const standingsBounds = await standings.boundingBox();
+      const menuBounds = await page
+        .getByRole("button", { name: "Menu", exact: true })
+        .boundingBox();
       const phases = await page
         .getByRole("button", { name: "Open Phases Card", exact: true })
         .boundingBox();
-      if (!header || !standingsBounds || !phases) throw new Error("Missing header controls");
+      if (!header || !menuBounds || !phases) throw new Error("Missing header controls");
       expect(phases.height).toBe(size);
-      expect(phases.y + phases.height / 2).toBeCloseTo(
-        standingsBounds.y + standingsBounds.height / 2,
-        1,
-      );
-      for (const control of [phases, standingsBounds]) {
+      expect(phases.y + phases.height / 2).toBeCloseTo(menuBounds.y + menuBounds.height / 2, 1);
+      for (const control of [phases, menuBounds]) {
         const slantEdge = header.y + header.height - (50 * (control.x + control.width)) / width;
         expect
           .soft(control.y - top, `top clearance at ${width}x${height}`)
@@ -984,16 +983,16 @@ it("offers Pause and Delete before a saved Round, retains a closed draft, and di
     await finish.waitFor({ state: "detached" });
     expect(await finishGame.evaluate((button) => button === document.activeElement)).toBe(true);
 
-    const backBox = await page.getByRole("link", { name: "Go home", exact: true }).boundingBox();
+    const menuBox = await page.getByRole("button", { name: "Menu", exact: true }).boundingBox();
     const finishBox = await finishGame.boundingBox();
     const standingsBox = await page.getByRole("button", { name: "Open Standings" }).boundingBox();
-    if (!backBox || !finishBox || !standingsBox) throw new Error("Missing Game controls");
-    expect(backBox.x).toBeLessThan(195);
-    expect(backBox.y).toBeGreaterThan(422);
+    if (!menuBox || !finishBox || !standingsBox) throw new Error("Missing Game controls");
+    expect(menuBox.x).toBeGreaterThan(195);
+    expect(menuBox.y).toBeLessThan(422);
     expect(finishBox.x).toBeGreaterThan(195);
     expect(finishBox.y).toBeGreaterThan(422);
-    expect(standingsBox.x).toBeGreaterThan(195);
-    expect(standingsBox.y).toBeLessThan(422);
+    expect(standingsBox.x).toBeLessThan(195);
+    expect(standingsBox.y).toBeGreaterThan(422);
     const phasesTrigger = page.getByRole("button", { name: "Open Phases Card" });
     await phasesTrigger.focus();
     await phasesTrigger.click();

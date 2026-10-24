@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, ChartNoAxesColumn } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { ChartNoAxesColumn } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   genericGameScoreboardOptions,
@@ -10,6 +10,7 @@ import {
 import type { GameId } from "../../types";
 import { FinishGameMenu } from "../Game/FinishGameMenu";
 import { shouldAutoOpenStandings } from "../Game/standingsAutoOpen";
+import { HomeMenu } from "../Home/HomeMenu";
 import { ScorekeeperLogo } from "../Logo/ScorekeeperLogo";
 import { ScorekeeperShell } from "../ScorekeeperShell/ScorekeeperShell";
 import { Button, InlineError } from "../ui";
@@ -50,17 +51,7 @@ export function GenericGame({ gameId }: { gameId: GameId }) {
             <ScorekeeperLogo height={64} />
           </div>
           <div className="content-container generic-game-header-controls absolute inset-y-0 z-10 flex items-center justify-end py-2">
-            {view && (
-              <Button
-                type="button"
-                aria-label="Open Standings"
-                disabled={isError}
-                onClick={() => setStandingsOpen(true)}
-                className="page-shell-button data-focus:outline-solid data-focus:outline-text-secondary!"
-              >
-                <ChartNoAxesColumn className="size-8" aria-hidden />
-              </Button>
-            )}
+            <HomeMenu experience="scorekeeper" />
           </div>
         </div>
       }
@@ -91,14 +82,17 @@ export function GenericGame({ gameId }: { gameId: GameId }) {
       }
       footerContent={
         <div className="content-container flex h-full justify-between">
-          <Button
-            as={Link}
-            to="/scorekeeper"
-            aria-label="Go home"
-            className="page-shell-button p-0"
-          >
-            <ArrowLeft className="size-8" aria-hidden />
-          </Button>
+          {view && (
+            <Button
+              type="button"
+              aria-label="Open Standings"
+              disabled={isError}
+              onClick={() => setStandingsOpen(true)}
+              className="page-shell-button p-0 data-focus:outline-solid data-focus:outline-text-secondary!"
+            >
+              <ChartNoAxesColumn className="size-8" aria-hidden />
+            </Button>
+          )}
           <FinishGameMenu
             open={finishOpen}
             active={view?.game.status === "active"}

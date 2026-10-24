@@ -4,6 +4,7 @@ import type { Browser, Locator, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { returnToDashboard } from "../../test/gameNavigation";
 import type { GenericGame, GenericRound, GenericScoreboardView, PlayerIdentity } from "../../types";
 
 let server: ViteDevServer;
@@ -89,7 +90,7 @@ it("keeps Points as the setup default and preserves independent Dealer across mo
     expect(
       await page.getByRole("cell", { name: "Maya, upcoming Round", exact: true }).innerText(),
     ).toBe("");
-    await page.getByRole("link", { name: "Go home", exact: true }).click();
+    await returnToDashboard(page);
     await page.getByRole("link", { name: "Create Game", exact: true }).click();
     await page.getByRole("tab", { name: "Settings", exact: true }).click();
     expect(await mode.innerText()).toContain("Points");
@@ -313,7 +314,7 @@ it("finishes tied Passes with competition places and preserves completed snapsho
       await page.getByRole("cell", { name: "Rowan, Round 1: Passed", exact: true }).innerText(),
     ).toContain("Accumulated Passes: 1");
     expect(await standings.count()).toBe(0);
-    await page.getByRole("link", { name: "Go home", exact: true }).click();
+    await returnToDashboard(page);
     await page.getByText("No active games yet", { exact: true }).waitFor();
     await page.getByRole("button", { name: "Menu", exact: true }).click();
     await page.getByRole("link", { name: "Games", exact: true }).click();
@@ -389,7 +390,7 @@ it("retains a draft on close, clears it after save, and discards it on navigatio
     await expectOutcome(maya, true);
     await dialog.getByRole("button", { name: "Close", exact: true }).click();
     await dialog.waitFor({ state: "detached" });
-    await page.getByRole("link", { name: "Go home", exact: true }).click();
+    await returnToDashboard(page);
     await page.getByRole("link", { name: "Continue game with Maya, Rowan", exact: true }).click();
     await openRound(page);
     await expectOutcome(maya, false);

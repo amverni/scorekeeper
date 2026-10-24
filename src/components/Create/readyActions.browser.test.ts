@@ -108,7 +108,8 @@ describe.each(["/scorekeeper", "/phaseCompan10n"])("ready Start in %s", (home) =
       expect(page.url()).toMatch(new RegExp(`#${home}/game/[^/]+$`));
       const finish = page.getByRole("button", { name: "Finish Game", exact: true });
       expect((await actionAppearance(finish.locator("span.glass"))).surface).toEqual(
-        (await actionAppearance(page.getByRole("link", { name: "Go home", exact: true }))).surface,
+        (await actionAppearance(page.getByRole("button", { name: "Open Standings", exact: true })))
+          .surface,
       );
     } finally {
       await page.close();
