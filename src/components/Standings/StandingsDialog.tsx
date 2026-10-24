@@ -1,7 +1,6 @@
 import { Tab, TabGroup, TabPanel } from "@headlessui/react";
 import { useEffect, useState } from "react";
-import { deriveStandings } from "../../data/api/standings";
-import type { Game, PlayerIdentity, Round } from "../../types";
+import type { GameReadModel } from "../../types";
 import { Dialog, DialogScrollArea, SwipeableTabPanels, TabList, tabClasses } from "../ui";
 import { PhaseGraph } from "./PhaseGraph";
 import { StandingsList } from "./StandingsList";
@@ -18,14 +17,12 @@ import { TiebreakerGraph } from "./TiebreakerGraph";
 interface StandingsDialogProps {
   open: boolean;
   onClose: (open: boolean) => void;
-  game: Game;
-  players: PlayerIdentity[];
-  rounds: Round[];
+  view: GameReadModel;
 }
 
-export function StandingsDialog({ open, onClose, game, players, rounds }: StandingsDialogProps) {
+export function StandingsDialog({ open, onClose, view }: StandingsDialogProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const standings = deriveStandings({ game, players, rounds });
+  const { game, standings } = view;
   const displayRows = getStandingsDisplayRows(standings);
 
   useEffect(() => {
@@ -83,7 +80,7 @@ export function StandingsDialog({ open, onClose, game, players, rounds }: Standi
               <TiebreakerGraph
                 series={standings.tiebreakerGraphSeries}
                 tiebreaker={game.settings.tiebreaker}
-                rounds={rounds}
+                endpointPlayerOrder={view.tiebreakerGraphPlayerOrder}
               />
             </TabPanel>
           </SwipeableTabPanels>

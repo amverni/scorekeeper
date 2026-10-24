@@ -1,4 +1,4 @@
-import type { GameTiebreaker, Round, TiebreakerGraphSeries } from "../../types";
+import type { GameTiebreaker, PlayerId, Round, TiebreakerGraphSeries } from "../../types";
 import { formatTiebreakerValue } from "../../utils";
 import { GraphAccessibleTable } from "./GraphAccessibleTable";
 import { GraphEndpointAvatarGroup } from "./GraphEndpointAvatarGroup";
@@ -11,11 +11,17 @@ const TIEBREAKER_AXIS_LABEL_X = GRAPH_LEFT - 18;
 export interface TiebreakerGraphProps {
   series: readonly TiebreakerGraphSeries[];
   tiebreaker: GameTiebreaker;
-  rounds: readonly Round[];
+  rounds?: readonly Round[];
+  endpointPlayerOrder?: readonly PlayerId[];
 }
 
-export function TiebreakerGraph({ series, tiebreaker, rounds }: TiebreakerGraphProps) {
-  const view = getTiebreakerGraphView({ series, tiebreaker, rounds });
+export function TiebreakerGraph({
+  series,
+  tiebreaker,
+  rounds,
+  endpointPlayerOrder,
+}: TiebreakerGraphProps) {
+  const view = getTiebreakerGraphView({ series, tiebreaker, rounds, endpointPlayerOrder });
   const chartStartX = view.roundLabels[0]?.x ?? 0;
   const chartEndX = view.roundLabels.at(-1)?.x ?? view.width;
 

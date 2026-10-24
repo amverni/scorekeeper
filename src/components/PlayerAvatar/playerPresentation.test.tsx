@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, expectTypeOf, it } from "vitest";
+import { deriveGameReadModel } from "../../data/api/gameReadModel";
 import { deriveStandings } from "../../data/api/standings";
 import type { CompletedGame, Player, PlayerIdentity } from "../../types";
 import { PlayerRow } from "../Create/Players/PlayerRow";
@@ -31,7 +32,7 @@ function renderPresentation(players: PlayerIdentity[]) {
         <PlayerRow key={player.id} player={player} />
       ))}
       <PlayerAvatarStack players={players} />
-      <Scoreboard game={game} players={players} rounds={[]} />
+      <Scoreboard view={deriveGameReadModel({ game, players, rounds: [] })} />
       {getStandingsDisplayRows(standings).map((row) => (
         <StandingsRow key={row.player.id} row={row} />
       ))}

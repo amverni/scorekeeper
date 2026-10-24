@@ -20,6 +20,19 @@ Routes -> Components -> TanStack Query -> domain API -> IndexedDB. Query keys
 separate the Scorekeepers, while Player mutations invalidate dependent views in
 both. Totals, Standings, graphs, and result snapshots are derived in the API layer.
 
+Phase 10 views share `gamesApi.getView()` through `gameViewOptions()`. A single
+readonly transaction loads the Game, its live Players (or completed snapshots),
+and Rounds. One interpretation supplies ordered scorecard columns, dealer
+indicators, per-Round/running values, phase progress, Standings, graph series,
+and graph endpoint order. Completion uses that same interpretation through the
+existing Standings adapter. The raw Game/Round APIs remain available.
+
+The read model keeps source Rounds and score entries separate from derived
+values. Existing records contain aggregate scores, not Points Card Breakdowns;
+the read model does not reconstruct unavailable card counters. This prefactor
+does not change the schema, scoring rules, completion thresholds, or supported
+correction and membership workflows.
+
 ## Navigation and presentation
 
 The client-only SPA uses hash routes beneath the configured GitHub Pages base

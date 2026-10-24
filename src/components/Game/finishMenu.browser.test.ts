@@ -402,12 +402,8 @@ it.each(
     const { game } = await seed(page, owner);
     const url = `${appUrl}#${gamePath(owner, game.id)}`;
     await page.evaluate(`(async () => {
-      ${
-        owner === "phase10"
-          ? 'const { roundsApi: api } = await import("/scorekeeper/src/data/api/rounds.ts");'
-          : apiImport(owner)
-      }
-      const method = ${JSON.stringify(owner === "phase10" ? "getByGameId" : "getScoreboard")};
+      ${apiImport(owner)}
+      const method = ${JSON.stringify(owner === "phase10" ? "getView" : "getScoreboard")};
       const original = api[method];
       const ready = new Promise(resolve => { window.releaseMenuRead = resolve; });
       api[method] = async (...args) => {

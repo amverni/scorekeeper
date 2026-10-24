@@ -12,7 +12,7 @@ import type {
   Round,
 } from "../../types";
 import { closeDB, getDB } from "../db";
-import { gameDetailOptions } from "../hooks/useGames";
+import { gameDetailOptions, gameViewOptions } from "../hooks/useGames";
 import {
   activeGenericGamesOptions,
   genericGameDetailOptions,
@@ -818,6 +818,14 @@ it("uses scoped generic query keys with explicit missing and wrong-owner detail 
     expect(await client.fetchQuery(genericGameDetailOptions("missing"))).toBeNull();
     expect(await client.fetchQuery(gameDetailOptions(generic.id))).toBeNull();
     expect(await client.fetchQuery(gameDetailOptions("missing"))).toBeNull();
+    expect(await client.fetchQuery(gameViewOptions(generic.id))).toBeNull();
+    expect(await client.fetchQuery(gameViewOptions("missing"))).toBeNull();
+    expect(await client.fetchQuery(gameViewOptions(phase.id))).toMatchObject({
+      game: phase,
+      rounds: [],
+      players: [{ id: amy.id, tiebreakerTotal: 0 }],
+    });
+    expect(await client.fetchQuery(gameDetailOptions(phase.id))).toEqual(phase);
   } finally {
     client.clear();
   }

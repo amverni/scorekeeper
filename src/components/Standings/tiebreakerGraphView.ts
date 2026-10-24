@@ -31,6 +31,7 @@ export interface TiebreakerGraphViewInput {
   series: readonly TiebreakerGraphSeries[];
   tiebreaker: GameTiebreaker;
   rounds?: readonly Round[];
+  endpointPlayerOrder?: readonly PlayerId[];
 }
 
 export interface TiebreakerGraphView {
@@ -79,13 +80,18 @@ export function getTiebreakerGraphView({
   series,
   tiebreaker,
   rounds = [],
+  endpointPlayerOrder,
 }: TiebreakerGraphViewInput): TiebreakerGraphView {
   const roundNumbers = getRoundNumbers(series);
   const roundLabelStride = getRoundLabelStride(roundNumbers.length);
   const roundXByNumber = getRoundXByNumber(roundNumbers);
   const standingRange = getStandingRange(series);
-  const seriesOrder = new Map(series.map((graphSeries, index) => [graphSeries.player.id, index]));
-  const mostRecentRoundWin = getMostRecentRoundWinByPlayer(rounds);
+  const seriesOrder = new Map(
+    endpointPlayerOrder
+      ? endpointPlayerOrder.map((id, index) => [id, index])
+      : series.map((graphSeries, index) => [graphSeries.player.id, index]),
+  );
+  const mostRecentRoundWin = getMostRecentRoundWinByPlayer(endpointPlayerOrder ? [] : rounds);
   const viewSeries = series.map((graphSeries) => {
     const linePoints = graphSeries.points.map((point) => ({
       ...point,

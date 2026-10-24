@@ -5,6 +5,7 @@ import type {
   Game,
   GameId,
   GameListItem,
+  GameReadModel,
   PhaseId,
   PhasesCardPlayerGroups,
   Player,
@@ -21,6 +22,7 @@ import {
   saveActiveGame,
   withGameTransaction,
 } from "./gameLifecycle";
+import { deriveGameReadModel } from "./gameReadModel";
 import { getGamePlayers } from "./gameResults";
 import { resolveEarlyGameCompletion } from "./roundCompletion";
 import { deriveStandings } from "./standings";
@@ -66,6 +68,31 @@ export const gamesApi = {
     const db = await getDB();
     const game = await db.get("games", id);
     return game?.scorekeeper === "phase10" ? game : undefined;
+  },
+
+  async getView(id: GameId): Promise<GameReadModel | null> {
+    const db = await getDB();
+    const tx = db.transaction(["games", "players", "rounds"]);
+    const game = await tx.objectStore("games").get(id);
+    if (!game || game.scorekeeper !== "phase10") {
+      await tx.done;
+      return null;
+    }
+    const [players, rounds] = await Promise.all([
+      Promise.all(
+        (game.status === "active" ? game.activePlayers : []).map((playerId) =>
+          tx.objectStore("players").get(playerId),
+        ),
+      ),
+      tx.objectStore("rounds").index("by-game").getAll(id),
+    ]);
+    await tx.done;
+    assertPhaseRounds(rounds);
+    return deriveGameReadModel({
+      game,
+      players: players.filter((player): player is Player => player !== undefined),
+      rounds,
+    });
   },
 
   async getPhasePlayers(id: GameId): Promise<PhasesCardPlayerGroups> {

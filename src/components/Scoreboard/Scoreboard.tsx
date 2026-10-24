@@ -1,21 +1,19 @@
 import { useEffect, useRef, useState } from "react";
-import type { Game, PlayerIdentity, Round } from "../../types";
+import type { GameReadModel } from "../../types";
 import { AddRoundDialog } from "./AddRoundDialog";
 import { GhostRow } from "./GhostRow";
 import { RoundRow } from "./RoundRow";
 import { ScoreboardHeader } from "./ScoreboardHeader";
-import { getDealerId } from "./scoreboardUtils";
 import { useAddRoundDraft } from "./useAddRoundDraft";
 import "./scoreboard.css";
 
 interface ScoreboardProps {
-  game: Game;
-  rounds: Round[];
-  players: PlayerIdentity[];
+  view: GameReadModel;
   onGameCompleted?: () => void;
 }
 
-export function Scoreboard({ game, rounds, players, onGameCompleted }: ScoreboardProps) {
+export function Scoreboard({ view, onGameCompleted }: ScoreboardProps) {
+  const { game, rounds, players } = view;
   const [expandedRound, setExpandedRound] = useState<number | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [namesExpanded, setNamesExpanded] = useState(false);
@@ -35,21 +33,11 @@ export function Scoreboard({ game, rounds, players, onGameCompleted }: Scoreboar
     return () => document.removeEventListener("mousedown", handler);
   }, [expandedRound]);
 
-  const sortedRounds = rounds.slice().sort((a, b) => a.roundNumber - b.roundNumber);
-  const totalPhases = game.phaseSet.phases.length;
   const tiebreaker = game.settings.tiebreaker;
   const isActive = game.status === "active";
 
-  // Re-order players column-wise to match the active-player order (so the
-  // dealer rotation matches the visual order). Falls back to game.players.
-  const orderedIds = isActive ? game.activePlayers : game.players;
-  const playerById = new Map(players.map((p) => [p.id, p]));
-  const orderedPlayers = orderedIds
-    .map((id) => playerById.get(id))
-    .filter((p): p is PlayerIdentity => p !== undefined);
-
   const showGhost = isActive;
-  const draft = useAddRoundDraft(orderedPlayers, game.settings);
+  const draft = useAddRoundDraft(players, game.settings);
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
@@ -62,38 +50,31 @@ export function Scoreboard({ game, rounds, players, onGameCompleted }: Scoreboar
           className="scoreboard"
           style={
             {
-              "--player-count": orderedPlayers.length,
-              "--name-column-cap": orderedPlayers.length === 1 ? "calc(100cqw - 36px)" : "50cqw",
+              "--player-count": players.length,
+              "--name-column-cap": players.length === 1 ? "calc(100cqw - 36px)" : "50cqw",
             } as React.CSSProperties
           }
         >
           <ScoreboardHeader
-            players={orderedPlayers}
-            rounds={sortedRounds}
-            totalPhases={totalPhases}
-            tiebreaker={tiebreaker}
+            players={players}
             namesExpanded={namesExpanded}
             onToggleNames={() => setNamesExpanded((previous) => !previous)}
-            upcomingDealerId={
-              isActive ? getDealerId(sortedRounds.length + 1, game.activePlayers) : null
-            }
+            upcomingDealerId={view.upcomingDealerId}
           />
 
-          {sortedRounds.map((round, idx) => {
-            const isLastRow = idx === sortedRounds.length - 1;
+          {rounds.map((round, idx) => {
+            const isLastRow = idx === rounds.length - 1;
             return (
               <RoundRow
-                key={round.roundNumber}
+                key={round.source.roundNumber}
                 round={round}
-                allRounds={sortedRounds}
-                players={orderedPlayers}
-                game={game}
+                players={players}
                 tiebreaker={tiebreaker}
-                isExpanded={expandedRound === round.roundNumber}
+                isExpanded={expandedRound === round.source.roundNumber}
                 isLastRow={isLastRow}
                 onToggle={() =>
                   setExpandedRound((prev) =>
-                    prev === round.roundNumber ? null : round.roundNumber,
+                    prev === round.source.roundNumber ? null : round.source.roundNumber,
                   )
                 }
               />
@@ -102,10 +83,9 @@ export function Scoreboard({ game, rounds, players, onGameCompleted }: Scoreboar
 
           {showGhost && (
             <GhostRow
-              game={game}
-              rounds={sortedRounds}
-              players={orderedPlayers}
-              totalPhases={totalPhases}
+              nextRoundNumber={view.nextRoundNumber}
+              dealerId={view.upcomingDealerId}
+              players={players}
               onOpenAddRound={() => setDialogOpen(true)}
             />
           )}
@@ -117,7 +97,7 @@ export function Scoreboard({ game, rounds, players, onGameCompleted }: Scoreboar
           open={dialogOpen}
           onClose={setDialogOpen}
           game={game}
-          players={orderedPlayers}
+          players={players}
           draft={draft}
           onGameCompleted={onGameCompleted}
         />

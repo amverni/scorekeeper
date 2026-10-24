@@ -2,9 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, ChartNoAxesColumn } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { gameDetailOptions, useDeleteEmptyGame, useFinishGame } from "../../data/hooks/useGames";
-import { useGamePlayers } from "../../data/hooks/usePlayers";
-import { roundsListOptions } from "../../data/hooks/useRounds";
+import {
+  gameDetailOptions,
+  gameViewOptions,
+  useDeleteEmptyGame,
+  useFinishGame,
+} from "../../data/hooks/useGames";
 import type { GameId } from "../../types";
 import { CardBackground } from "../CardBackground/CardBackground";
 import { HeaderLogo } from "../Logo/HeaderLogo";
@@ -34,20 +37,19 @@ export function Game({ gameId }: GameProps) {
   const navigate = useNavigate();
   const checkedInitialStandingsGameId = useRef<GameId | null>(null);
   const gameQuery = useQuery(gameDetailOptions(gameId));
-  const { data: game } = gameQuery;
-  const playersQuery = useGamePlayers(game);
-  const { data: players } = playersQuery;
-  const roundsQuery = useQuery({ ...roundsListOptions(gameId), enabled: !!game });
-  const { data: rounds } = roundsQuery;
-  const hasLoadError = gameQuery.isError || playersQuery.isError || roundsQuery.isError;
-  const standingsReady = Boolean(game && players && rounds) && !hasLoadError;
+  const viewQuery = useQuery({ ...gameViewOptions(gameId), enabled: !!gameQuery.data });
+  const { data: view } = viewQuery;
+  const game = gameQuery.data === null ? null : (view?.game ?? gameQuery.data);
+  const hasLoadError = gameQuery.isError || viewQuery.isError;
+  const standingsReady = Boolean(view) && !hasLoadError;
   const actionReady =
     gameQuery.isSuccess &&
     !gameQuery.isFetching &&
     !gameQuery.isStale &&
-    roundsQuery.isSuccess &&
-    !roundsQuery.isFetching &&
-    !roundsQuery.isStale;
+    viewQuery.isSuccess &&
+    !viewQuery.isFetching &&
+    !viewQuery.isStale &&
+    Boolean(view);
   const showPhasesCardEntryButton = game ? shouldShowPhasesCardEntryButton(game.status) : true;
 
   useEffect(() => {
@@ -98,22 +100,19 @@ export function Game({ gameId }: GameProps) {
                 message="Unable to load this Game."
                 onRetry={() => {
                   if (gameQuery.isError) gameQuery.refetch();
-                  if (playersQuery.isError) playersQuery.refetch();
-                  if (roundsQuery.isError) roundsQuery.refetch();
+                  if (viewQuery.isError) viewQuery.refetch();
                 }}
               />
             )}
-            {game === null ? (
+            {game === null || view === null ? (
               <p className="text-text-secondary flex flex-1 items-center justify-center text-center">
                 This Game is no longer available.
               </p>
-            ) : game && players && rounds ? (
+            ) : view ? (
               <div className="min-h-0 flex-1" inert={hasLoadError}>
                 <Scoreboard
-                  key={game.id}
-                  game={game}
-                  rounds={rounds}
-                  players={players}
+                  key={view.game.id}
+                  view={view}
                   onGameCompleted={() => setStandingsOpen(true)}
                 />
               </div>
@@ -137,7 +136,7 @@ export function Game({ gameId }: GameProps) {
             <FinishGameMenu
               open={finishOpen}
               active={game?.status === "active"}
-              action={actionReady ? (rounds?.length === 0 ? "delete" : "finish") : null}
+              action={actionReady ? (view?.rounds.length === 0 ? "delete" : "finish") : null}
               onOpenChange={setFinishOpen}
               onPause={() => navigate({ to: "/phaseCompan10n" })}
               afterClose={() => {
@@ -167,15 +166,7 @@ export function Game({ gameId }: GameProps) {
           phaseSet={game.phaseSet}
         />
       )}
-      {game && players && rounds && (
-        <StandingsDialog
-          open={standingsOpen}
-          onClose={setStandingsOpen}
-          game={game}
-          players={players}
-          rounds={rounds}
-        />
-      )}
+      {view && <StandingsDialog open={standingsOpen} onClose={setStandingsOpen} view={view} />}
     </>
   );
 }

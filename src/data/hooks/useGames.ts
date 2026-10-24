@@ -12,6 +12,7 @@ export const gameKeys = {
   list: (activeOnly: boolean) => [...gameKeys.lists(), "rows", { activeOnly }] as const,
   details: () => [...gameKeys.all, "phase10", "detail"] as const,
   detail: (id: GameId) => [...gameKeys.details(), id] as const,
+  view: (id: GameId) => [...gameKeys.detail(id), "view"] as const,
   phasePlayers: (id: GameId) => [...gameKeys.detail(id), "phasePlayers"] as const,
 };
 
@@ -19,6 +20,14 @@ export function gameDetailOptions(id: GameId) {
   return queryOptions({
     queryKey: gameKeys.detail(id),
     queryFn: async () => (await gamesApi.getById(id)) ?? null,
+    enabled: !!id,
+  });
+}
+
+export function gameViewOptions(id: GameId) {
+  return queryOptions({
+    queryKey: gameKeys.view(id),
+    queryFn: () => gamesApi.getView(id),
     enabled: !!id,
   });
 }

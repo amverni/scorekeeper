@@ -369,6 +369,101 @@ it.each<GameTiebreaker>([
   }
 }, 60_000);
 
+it("keeps nonzero scorecard values, Standings and both graphs in agreement through save and reload", async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  page.setDefaultTimeout(5_000);
+  page.setDefaultNavigationTimeout(30_000);
+  try {
+    await page.goto(`${appUrl}#/phaseCompan10n/players`);
+    await page.getByText("No players yet", { exact: true }).waitFor();
+    const { game, players } = await seedCompletionGame(page, 3, "lowestPoints");
+    await seedSavedRound(page, game, players, false);
+    await page.goto(`${appUrl}#/phaseCompan10n/game/${game.id}`);
+    await page.getByRole("button", { name: "Add round 2", exact: true }).click();
+    const entry = page.getByRole("dialog");
+    await entry.getByRole("button", { name: /Round Winner/ }).click();
+    await page.getByRole("option", { name: "Bob Stone", exact: true }).click();
+    await entry.getByRole("tab", { name: "Amy Jones", exact: true }).click();
+    await entry.getByRole("button", { name: "Passed", exact: true }).click();
+    await entry.getByRole("button", { name: /^Add 5 points/ }).click();
+    await entry.getByRole("button", { name: /^Add 5 points/ }).click();
+    await entry.getByRole("button", { name: "Save round", exact: true }).click();
+    await entry.waitFor({ state: "detached" });
+
+    for (const reload of [false, true]) {
+      if (reload) await page.reload();
+      await page.getByRole("button", { name: "Add round 3", exact: true }).waitFor();
+      const scoreboard = page.getByRole("region", { name: "Scoreboard", exact: true });
+      const headers = scoreboard.locator(".scoreboard-cell--sticky-top");
+      expect(await headers.nth(0).innerText()).toContain("Upcoming Round Dealer: Amy Jones");
+      expect(await headers.nth(0).getByText("3", { exact: true }).count()).toBe(1);
+      expect(await headers.nth(0).getByText("10 pts", { exact: true }).count()).toBe(1);
+      expect(await headers.nth(1).getByText("2", { exact: true }).count()).toBe(1);
+      expect(await headers.nth(1).getByText("20 pts", { exact: true }).count()).toBe(1);
+      await scoreboard.getByRole("button", { name: "Round 2", exact: true }).click();
+      const expanded = scoreboard.locator(".scoreboard-extras--open");
+      await expect
+        .poll(async () => (await expanded.nth(0).innerText()).trim())
+        .toBe("10 pts\n10 pts");
+      await expect
+        .poll(async () => (await expanded.nth(1).innerText()).trim())
+        .toBe("0 pts\n20 pts");
+
+      const standings = await openStandings(page);
+      const results = standings.getByRole("tabpanel", { name: "Standings", exact: true });
+      const rows = results.getByRole("listitem");
+      expect(await rows.nth(0).innerText()).toContain("Amy Jones");
+      expect(await rows.nth(0).innerText()).toContain("Ph 3");
+      expect(await rows.nth(0).innerText()).toContain("10 pts");
+      expect(await rows.nth(1).innerText()).toContain("Bob Stone");
+      expect(await rows.nth(1).innerText()).toContain("Ph 2");
+      expect(await rows.nth(1).innerText()).toContain("20 pts");
+      await standings.getByRole("tab", { name: "Phases", exact: true }).click();
+      const phases = standings.getByRole("table", { name: "Phase progress details", exact: true });
+      expect(await phases.getByRole("row").nth(1).getByRole("cell").allTextContents()).toEqual([
+        "Phase 1",
+        "Phase 2",
+        "Phase 3",
+      ]);
+      expect(await phases.getByRole("row").nth(2).getByRole("cell").allTextContents()).toEqual([
+        "Phase 1",
+        "Phase 1",
+        "Phase 2",
+      ]);
+      await standings.getByRole("tab", { name: "Tiebreaker", exact: true }).click();
+      const totals = standings.getByRole("table", {
+        name: "Tiebreaker progress details",
+        exact: true,
+      });
+      expect(await totals.getByRole("row").nth(1).getByRole("cell").allTextContents()).toEqual([
+        "0 pts",
+        "0 pts",
+        "10 pts",
+      ]);
+      expect(await totals.getByRole("row").nth(2).getByRole("cell").allTextContents()).toEqual([
+        "0 pts",
+        "20 pts",
+        "20 pts",
+      ]);
+      await page.keyboard.press("Escape");
+      await standings.waitFor({ state: "detached" });
+    }
+    expect(await readRounds(page, game.id)).toMatchObject([
+      { roundNumber: 1, roundWinnerId: players[0].id },
+      {
+        roundNumber: 2,
+        roundWinnerId: players[1].id,
+        scores: [
+          { playerId: players[0].id, currentPhase: 2, phaseStatus: "completed", score: 10 },
+          { playerId: players[1].id, currentPhase: 1, phaseStatus: "completed", score: 0 },
+        ],
+      },
+    ]);
+  } finally {
+    await page.close();
+  }
+}, 30_000);
+
 it("restores Points entries when switching, clearing, or downgrading an explicit winner", async () => {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   page.setDefaultTimeout(5_000);
@@ -1009,6 +1104,26 @@ it.each([
     expect(await results.innerText()).toContain("Amy Jones");
     expect(await results.innerText()).toContain("Bob Stone");
     expect(await results.innerText()).not.toContain("Zoe Quinn");
+    await page.getByRole("tab", { name: "Phases", exact: true }).click();
+    const phases = page.getByRole("table", { name: "Phase progress details", exact: true });
+    expect(await phases.getByRole("row").nth(1).getByRole("cell").allTextContents()).toEqual([
+      "Phase 1",
+      "Phase 2",
+    ]);
+    expect(await phases.getByRole("row").nth(2).getByRole("cell").allTextContents()).toEqual([
+      "Phase 1",
+      tied ? "Phase 2" : "Phase 1",
+    ]);
+    await page.getByRole("tab", { name: "Tiebreaker", exact: true }).click();
+    const totals = page.getByRole("table", { name: "Tiebreaker progress details", exact: true });
+    expect(await totals.getByRole("row").nth(1).getByRole("cell").allTextContents()).toEqual([
+      "0 pts",
+      "0 pts",
+    ]);
+    expect(await totals.getByRole("row").nth(2).getByRole("cell").allTextContents()).toEqual([
+      "0 pts",
+      tied ? "0 pts" : "20 pts",
+    ]);
     await page.keyboard.press("Escape");
     await page.getByRole("dialog").waitFor({ state: "detached" });
     await page.getByRole("region", { name: "Scoreboard", exact: true }).click();

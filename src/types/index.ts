@@ -19,6 +19,12 @@ export type {
 } from "./gameLifecycle";
 export type { GameListItem } from "./gameList";
 export type {
+  GamePlayerView,
+  GameReadModel,
+  GameRoundScoreView,
+  GameRoundView,
+} from "./gameReadModel";
+export type {
   ActiveGenericGame,
   CompletedGenericGame,
   CreateGenericGameInput,

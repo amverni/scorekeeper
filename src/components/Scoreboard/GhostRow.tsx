@@ -1,19 +1,14 @@
-import type { ActiveGame, PlayerIdentity, Round } from "../../types";
+import type { GamePlayerView, PlayerId } from "../../types";
 import { PlayerResultCell } from "./PlayerResultCell";
-import { getCurrentPhase, getDealerId } from "./scoreboardUtils";
 
 interface GhostRowProps {
-  game: ActiveGame;
-  rounds: Round[];
-  players: PlayerIdentity[];
-  totalPhases: number;
+  nextRoundNumber: number;
+  dealerId: PlayerId | null;
+  players: GamePlayerView[];
   onOpenAddRound: () => void;
 }
 
-export function GhostRow({ game, rounds, players, totalPhases, onOpenAddRound }: GhostRowProps) {
-  const nextRoundNumber = rounds.length + 1;
-  const dealerId = getDealerId(nextRoundNumber, game.activePlayers);
-
+export function GhostRow({ nextRoundNumber, dealerId, players, onOpenAddRound }: GhostRowProps) {
   return (
     <>
       <button
@@ -32,7 +27,6 @@ export function GhostRow({ game, rounds, players, totalPhases, onOpenAddRound }:
 
       {players.map((player, idx) => {
         const isLast = idx === players.length - 1;
-        const phaseNumber = getCurrentPhase(player.id, rounds, totalPhases);
         return (
           <div
             key={player.id}
@@ -41,7 +35,7 @@ export function GhostRow({ game, rounds, players, totalPhases, onOpenAddRound }:
             }`}
           >
             <PlayerResultCell
-              phaseNumber={phaseNumber}
+              phaseNumber={player.progress.currentPhase}
               isDealer={dealerId === player.id}
               isRoundWinner={false}
               variant="ghost"

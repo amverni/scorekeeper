@@ -28,7 +28,7 @@ export function useAddRound(gameId: GameId) {
       scores: ArrayAtLeastOne<AddRoundScoreInput>;
       roundWinnerId: PlayerId | null;
     }) => roundsApi.add({ gameId, ...data }),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       queryClient.setQueryData(roundKeys.list(gameId), (current: Round[] | undefined) => {
         if (!current) return current;
         return [
@@ -41,9 +41,11 @@ export function useAddRound(gameId: GameId) {
         queryClient.invalidateQueries({ queryKey: phaseKeys.all });
         queryClient.invalidateQueries({ queryKey: phaseSetKeys.all });
       }
-      queryClient.invalidateQueries({ queryKey: roundKeys.lists() });
       // Adding a round bumps the game's `lastActivityAt`, so re-sort the home list.
-      queryClient.invalidateQueries({ queryKey: gameKeys.all });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: roundKeys.lists() }),
+        queryClient.invalidateQueries({ queryKey: gameKeys.all }),
+      ]);
     },
   });
 }

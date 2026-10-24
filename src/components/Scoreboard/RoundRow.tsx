@@ -1,17 +1,10 @@
-import type { Game, GameTiebreaker, PlayerId, PlayerIdentity, Round } from "../../types";
+import type { GameRoundView, GameTiebreaker, PlayerIdentity } from "../../types";
+import { formatTiebreakerValue } from "../../utils";
 import { PlayerResultCell } from "./PlayerResultCell";
-import {
-  formatTiebreaker,
-  getDealerId,
-  getRunningTiebreakerTotal,
-  getTiebreakerValue,
-} from "./scoreboardUtils";
 
 interface RoundRowProps {
-  round: Round;
-  allRounds: Round[];
+  round: GameRoundView;
   players: PlayerIdentity[];
-  game: Game;
   tiebreaker: GameTiebreaker;
   isExpanded: boolean;
   isLastRow: boolean;
@@ -19,17 +12,14 @@ interface RoundRowProps {
 }
 
 export function RoundRow({
-  round,
-  allRounds,
+  round: view,
   players,
-  game,
   tiebreaker,
   isExpanded,
   isLastRow,
   onToggle,
 }: RoundRowProps) {
-  const activePlayers: PlayerId[] = game.status === "active" ? game.activePlayers : game.players;
-  const dealerId = getDealerId(round.roundNumber, activePlayers);
+  const { source: round, dealerId } = view;
 
   const lastColClass = (idx: number) =>
     idx === players.length - 1 ? "scoreboard-cell--last-col" : "";
@@ -50,15 +40,9 @@ export function RoundRow({
       </button>
 
       {players.map((player, idx) => {
-        const score = round.scores.find((s) => s.playerId === player.id);
+        const entry = view.scores[idx];
+        const score = entry.source;
         const phaseNumber = score?.currentPhase ?? 0;
-        const tbValue = getTiebreakerValue(round, player.id, tiebreaker);
-        const runningTotal = getRunningTiebreakerTotal(
-          allRounds,
-          player.id,
-          tiebreaker,
-          round.roundNumber,
-        );
 
         return (
           // biome-ignore lint/a11y/noStaticElementInteractions: keyboard users toggle via the sibling round-number <button> with aria-expanded; this cell is a mouse/touch-only enlarged click target.
@@ -78,11 +62,11 @@ export function RoundRow({
                 <div className={`scoreboard-extras ${isExpanded ? "scoreboard-extras--open" : ""}`}>
                   <div>
                     <span className="text-[14px] leading-none text-text-secondary tabular-nums">
-                      {formatTiebreaker(tbValue, tiebreaker)}
+                      {formatTiebreakerValue(entry.tiebreakerValue, tiebreaker)}
                     </span>
                     <span aria-hidden className="my-0.5 h-px w-3/4 shrink-0 bg-text-secondary/70" />
                     <span className="text-[12px] leading-none text-text-secondary/70 tabular-nums">
-                      {formatTiebreaker(runningTotal, tiebreaker)}
+                      {formatTiebreakerValue(entry.runningTiebreakerTotal, tiebreaker)}
                     </span>
                   </div>
                 </div>
