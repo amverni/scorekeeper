@@ -1,6 +1,13 @@
 import type { GameId, RoundMetadata } from "./gameLifecycle";
-import type { PlayerId } from "./player";
+import type { PlayerId, PlayerIdentity } from "./player";
 import type { ArrayAtLeastOne } from "./utils";
+
+export type GenericRoundId = string;
+
+interface GenericRoundMetadata extends RoundMetadata {
+  id?: GenericRoundId;
+  revision?: number;
+}
 
 export interface GenericPointsScore {
   playerId: PlayerId;
@@ -13,13 +20,13 @@ export interface GenericPassFailScore {
   passed: boolean;
 }
 
-export interface GenericPointsRound extends RoundMetadata {
+export interface GenericPointsRound extends GenericRoundMetadata {
   scorekeeper: "generic";
   mode: "points";
   scores: ArrayAtLeastOne<GenericPointsScore>;
 }
 
-export interface GenericPassFailRound extends RoundMetadata {
+export interface GenericPassFailRound extends GenericRoundMetadata {
   scorekeeper: "generic";
   mode: "passFail";
   scores: ArrayAtLeastOne<GenericPassFailScore>;
@@ -30,7 +37,7 @@ export interface GenericWinnerScore {
   won: boolean;
 }
 
-export interface GenericSingleRoundWinnerRound extends RoundMetadata {
+export interface GenericSingleRoundWinnerRound extends GenericRoundMetadata {
   scorekeeper: "generic";
   mode: "singleRoundWinner";
   scores: ArrayAtLeastOne<GenericWinnerScore>;
@@ -63,3 +70,16 @@ export type AddGenericRoundInput =
   | AddGenericPointsRoundInput
   | AddGenericWinnerRoundInput
   | AddGenericPassFailRoundInput;
+
+export interface GenericPointsRoundEditor {
+  round: GenericPointsRound & { id: GenericRoundId; revision: number };
+  players: PlayerIdentity[];
+  tiebreakerEnabled: boolean;
+  version: string;
+}
+
+export interface EditGenericPointsRoundInput extends AddGenericPointsRoundInput {
+  roundId: GenericRoundId;
+  version: string;
+  confirmImpact?: boolean;
+}

@@ -18,6 +18,8 @@ it("saves an all-fail Round with explicit outcomes for every Player and reloads 
     scores: players.map((player) => ({ playerId: player.id, passed: false })),
   });
   expect(round).toEqual({
+    id: expect.any(String),
+    revision: 0,
     gameId: game.id,
     scorekeeper: "generic",
     mode: "passFail",

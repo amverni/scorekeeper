@@ -63,6 +63,8 @@ it("saves explicit signed Points and reloads Round values and running totals in 
     ],
   });
   expect(first).toEqual({
+    id: expect.any(String),
+    revision: 0,
     scorekeeper: "generic",
     mode: "points",
     gameId: game.id,

@@ -1,9 +1,15 @@
 import { Check, Plus, X } from "lucide-react";
 import { type CSSProperties, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import type { GenericScoreboardView, GenericScoreTotal } from "../../types";
+import type {
+  GenericRoundId,
+  GenericScoreboardView,
+  GenericScoreTotal,
+  PlayerId,
+} from "../../types";
 import { ScoreboardPlayerName } from "../Scoreboard/ScoreboardPlayerName";
-import { DealerMarker } from "../ui";
+import { Button, DealerMarker } from "../ui";
 import { GenericAddRoundDialog } from "./GenericAddRoundDialog";
+import { GenericEditRoundDialog } from "./GenericEditRoundDialog";
 import { GenericPassFailRoundDialog } from "./GenericPassFailRoundDialog";
 import { PassFailOutcome } from "./PassFailOutcome";
 import "../Scoreboard/scoreboard.css";
@@ -21,6 +27,10 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
   const [addOpen, setAddOpen] = useState(false);
   const [namesExpanded, setNamesExpanded] = useState(false);
   const [expandedRound, setExpandedRound] = useState<number | null>(null);
+  const [editTarget, setEditTarget] = useState<{
+    roundId: GenericRoundId;
+    playerId: PlayerId;
+  } | null>(null);
   const rootRef = useRef<HTMLElement>(null);
   const resultsId = useId();
 
@@ -58,7 +68,7 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
   }, [view.players.length, view.rounds]);
 
   useEffect(() => {
-    if (expandedRound === null) return;
+    if (expandedRound === null || addOpen || editTarget) return;
     const collapseOutside = (event: PointerEvent) => {
       if (event.target instanceof Node && !rootRef.current?.contains(event.target)) {
         setExpandedRound(null);
@@ -66,7 +76,7 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
     };
     document.addEventListener("pointerdown", collapseOutside);
     return () => document.removeEventListener("pointerdown", collapseOutside);
-  }, [expandedRound]);
+  }, [expandedRound, addOpen, editTarget]);
 
   function toggleRound(roundNumber: number) {
     setExpandedRound((previous) => (previous === roundNumber ? null : roundNumber));
@@ -225,6 +235,26 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
                               {score.totalTiebreaker}
                             </span>
                           )}
+                          {view.game.status === "active" &&
+                            view.game.settings.mode === "points" &&
+                            round.id && (
+                              <Button
+                                type="button"
+                                aria-label={`Edit Round ${round.roundNumber} for ${view.players[index].name}`}
+                                className="mt-2 min-h-11 px-3 text-xs"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  if (round.id) {
+                                    setEditTarget({
+                                      roundId: round.id,
+                                      playerId: score.playerId,
+                                    });
+                                  }
+                                }}
+                              >
+                                Edit
+                              </Button>
+                            )}
                         </div>
                       </div>
                     )}
@@ -291,6 +321,15 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
             }
           />
         ))}
+      {editTarget && view.game.status === "active" && (
+        <GenericEditRoundDialog
+          key={editTarget.roundId}
+          gameId={view.game.id}
+          roundId={editTarget.roundId}
+          focusPlayerId={editTarget.playerId}
+          onClose={() => setEditTarget(null)}
+        />
+      )}
     </>
   );
 }

@@ -62,6 +62,8 @@ it("saves explicit wins and losses in Game Creation Order and reloads accumulate
   });
 
   expect(first).toEqual({
+    id: expect.any(String),
+    revision: 0,
     scorekeeper: "generic",
     mode: "singleRoundWinner",
     gameId: game.id,
@@ -434,6 +436,7 @@ it.each([
     tiebreakerGraph: null,
     players: [{ id: amy.id, name: "Amy", color: "Jam", totalWins: 2 }],
     rounds: [1, 2].map((roundNumber) => ({
+      id: expect.any(String),
       roundNumber,
       dealerId: dealer ? amy.id : null,
       scores: [{ playerId: amy.id, won: true, totalWins: roundNumber }],
@@ -575,6 +578,8 @@ it("detaches a Generic Round draft across await and isolates returned Rounds and
   Object.assign(input, { mode: "points" });
   const round = await adding;
   expect(round).toEqual({
+    id: expect.any(String),
+    revision: 0,
     gameId: game.id,
     scorekeeper: "generic",
     mode: "singleRoundWinner",

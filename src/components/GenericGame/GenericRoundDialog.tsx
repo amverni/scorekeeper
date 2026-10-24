@@ -1,16 +1,46 @@
 import { DialogTitle } from "@headlessui/react";
 import { Check, Loader2 } from "lucide-react";
-import { type ReactNode, useId, useState } from "react";
-import { useAddGenericRound } from "../../data/hooks/useGenericGames";
-import type { AddGenericRoundInput } from "../../types";
+import { type ReactNode, useId, useRef, useState } from "react";
+import {
+  useAddGenericRound,
+  useEditGenericRound,
+  usePreviewGenericRoundEdit,
+} from "../../data/hooks/useGenericGames";
+import type {
+  AddGenericRoundInput,
+  EditGenericPointsRoundInput,
+  GenericPointsRoundEditor,
+} from "../../types";
 import { Button, Dialog, DialogScrollArea, InlineError } from "../ui";
 
-export function useGenericRoundDialog(onClose: (open: boolean) => void) {
+export function useGenericRoundDialog(
+  onClose: (open: boolean) => void,
+  editor?: GenericPointsRoundEditor,
+) {
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<{
+    input: EditGenericPointsRoundInput;
+    resetDraft: () => void;
+  } | null>(null);
+  const submitting = useRef(false);
   const addRound = useAddGenericRound();
+  const previewEdit = usePreviewGenericRoundEdit();
+  const editRound = useEditGenericRound();
+  const isPending = addRound.isPending || previewEdit.isPending || editRound.isPending;
 
   async function saveRound(input: AddGenericRoundInput, resetDraft: () => void) {
-    await addRound.mutateAsync(input);
+    if (editor) {
+      if (input.mode !== "points") throw new Error("Only Points Rounds can be edited.");
+      const edit = { ...input, roundId: editor.round.id, version: editor.version };
+      const impact = await previewEdit.mutateAsync(edit);
+      if (impact.requiresConfirmation) {
+        setConfirmation({ input: edit, resetDraft });
+        return;
+      }
+      await editRound.mutateAsync(edit);
+    } else {
+      await addRound.mutateAsync(input);
+    }
     resetDraft();
     onClose(false);
   }
@@ -20,15 +50,36 @@ export function useGenericRoundDialog(onClose: (open: boolean) => void) {
   }
 
   function handleSubmit(submit: () => Promise<void>) {
-    if (addRound.isPending) return;
+    if (submitting.current) return;
+    submitting.current = true;
     clearSubmitError();
-    submit().catch((error: unknown) => {
-      setSubmitError(error instanceof Error ? error.message : "Unable to save Round.");
-    });
+    submit()
+      .catch((error: unknown) => {
+        setConfirmation(null);
+        setSubmitError(error instanceof Error ? error.message : "Unable to save Round.");
+      })
+      .finally(() => {
+        submitting.current = false;
+      });
   }
 
   return {
-    isPending: addRound.isPending,
+    isPending,
+    confirmationOpen: confirmation !== null,
+    cancelConfirmation: () => {
+      if (!submitting.current) setConfirmation(null);
+    },
+    confirmSave: () =>
+      handleSubmit(async () => {
+        if (!confirmation) return;
+        await editRound.mutateAsync({ ...confirmation.input, confirmImpact: true });
+        setConfirmation(null);
+        confirmation.resetDraft();
+        onClose(false);
+      }),
+    closeEditor: (open: boolean) => {
+      if (!editor || !submitting.current) onClose(open);
+    },
     submitError,
     clearSubmitError,
     saveRound,
@@ -45,6 +96,8 @@ interface GenericRoundDialogProps {
   children: ReactNode;
   actions: (formId: string) => ReactNode;
   minBodyHeight?: number;
+  title?: string;
+  dismissible?: boolean;
 }
 
 export function GenericRoundDialog({
@@ -56,16 +109,19 @@ export function GenericRoundDialog({
   children,
   actions,
   minBodyHeight,
+  title = "Add Round",
+  dismissible = true,
 }: GenericRoundDialogProps) {
   const formId = useId();
   return (
     <Dialog
       open={open}
       onClose={onClose}
+      dismissible={dismissible}
       sizing="workspace"
       bodyScroll="custom"
       minBodyHeight={minBodyHeight}
-      header={<DialogTitle className="sr-only">Add Round</DialogTitle>}
+      header={<DialogTitle className="sr-only">{title}</DialogTitle>}
       actions={
         <>
           {submitError && (

@@ -301,7 +301,17 @@ it.each(
       await cell.tap();
       expect(await box(value)).toEqual(before);
       expect((await box(cell)).height).toBe(
-        settings.tiebreaker ? (playerCount === 1 ? 97 : 98) : playerCount === 1 ? 65 : 66,
+        settings.mode === "points"
+          ? settings.tiebreaker
+            ? playerCount === 1
+              ? 151
+              : 152
+            : playerCount === 1
+              ? 119
+              : 120
+          : playerCount === 1
+            ? 65
+            : 66,
       );
       for (const detail of await cell.locator(".scoreboard-extras span:has(> .sr-only)").all()) {
         const bounds = await box(detail);
@@ -437,8 +447,11 @@ it.each(
     const card = page.getByRole("region", { name: "Scoreboard", exact: true });
     const row = card.getByRole("row").nth(1);
     const cell = row.getByRole("cell").first();
-    const control = row.getByRole("button");
-    const next = card.getByRole("row").nth(2).getByRole("button");
+    const control = row.getByRole("button", { name: /^(Expand|Collapse) Round 1$/ });
+    const next = card
+      .getByRole("row")
+      .nth(2)
+      .getByRole("button", { name: /^(Expand|Collapse) Round 2$/ });
     const before = await box(control.locator("span"));
     await cell.tap();
     expect(await control.getAttribute("aria-expanded")).toBe("true");
@@ -447,7 +460,7 @@ it.each(
     );
     const after = await box(control.locator("span"));
     expect(after.y).toBe(before.y);
-    expect((await box(row.getByRole("rowheader"))).height).toBeLessThan(100);
+    expect((await box(row.getByRole("rowheader"))).height).toBe((await box(cell)).height);
     if (settings.tiebreaker) {
       expect(await cell.innerText()).toContain("Accumulated Tiebreaker: 4");
     }

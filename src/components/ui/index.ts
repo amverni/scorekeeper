@@ -5,6 +5,7 @@ export { ColorPicker } from "./ColorPicker/ColorPicker";
 export { DealerMarker } from "./DealerMarker/DealerMarker";
 export { Dialog } from "./Dialog/Dialog";
 export { DialogScrollArea } from "./Dialog/DialogScrollArea";
+export { EditImpactDialog } from "./Dialog/EditImpactDialog";
 export { FavoriteAccent } from "./FavoriteAccent/FavoriteAccent";
 export type { GlassSurfaceProps } from "./GlassSurface/GlassSurface";
 export { GlassSurface, GlassSurfaceButton } from "./GlassSurface/GlassSurface";

@@ -2,9 +2,11 @@ import type { AddGenericRoundInput, GameId, GenericRound } from "../../types";
 import { parseGenericPoints } from "../../utils/genericPoints";
 import { getDB } from "../db";
 import { requirePlayers, withGameTransaction } from "./gameLifecycle";
+import { genericRoundEdits } from "./genericRoundEdits";
 import { assertGenericGame, deriveGenericScoreboard, orderGenericScores } from "./genericScoring";
 
 export const genericRoundsApi = {
+  ...genericRoundEdits,
   async add(input: AddGenericRoundInput): Promise<GenericRound> {
     const gameId = input.gameId;
     if (
@@ -54,6 +56,8 @@ export const genericRoundsApi = {
       const rounds = tx.objectStore("rounds");
       const existing = await rounds.index("by-game").getAll(gameId);
       const metadata = {
+        id: crypto.randomUUID(),
+        revision: 0,
         gameId,
         scorekeeper: "generic" as const,
         roundNumber: existing.reduce((latest, saved) => Math.max(latest, saved.roundNumber), 0) + 1,

@@ -530,7 +530,7 @@ it("keeps a modal Points draft on close, saves explicit zero and negatives, and 
   }
 }, 60_000);
 
-it("shows cumulative headers, read-only Round expansion, and shared competition places without changing columns", async () => {
+it("shows cumulative headers, editable Round details, and shared competition places without changing columns", async () => {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   try {
     await openGame(page, ["Maya", "Rowan", "Lee"]);
@@ -547,7 +547,8 @@ it("shows cumulative headers, read-only Round expansion, and shared competition 
     expect(
       await page.getByRole("cell", { name: "Maya, Round 1: -10 Points", exact: true }).innerText(),
     ).toContain("Accumulated Points: -10");
-    expect(await page.getByRole("button", { name: /Edit|Delete/ }).count()).toBe(0);
+    expect(await page.getByRole("button", { name: /^Edit Round 1 for / }).count()).toBe(3);
+    expect(await page.getByRole("button", { name: /Delete/ }).count()).toBe(0);
     await page.getByRole("button", { name: "Open Standings", exact: true }).click();
     const standings = page.getByRole("dialog", { name: "Standings", exact: true });
     const rows = standings.getByRole("listitem");

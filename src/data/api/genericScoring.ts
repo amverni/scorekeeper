@@ -96,6 +96,13 @@ export function deriveGenericScoreboard(
             : orderPassFailScores(game.players, round.scores);
       return {
         roundNumber: round.roundNumber,
+        ...(typeof round.id === "string" &&
+        round.id.length > 0 &&
+        round.revision !== undefined &&
+        Number.isSafeInteger(round.revision) &&
+        round.revision >= 0
+          ? { id: round.id }
+          : {}),
         dealerId: game.settings.dealer ? getDealerId(round.roundNumber, game.players) : null,
         scores: ordered.map((score) => {
           const { playerId } = score;

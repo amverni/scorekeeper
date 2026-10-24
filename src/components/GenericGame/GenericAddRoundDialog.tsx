@@ -1,10 +1,10 @@
 import { Tab, TabGroup, TabPanel } from "@headlessui/react";
 import { useForm } from "@tanstack/react-form";
 import { useEffect, useRef, useState } from "react";
-import type { GameId, PlayerId, PlayerIdentity } from "../../types";
+import type { GameId, GenericPointsRoundEditor, PlayerId, PlayerIdentity } from "../../types";
 import { parseGenericPoints } from "../../utils/genericPoints";
 import { PlayerAvatar } from "../PlayerAvatar/PlayerAvatar";
-import { SwipeableTabPanels, TabList, tabClasses } from "../ui";
+import { EditImpactDialog, SwipeableTabPanels, TabList, tabClasses } from "../ui";
 import {
   GenericRoundDialog,
   GenericRoundDialogActions,
@@ -20,6 +20,8 @@ interface GenericAddRoundDialogProps {
   players: PlayerIdentity[];
   mode: "points" | "singleRoundWinner";
   tiebreakerEnabled: boolean;
+  editor?: GenericPointsRoundEditor;
+  focusPlayerId?: PlayerId;
 }
 
 function pointsError(
@@ -52,13 +54,26 @@ export function GenericAddRoundDialog({
   players,
   mode,
   tiebreakerEnabled,
+  editor,
+  focusPlayerId,
 }: GenericAddRoundDialogProps) {
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedIndex, setSelectedIndex] = useState(() =>
+    Math.max(
+      0,
+      players.findIndex((player) => player.id === focusPlayerId),
+    ),
+  );
   const tabListRef = useRef<HTMLDivElement>(null);
-  const roundDialog = useGenericRoundDialog(onClose);
+  const roundDialog = useGenericRoundDialog(onClose, editor);
   const form = useForm({
     defaultValues: {
-      scores: players.map((player) => ({ playerId: player.id, points: "0", tiebreaker: "0" })),
+      scores: editor
+        ? editor.round.scores.map(({ playerId, points, tiebreaker }) => ({
+            playerId,
+            points: String(points),
+            tiebreaker: String(tiebreaker ?? 0),
+          }))
+        : players.map((player) => ({ playerId: player.id, points: "0", tiebreaker: "0" })),
       winnerId: null as PlayerId | null,
     },
     onSubmit: async ({ value }) => {
@@ -97,124 +112,142 @@ export function GenericAddRoundDialog({
   }, [open, selectedIndex]);
 
   return (
-    <GenericRoundDialog
-      open={open}
-      onClose={onClose}
-      isPending={roundDialog.isPending}
-      onSubmit={() => roundDialog.handleSubmit(form.handleSubmit)}
-      submitError={mode === "points" ? null : roundDialog.submitError}
-      minBodyHeight={mode === "points" ? 240 : undefined}
-      actions={(formId) => (
-        <form.Subscribe
-          selector={(state) => ({
-            canSave:
-              mode === "points"
-                ? state.values.scores.every((score) => !entryError(score, tiebreakerEnabled))
-                : state.values.winnerId !== null,
-            submitting: state.isSubmitting,
-          })}
-        >
-          {({ canSave, submitting }) => (
-            <GenericRoundDialogActions formId={formId} submitting={submitting} canSave={canSave}>
-              {mode === "singleRoundWinner" && (
-                <output aria-live="polite" className="text-sm text-text-secondary">
-                  {Number(canSave)}/1 winner selected
-                </output>
-              )}
-            </GenericRoundDialogActions>
-          )}
-        </form.Subscribe>
-      )}
-    >
-      {mode === "singleRoundWinner" ? (
-        <form.Field name="winnerId">
-          {(field) => (
-            <WinnerEntry
-              players={players}
-              value={field.state.value}
-              disabled={roundDialog.isPending}
-              onChange={(value) => {
-                roundDialog.clearSubmitError();
-                field.handleChange(value);
-              }}
-            />
-          )}
-        </form.Field>
-      ) : (
-        <TabGroup
-          selectedIndex={selectedIndex}
-          onChange={(index) => {
-            if (!roundDialog.isPending) setSelectedIndex(index);
-          }}
-          className="flex min-h-0 flex-1 flex-col"
-        >
-          <div ref={tabListRef} className="-mx-2 shrink-0 overflow-x-auto px-2 py-1">
-            <TabList className="w-max! min-w-full max-w-none!">
-              {players.map((player) => (
-                <Tab
-                  key={player.id}
-                  aria-label={player.name}
-                  title={player.name}
-                  disabled={roundDialog.isPending}
-                  className={[
-                    tabClasses,
-                    "inline-flex min-h-10 min-w-24 items-center justify-center gap-2 px-3 data-focus:outline-text-secondary!",
-                  ].join(" ")}
-                >
-                  <PlayerAvatar player={player} size={14} />
-                  <span className="max-w-40 truncate">{player.name}</span>
-                </Tab>
-              ))}
-            </TabList>
-          </div>
-          <SwipeableTabPanels
+    <>
+      <GenericRoundDialog
+        open={open}
+        onClose={roundDialog.closeEditor}
+        title={editor ? "Edit Round" : "Add Round"}
+        dismissible={!editor || !roundDialog.isPending}
+        isPending={roundDialog.isPending}
+        onSubmit={() => roundDialog.handleSubmit(form.handleSubmit)}
+        submitError={mode === "points" ? null : roundDialog.submitError}
+        minBodyHeight={mode === "points" ? 240 : undefined}
+        actions={(formId) => (
+          <form.Subscribe
+            selector={(state) => ({
+              canSave:
+                mode === "points"
+                  ? state.values.scores.every((score) => !entryError(score, tiebreakerEnabled))
+                  : state.values.winnerId !== null,
+              submitting: state.isSubmitting,
+            })}
+          >
+            {({ canSave, submitting }) => (
+              <GenericRoundDialogActions
+                formId={formId}
+                submitting={submitting || roundDialog.isPending}
+                canSave={canSave}
+              >
+                {mode === "singleRoundWinner" && (
+                  <output aria-live="polite" className="text-sm text-text-secondary">
+                    {Number(canSave)}/1 winner selected
+                  </output>
+                )}
+              </GenericRoundDialogActions>
+            )}
+          </form.Subscribe>
+        )}
+      >
+        {mode === "singleRoundWinner" ? (
+          <form.Field name="winnerId">
+            {(field) => (
+              <WinnerEntry
+                players={players}
+                value={field.state.value}
+                disabled={roundDialog.isPending}
+                onChange={(value) => {
+                  roundDialog.clearSubmitError();
+                  field.handleChange(value);
+                }}
+              />
+            )}
+          </form.Field>
+        ) : (
+          <TabGroup
             selectedIndex={selectedIndex}
             onChange={(index) => {
               if (!roundDialog.isPending) setSelectedIndex(index);
             }}
-            className="dialog-scroll -mx-2 min-h-0 flex-1"
+            className="flex min-h-0 flex-1 flex-col"
           >
-            {players.map((player, index) => (
-              <TabPanel key={player.id} className="h-full px-2">
-                <form.Field
-                  name={`scores[${index}]`}
-                  validators={{
-                    onChange: ({ value }) => entryError(value, tiebreakerEnabled),
-                  }}
-                >
-                  {(field) => (
-                    <PointsEntry
-                      name={player.name}
-                      points={{
-                        value: field.state.value.points,
-                        error: pointsError(field.state.value.points),
-                        onChange: (points) => {
-                          roundDialog.clearSubmitError();
-                          field.handleChange({ ...field.state.value, points });
-                        },
-                      }}
-                      tiebreaker={
-                        tiebreakerEnabled
-                          ? {
-                              value: field.state.value.tiebreaker,
-                              error: pointsError(field.state.value.tiebreaker, "Tiebreaker"),
-                              onChange: (tiebreaker) => {
-                                roundDialog.clearSubmitError();
-                                field.handleChange({ ...field.state.value, tiebreaker });
-                              },
-                            }
-                          : undefined
-                      }
-                      disabled={roundDialog.isPending}
-                      submitError={index === selectedIndex ? roundDialog.submitError : null}
-                    />
-                  )}
-                </form.Field>
-              </TabPanel>
-            ))}
-          </SwipeableTabPanels>
-        </TabGroup>
-      )}
-    </GenericRoundDialog>
+            <div ref={tabListRef} className="-mx-2 shrink-0 overflow-x-auto px-2 py-1">
+              <TabList className="w-max! min-w-full max-w-none!">
+                {players.map((player) => (
+                  <Tab
+                    key={player.id}
+                    aria-label={player.name}
+                    title={player.name}
+                    disabled={roundDialog.isPending}
+                    data-autofocus={
+                      editor && player.id === players[selectedIndex]?.id ? true : undefined
+                    }
+                    className={[
+                      tabClasses,
+                      "inline-flex min-h-10 min-w-24 items-center justify-center gap-2 px-3 data-focus:outline-text-secondary!",
+                    ].join(" ")}
+                  >
+                    <PlayerAvatar player={player} size={14} />
+                    <span className="max-w-40 truncate">{player.name}</span>
+                  </Tab>
+                ))}
+              </TabList>
+            </div>
+            <SwipeableTabPanels
+              selectedIndex={selectedIndex}
+              onChange={(index) => {
+                if (!roundDialog.isPending) setSelectedIndex(index);
+              }}
+              className="dialog-scroll -mx-2 min-h-0 flex-1"
+            >
+              {players.map((player, index) => (
+                <TabPanel key={player.id} className="h-full px-2">
+                  <form.Field
+                    name={`scores[${index}]`}
+                    validators={{
+                      onChange: ({ value }) => entryError(value, tiebreakerEnabled),
+                    }}
+                  >
+                    {(field) => (
+                      <PointsEntry
+                        name={player.name}
+                        points={{
+                          value: field.state.value.points,
+                          error: pointsError(field.state.value.points),
+                          onChange: (points) => {
+                            roundDialog.clearSubmitError();
+                            field.handleChange({ ...field.state.value, points });
+                          },
+                        }}
+                        tiebreaker={
+                          tiebreakerEnabled
+                            ? {
+                                value: field.state.value.tiebreaker,
+                                error: pointsError(field.state.value.tiebreaker, "Tiebreaker"),
+                                onChange: (tiebreaker) => {
+                                  roundDialog.clearSubmitError();
+                                  field.handleChange({ ...field.state.value, tiebreaker });
+                                },
+                              }
+                            : undefined
+                        }
+                        disabled={roundDialog.isPending}
+                        submitError={index === selectedIndex ? roundDialog.submitError : null}
+                      />
+                    )}
+                  </form.Field>
+                </TabPanel>
+              ))}
+            </SwipeableTabPanels>
+          </TabGroup>
+        )}
+      </GenericRoundDialog>
+      <EditImpactDialog
+        open={roundDialog.confirmationOpen}
+        title="Edit round"
+        isPending={roundDialog.isPending}
+        onEdit={roundDialog.cancelConfirmation}
+        onSave={roundDialog.confirmSave}
+      />
+    </>
   );
 }

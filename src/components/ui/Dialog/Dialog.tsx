@@ -11,6 +11,8 @@ interface AppDialogProps extends Omit<DialogProps<"div">, "children"> {
   children?: ReactNode;
   afterLeave?: () => void;
   dismissible?: boolean;
+  showCloseButton?: boolean;
+  draggable?: boolean;
   sizing?: "content" | "workspace";
   bodyScroll?: "shared" | "custom";
   minBodyHeight?: number;
@@ -38,6 +40,8 @@ export function Dialog(props: AppDialogProps) {
     className,
     afterLeave,
     dismissible = true,
+    showCloseButton = true,
+    draggable = true,
     sizing = "content",
     bodyScroll = "shared",
     minBodyHeight,
@@ -64,7 +68,7 @@ export function Dialog(props: AppDialogProps) {
 
   const panelRef = useRef<HTMLDivElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
-  useFloatingDialogDismissal(panelRef, rendered && Boolean(open), dismissible, () =>
+  useFloatingDialogDismissal(panelRef, rendered && Boolean(open), dismissible && draggable, () =>
     onClose?.(false),
   );
 
@@ -109,6 +113,7 @@ export function Dialog(props: AppDialogProps) {
             onBack={onBack}
             backLabel={backLabel}
             dismissible={dismissible}
+            showCloseButton={showCloseButton}
           >
             {header}
           </DialogHeader>

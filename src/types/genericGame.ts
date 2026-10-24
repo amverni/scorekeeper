@@ -1,4 +1,5 @@
 import type { ActiveGameMetadata, CompletedGameMetadata } from "./gameLifecycle";
+import type { GenericRoundId } from "./genericRound";
 import type { PlayerId, PlayerIdentity } from "./player";
 
 export type GenericScoringMode = "points" | "singleRoundWinner" | "passFail";
@@ -89,6 +90,7 @@ export interface GenericScoreboardView {
   players: Array<PlayerIdentity & GenericScoreTotal>;
   rounds: Array<{
     roundNumber: number;
+    id?: GenericRoundId;
     dealerId: PlayerId | null;
     scores: Array<
       | {
