@@ -23,13 +23,22 @@ _Avoid_: Match
 One scoring cycle within a Game. The Game's rules determine which scores or outcomes are recorded.
 _Avoid_: Hand, turn cycle
 
+**Round Edit**:
+A correction to the recorded scores or outcomes of an existing Round in an Active Game, rather than the recording of a new Round. Any saved Round may be edited.
+
+**Round Deletion**:
+The removal of a saved Round from an Active Game. Any saved Round may be deleted in either Scorekeeper.
+
 **Active Game**:
-A game currently in progress and still accepting new rounds.
+A Game whose competitive result is not finalized, accepting new Rounds or Round Edits as its rules allow.
 _Avoid_: Open game, live game
 
 **Completed Game**:
 A game whose competitive result has been finalized and closed after at least one saved Round. Its result preserves each Player's name and color at completion, independently of later changes to saved Players.
 _Avoid_: Archived game, old game
+
+**Reopen for Correction**:
+The explicit return of a Completed Game to Active Game status, withdrawing its finalized result while preserving its Round history. Reopening uses the saved Players' current names and colors and requires all referenced saved Players to still exist.
 
 **Pause**:
 Leaving an Active Game to return to its Scorekeeper Dashboard without finalizing its result. The Game remains active and can be continued later; pausing is not a separate Game status.
@@ -55,12 +64,21 @@ _Avoid_: Completed, done
 A person participating in a game. A saved Player's identity, name, color, and Favorite status are shared between Phase 10 scorekeeping and Generic Scorekeeping.
 _Avoid_: User, participant
 
-**Game Creation Order**:
-The order of Players chosen when the Game is created. It determines the stable Player column order on the scoreboard.
-_Avoid_: Player list order, setup order
+**Join**:
+A Player's first addition to a Game, taking effect from the next unsaved Round with zero totals and no recorded phase progress. Earlier Rounds are not backfilled.
+
+**Withdrawal**:
+The suspension of a Player's competitive eligibility, with no participation or dealer turns from the next unsaved Round. Their saved Player profile and earlier Game history remain intact, but they are not ranked or eligible to win while withdrawn.
+
+**Rejoin**:
+A withdrawn Player's return to the same Game from the next unsaved Round, resuming their existing totals and phase progress. Their absence contributes no score, penalty, or phase advancement.
+
+**Seating Order**:
+The Game's Player order used for scoreboard columns, dealer rotation, and, where the Game's rules require one, the final exact-tie fallback. It is distinct from Standings.
+_Avoid_: Game Creation Order, setup order
 
 **Dealer**:
-The Player assigned to deal for a specific round, rotating through the Game's Player order (Active Player order in Phase 10). Tracking a Dealer is optional in a Generic Game.
+The Player assigned to deal for a specific Round, rotating through Seating Order among Players eligible to play that Round. Tracking a Dealer is optional in a Generic Game.
 _Avoid_: Host, starter
 
 **Favorite**:
@@ -75,7 +93,7 @@ _Avoid_: Bookmark
 Recording round-by-round points, points with a tiebreaker, single round winners, or individual pass/fail results without tracking Phase 10 phases or phase outcomes. Numeric scores are whole numbers, including zero and negatives.
 
 **Generic Game**:
-A play session for one or more Players in Generic Scorekeeping that remains active until the person keeping score explicitly finishes it. Its Players and scoring rules are chosen during setup and fixed when the game is created.
+A play session for one or more Players in Generic Scorekeeping that remains active until the person keeping score explicitly finishes it. Its scoring rules are fixed at creation, while Players can Join, Withdraw, and Rejoin.
 
 **Game Name**:
 An optional label given to a Generic Game to help identify it.
@@ -109,7 +127,7 @@ The per-game choice of whether higher or lower accumulated totals rank ahead in 
 A Player awarded the win when a Generic Game is explicitly finished. Players who remain tied under the Game's scoring rules share the win.
 
 **Generic Standings**:
-The comparison of Players in a Generic Game using its selected scoring rules. Players equal under those rules share a place, with subsequent places skipping by the number of tied Players (for example, 1, 1, 3). Players sharing a place are displayed in Game Creation Order; that order does not break the tie or affect Game Winners.
+The comparison of eligible Players in a Generic Game using its selected scoring rules. Players equal under those rules share a place, with subsequent places skipping by the number of tied Players (for example, 1, 1, 3). Players sharing a place are displayed in Seating Order; that order does not break the tie or affect Game Winners.
 
 **Points Graph**:
 A round-by-round view of each Player's accumulated points in a Generic Game.
@@ -119,18 +137,42 @@ A round-by-round view of each Player's accumulated points in a Generic Game.
 ### Games and phase progress
 
 **Phase 10 Game**:
-A Game played through an ordered Phase Set until normal completion or an Early Finish.
+A Game played through an ordered Phase Set until normal completion or a Manual Finish.
+
+**Continuation**:
+Playing additional Phase 10 Rounds after the first Finished Player to determine further Finishing Places. The choice to continue applies to the rest of that Game.
 
 **Active Player**:
-A Player currently participating in an Active Phase 10 Game; this may differ from everyone ever added to that Game.
+A non-withdrawn Player included in an Active Phase 10 Game's competitive roster and Standings. A Finished Player remains in that roster but no longer participates in subsequent Rounds.
 _Avoid_: Current player, enabled player
 
 **Phase**:
 A required card objective that must be satisfied to progress through the game.
 _Avoid_: Level, challenge
 
+**Phase Number**:
+A Phase's numbered position within a Game's Phase Set. Repeated objectives at different positions are separate Phases for progress and selection.
+
+**Phase Order**:
+The Game's choice, fixed at creation, between resolving Phases sequentially and allowing a separate Phase selection for each Round.
+
+**Sequential Phase Order**:
+Resolving the Phases in Phase Set order.
+
+**Selectable Phase Order**:
+Choosing a Remaining Phase for each Player's Round rather than following Phase Set order. A Failed attempt leaves that Phase available for another attempt.
+
+**Selected Phase**:
+The Phase Number recorded for a Player in a particular Round, derived in Sequential Phase Order and chosen in Selectable Phase Order.
+
+**Resolved Phase**:
+A numbered Phase that a Player has Passed or taken a Round Skip for in counted history. A Phase cannot be resolved a second time.
+
+**Remaining Phase**:
+A Phase not yet resolved by a Player at the point in the Game being considered. In Selectable Phase Order, the lowest Remaining Phase is the default selection.
+
 **Current Phase**:
-The phase number a Player is attempting in their next Round, based on saved Round outcomes. Unfinished score entry does not change a Player's Current Phase.
+In Sequential Phase Order, the Phase Number a Player is attempting in their next Round, based on saved Round outcomes. Unfinished score entry does not change a Player's Current Phase.
 _Avoid_: Stage, tier
 
 **Phase Set**:
@@ -138,28 +180,47 @@ The ordered list of phases used by a game, distinct from the card sets required 
 _Avoid_: Preset, playlist, Set (ambiguous with a card set)
 
 **Phase 10 Round**:
-A Round in which each Active Player records a score and phase outcome.
+A Round in which the Players still playing record scores and phase outcomes.
 
 **Finished Player**:
-A Player whose phase progress has advanced past the final Phase in a Phase 10 Game. Finished Players are beyond the final Current Phase for progress comparisons.
+A Player who has resolved every Phase in a Phase 10 Game's Phase Set. Their totals stop at their Finishing Round, and they no longer play or deal subsequent Rounds.
 _Avoid_: Completed player, done player
+
+**Finishing Round**:
+The Round in which a Player resolves their last Remaining Phase, as determined by counted Round outcomes.
+
+**Finishing Place**:
+A Finished Player's distinct place, ordered by earliest Finishing Round, then the configured Tiebreaker and most recent Round Winner through that Round, then Seating Order.
+
+**Game Ending Round**:
+The last Round included in a finalized Phase 10 Game's result, distinct from any individual Player's Finishing Round.
+
+**Excluded Round**:
+A saved Phase 10 Round after the Game Ending Round, retained as history but not contributing to the finalized result.
+
+**Participation Gap**:
+A Round with no recorded entry for a Player who did not play, distinct from Sit Out. It contributes no score, penalty, or phase advancement.
+
+**Excluded Entry**:
+A recorded entry outside a Player's counted Phase 10 history, such as after their corrected Finishing Round or the Game Ending Round. It contributes no score, tiebreaker value, or phase advancement while excluded, but can become applicable again after another Round Edit.
 
 ### Results and tiebreakers
 
 **Round Winner**:
-The Player who completed their Phase in a Phase 10 Round and went out first. A Round may have an unrecorded Round Winner; when every Active Player takes a Round Skip or Sits Out, there is no Round Winner.
-Recording a Round Winner is required only for the Rounds Won Tiebreaker, except when every Active Player explicitly takes a Round Skip or Sits Out. Other Tiebreakers allow a Round without a recorded winner; scores and Passed results never imply one.
+The Player who completed their Phase in a Phase 10 Round and went out first; a recorded win contributes only while that Player's entry counts. A Round may have an unrecorded Round Winner; when every Player playing that Round takes a Round Skip or Sits Out, there is no Round Winner.
+Recording a Round Winner is required only for the Rounds Won Tiebreaker, except when every Player playing that Round explicitly takes a Round Skip or Sits Out, or a correction excludes a retained historical winner. Other Tiebreakers allow a Round without a recorded winner; scores and Passed results never imply one, and corrections do not invent replacement winners.
 _Avoid_: Round leader
 
 **Phase 10 Game Winner**:
-On normal Phase 10 completion, the player who first becomes a Finished Player; ties are resolved by the selected Tiebreaker, then by the most recent Round Winner, then by Game Creation Order. On an Early Finish, all Players sharing first place in the current Standings share the win.
+On normal Phase 10 completion, the Player in first Finishing Place. On a Manual Finish, all Players sharing first place in the current Standings share the win.
 
-**Early Finish**:
-The explicit ending of a Phase 10 Game before anyone finishes the final Phase, using the current Standings as the final result without granting unplayed phase progress.
+**Manual Finish**:
+The explicit ending of a Phase 10 Game before its automatic completion threshold, using the current Standings as the final result without granting unplayed phase progress. Some Players may already be Finished Players.
+_Avoid_: Early Finish
 
 **Phase 10 Standings**:
-Players are placed by Finished Player state first, then highest Current Phase, then by the selected Tiebreaker, with equal place when those values are tied and subsequent places skipping by the number of tied Players.
-In an Active Game, Standings compare Active Players; in a Completed Game, Standings compare the players in the finalized result; players within an equal place are ordered by most recent Round Winner, then Game Creation Order.
+Finished Players are ordered by Finishing Place ahead of unfinished Players, who compare phase progress, then the selected Tiebreaker, with equal place when those values are tied and subsequent places skipping by the number of tied Players. Progress means highest Current Phase in Sequential Phase Order and number of Resolved Phases in Selectable Phase Order.
+In an Active Game, Standings compare Active Players; in a Completed Game, Standings compare the Players eligible when its result was finalized; unfinished Players within an equal place are ordered by most recent Round Winner, then Seating Order.
 
 **Phase 10 Score Entry Complete**:
 A player's round score entry has enough Round Result and Tiebreaker information to be counted as entered for that round. For Points Tiebreakers, this includes a valid Points Card Count for the player's Round Result.
@@ -167,6 +228,9 @@ A player's round score entry has enough Round Result and Tiebreaker information 
 **Points Card Count**:
 The total number of remaining cards represented by the point-entry counters for a Points Tiebreaker.
 _Avoid_: Score, points total
+
+**Points Card Breakdown**:
+The recorded counts of remaining cards in the 5-point, 10-point, Skip Card, and Wild categories for a Points Tiebreaker. These counts distinguish card combinations that produce the same point total.
 
 **Points Tiebreaker**:
 A tiebreaker that compares players by a recorded point total, where the selected rule determines whether higher or lower points win.
@@ -194,11 +258,11 @@ The player did not meet the phase objective for that round.
 _Avoid_: Lost phase
 
 **Round Skip**:
-The player skips the full round, may take a Round Skip Penalty, and advances to the next phase.
+The Player skips the full Round, resolves its Selected Phase, and may take a Round Skip Penalty.
 _Avoid_: Skip (ambiguous)
 
 **Sit Out**:
-The player skips the full round and retries the same phase in the next round.
+The Player skips the full Round without resolving its Selected Phase, which remains available afterward.
 _Avoid_: Skip (ambiguous)
 
 **Turn Skip**:
