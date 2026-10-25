@@ -7,7 +7,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { holdRoundStorage, releaseRoundStorage } from "../../test/roundStorage";
 import { touchGesture } from "../../test/touchGesture";
 import { setVisibleViewport } from "../../test/visualViewport";
-import type { Game, GameTiebreaker, Player, Round } from "../../types";
+import type { Game, GameReadModel, GameTiebreaker, Player, Round } from "../../types";
 import { expectReadyAction } from "../ui/Button/readyActionTestUtils";
 
 let server: ViteDevServer;
@@ -355,6 +355,18 @@ it.each<GameTiebreaker>([
     await page.reload();
     await page.getByRole("button", { name: "Add round 2", exact: true }).waitFor();
     expect((await readRounds(page, game.id))[0].roundWinnerId).toBeNull();
+    const view = await page.evaluate<GameReadModel>(`
+      import("/scorekeeper/src/data/api/games.ts").then(({ gamesApi }) =>
+        gamesApi.getView(${JSON.stringify(game.id)})
+      )
+    `);
+    expect(view.rounds[0].scores.map((score) => score.source?.pointsCardBreakdown)).toEqual(
+      players.map(() =>
+        tiebreaker === "lowestPoints" || tiebreaker === "highestPoints"
+          ? { p5: 0, p10: 0, skipCard: 0, wild: 0 }
+          : undefined,
+      ),
+    );
     expect(await page.locator(".scoreboard-cell .border-current").count()).toBe(0);
     const standings = await openStandings(page);
     const results = standings.getByRole("tabpanel", { name: "Standings", exact: true });
@@ -368,6 +380,135 @@ it.each<GameTiebreaker>([
     await page.close();
   }
 }, 60_000);
+
+it("preserves the actual Points Card Breakdown from Add Round controls through public readback after reload", async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  page.setDefaultTimeout(5_000);
+  page.setDefaultNavigationTimeout(30_000);
+  try {
+    await page.goto(`${appUrl}#/phaseCompan10n/players`);
+    await page.getByText("No players yet", { exact: true }).waitFor();
+    const { game, players } = await seedCompletionGame(page, 3, "lowestPoints", 3);
+    await page.goto(`${appUrl}#/phaseCompan10n/game/${game.id}`);
+    await page.getByRole("button", { name: "Add round 1", exact: true }).click();
+    const entry = page.getByRole("dialog");
+    await entry.getByRole("button", { name: "Passed", exact: true }).click();
+    for (const points of [5, 10, 15, 25]) {
+      await entry.getByRole("button", { name: new RegExp(`^Add ${points} points`) }).click();
+    }
+    expect(
+      await entry.getByRole("tabpanel").getByText("Used 1 time", { exact: true }).count(),
+    ).toBe(4);
+    await entry.getByRole("tab", { name: players[1].name, exact: true }).click();
+    await entry.getByRole("button", { name: "Failed", exact: true }).click();
+    await entry.getByRole("button", { name: /^Add 15 points/ }).click();
+    await entry.getByRole("button", { name: /^Add 25 points/ }).click();
+    await entry.getByRole("tabpanel").getByText("Used 8 times", { exact: true }).waitFor();
+    await entry.getByRole("button", { name: /Round Winner/ }).click();
+    await page.getByRole("option", { name: players[2].name, exact: true }).click();
+    const save = entry.getByRole("button", { name: "Save round", exact: true });
+    await holdRoundStorage(page, "Round storage unavailable");
+    await save.click();
+    await expect.poll(() => save.isDisabled()).toBe(true);
+    await releaseRoundStorage(page);
+    await entry.getByText("Couldn't save round — try again.", { exact: true }).waitFor();
+    await entry.getByRole("tabpanel").getByText("Used 8 times", { exact: true }).waitFor();
+    expect(
+      await page.evaluate(`
+        import("/scorekeeper/src/data/api/games.ts").then(async ({ gamesApi }) =>
+          (await gamesApi.getView(${JSON.stringify(game.id)})).rounds
+        )
+      `),
+    ).toEqual([]);
+    await holdRoundStorage(page);
+    await save.evaluate((button: HTMLButtonElement) => {
+      button.click();
+      button.click();
+    });
+    await expect.poll(() => save.isDisabled()).toBe(true);
+    await releaseRoundStorage(page);
+    await entry.waitFor({ state: "detached" });
+    expect(
+      await page.evaluate(`
+        import("/scorekeeper/src/data/api/games.ts").then(async ({ gamesApi }) =>
+          (await gamesApi.getView(${JSON.stringify(game.id)})).rounds.length
+        )
+      `),
+    ).toBe(1);
+    await page.reload();
+    await page.getByRole("button", { name: "Add round 2", exact: true }).waitFor();
+
+    const view = await page.evaluate<GameReadModel>(`
+      import("/scorekeeper/src/data/api/games.ts").then(({ gamesApi }) =>
+        gamesApi.getView(${JSON.stringify(game.id)})
+      )
+    `);
+    expect(view.rounds[0].source).toMatchObject({
+      roundWinnerId: players[2].id,
+      scores: [
+        {
+          playerId: players[0].id,
+          phaseStatus: "completed",
+          score: 55,
+          pointsCardBreakdown: { p5: 1, p10: 1, skipCard: 1, wild: 1 },
+        },
+        {
+          playerId: players[1].id,
+          phaseStatus: "failed",
+          score: 80,
+          pointsCardBreakdown: { p5: 8, p10: 0, skipCard: 1, wild: 1 },
+        },
+        {
+          playerId: players[2].id,
+          phaseStatus: "completed",
+          score: 0,
+          pointsCardBreakdown: { p5: 0, p10: 0, skipCard: 0, wild: 0 },
+        },
+      ],
+    });
+    expect(view.rounds[0].scores.map((score) => score.source)).toEqual(
+      view.rounds[0].source.scores,
+    );
+    expect(view.players.map((player) => player.tiebreakerTotal)).toEqual([55, 80, 0]);
+
+    await page.getByRole("button", { name: "Add round 2", exact: true }).click();
+    for (const [index, player] of players.entries()) {
+      await entry.getByRole("tab", { name: player.name, exact: true }).click();
+      if (index < 2) {
+        await entry.getByRole("button", { name: "Show extra options", exact: true }).click();
+        await entry
+          .getByRole("button", { name: index === 0 ? "Skipped" : "Sat Out", exact: true })
+          .click();
+      } else {
+        await entry.getByRole("button", { name: "Passed", exact: true }).click();
+      }
+    }
+    await entry.getByRole("button", { name: "Save round", exact: true }).click();
+    await entry.waitFor({ state: "detached" });
+    await page.reload();
+    await page.getByRole("button", { name: "Add round 3", exact: true }).waitFor();
+    const reloaded = await page.evaluate<GameReadModel>(`
+      import("/scorekeeper/src/data/api/games.ts").then(({ gamesApi }) =>
+        gamesApi.getView(${JSON.stringify(game.id)})
+      )
+    `);
+    expect(reloaded.rounds[0]).toEqual(view.rounds[0]);
+    expect(reloaded.rounds[1].source.scores).toEqual([
+      { playerId: players[0].id, phaseStatus: "skipped", currentPhase: 2, score: 100 },
+      { playerId: players[1].id, phaseStatus: "satOut", currentPhase: 1, score: 0 },
+      {
+        playerId: players[2].id,
+        phaseStatus: "completed",
+        currentPhase: 2,
+        score: 0,
+        pointsCardBreakdown: { p5: 0, p10: 0, skipCard: 0, wild: 0 },
+      },
+    ]);
+    expect(reloaded.rounds[1].source.roundWinnerId).toBeNull();
+  } finally {
+    await page.close();
+  }
+}, 45_000);
 
 it("keeps nonzero scorecard values, Standings and both graphs in agreement through save and reload", async () => {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
@@ -533,9 +674,24 @@ it("restores Points entries when switching, clearing, or downgrading an explicit
       {
         roundWinnerId: null,
         scores: [
-          { playerId: players[0].id, phaseStatus: "completed", score: 15 },
-          { playerId: players[1].id, phaseStatus: "failed", score: 50 },
-          { playerId: players[2].id, phaseStatus: "completed", score: 0 },
+          {
+            playerId: players[0].id,
+            phaseStatus: "completed",
+            score: 15,
+            pointsCardBreakdown: { p5: 1, p10: 1, skipCard: 0, wild: 0 },
+          },
+          {
+            playerId: players[1].id,
+            phaseStatus: "failed",
+            score: 50,
+            pointsCardBreakdown: { p5: 10, p10: 0, skipCard: 0, wild: 0 },
+          },
+          {
+            playerId: players[2].id,
+            phaseStatus: "completed",
+            score: 0,
+            pointsCardBreakdown: { p5: 0, p10: 0, skipCard: 0, wild: 0 },
+          },
         ],
       },
     ]);

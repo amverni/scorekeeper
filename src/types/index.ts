@@ -87,7 +87,14 @@ export type {
   PhasesCardShareTarget,
 } from "./phasesCard";
 export type { Player, PlayerId, PlayerIdentity } from "./player";
-export type { PhaseRound, PhaseStatus, Round, RoundScore, StoredRound } from "./round";
+export type {
+  PhaseRound,
+  PhaseStatus,
+  PointsCardBreakdown,
+  Round,
+  RoundScore,
+  StoredRound,
+} from "./round";
 export type { ScorekeeperExperience } from "./scorekeeperExperience";
 export type { AppGameDefaults, AppSettings, AppSettingsId } from "./settings";
 export type {

@@ -25,6 +25,7 @@ export function useAddRound(gameId: GameId) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: {
+      expectedRoundNumber: number;
       scores: ArrayAtLeastOne<AddRoundScoreInput>;
       roundWinnerId: PlayerId | null;
     }) => roundsApi.add({ gameId, ...data }),

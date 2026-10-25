@@ -28,10 +28,21 @@ and graph endpoint order. Completion uses that same interpretation through the
 existing Standings adapter. The raw Game/Round APIs remain available.
 
 The read model keeps source Rounds and score entries separate from derived
-values. Existing records contain aggregate scores, not Points Card Breakdowns;
-the read model does not reconstruct unavailable card counters. This prefactor
-does not change the schema, scoring rules, completion thresholds, or supported
-correction and membership workflows.
+values. New Passed/Failed Points entries retain the original `pointsCardBreakdown`
+(`p5`, `p10`, `skipCard`, `wild`) from the Add Round controls, including all-zero
+Round Winner entries. Both `roundsApi.getByGameId()` and `gamesApi.getView()`
+return those exact counters after reload. Round Skip/Sit Out penalties and Count
+Tiebreaker events have no remaining-card breakdown. Legacy entries without
+counters remain readable, but their unavailable breakdowns are never reconstructed.
+The optional record field requires no IndexedDB store/index migration or reset.
+
+Card-bearing writes validate whole non-negative counters, Points Card Count,
+and matching point totals using the same rules as Add Round. The existing
+single-entry edit API also rejects inconsistent score/breakdown updates.
+The Add Round UI submits its `expectedRoundNumber`; the API checks it inside
+the write transaction to reject stale or repeated submissions. Pending saves
+block duplicate actions, failures retain the draft and show the existing retry
+feedback, and successful saves alone clear it.
 
 ## Navigation and presentation
 

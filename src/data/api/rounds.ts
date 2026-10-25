@@ -2,12 +2,20 @@ import type {
   ArrayAtLeastOne,
   CompletedGame,
   GameId,
+  GameTiebreaker,
   PlayerId,
   PlayerIdentity,
   Round,
   RoundScore,
 } from "../../types";
-import { getNextCurrentPhase, getRoundWinnerRequirement } from "../../utils";
+import {
+  getNextCurrentPhase,
+  getPointsCardCount,
+  getPointsCardCountRule,
+  getPointsCardScore,
+  getRoundWinnerRequirement,
+  isPointsTiebreaker,
+} from "../../utils";
 import { getDB } from "../db";
 import { finalizeGame, requirePlayers, withGameTransaction } from "./gameLifecycle";
 import { assertActivePhaseGame, assertPhaseRounds } from "./games";
@@ -28,6 +36,37 @@ export interface AddRoundCompletedResult {
 }
 
 export type AddRoundResult = AddRoundAddedResult | AddRoundCompletedResult;
+
+function assertPointsCardBreakdown(
+  score: AddRoundScoreInput,
+  tiebreaker: GameTiebreaker,
+  roundWinnerId: PlayerId | null,
+): void {
+  const cards = score.pointsCardBreakdown;
+  if (cards === undefined) return;
+  if (
+    !isPointsTiebreaker(tiebreaker) ||
+    (score.phaseStatus !== "failed" && score.phaseStatus !== "completed")
+  ) {
+    throw new Error("Points Card Breakdown is only valid for Passed or Failed Points entries");
+  }
+  if (
+    !cards ||
+    [cards.p5, cards.p10, cards.skipCard, cards.wild].some(
+      (count) => !Number.isSafeInteger(count) || count < 0,
+    )
+  ) {
+    throw new Error("Points Card Breakdown needs non-negative whole card counts");
+  }
+  const rule = getPointsCardCountRule(score.phaseStatus, score.playerId === roundWinnerId);
+  const cardCount = getPointsCardCount(cards);
+  if (rule && (cardCount < rule.minCards || cardCount > rule.maxCards)) {
+    throw new Error(rule.reason);
+  }
+  if (score.score !== getPointsCardScore(cards)) {
+    throw new Error("Points must match cards.");
+  }
+}
 
 export const roundsApi = {
   /**
@@ -67,6 +106,7 @@ export const roundsApi = {
    */
   add(data: {
     gameId: GameId;
+    expectedRoundNumber?: number;
     scores: ArrayAtLeastOne<AddRoundScoreInput>;
     roundWinnerId: PlayerId | null;
   }): Promise<AddRoundResult> {
@@ -96,6 +136,9 @@ export const roundsApi = {
       ) {
         throw new Error("Round Winner must be a Passed Active Player in the Round");
       }
+      for (const score of data.scores) {
+        assertPointsCardBreakdown(score, game.settings.tiebreaker, data.roundWinnerId);
+      }
       const players = await requirePlayers(tx, game.players);
       const totalPhases = game.phaseSet.phases.length;
       const now = Date.now();
@@ -104,6 +147,9 @@ export const roundsApi = {
       assertPhaseRounds(existingRounds);
       const nextRoundNumber =
         existingRounds.length > 0 ? Math.max(...existingRounds.map((r) => r.roundNumber)) + 1 : 1;
+      if (data.expectedRoundNumber !== undefined && data.expectedRoundNumber !== nextRoundNumber) {
+        throw new Error("Round history changed. Reload before saving.");
+      }
 
       // Find the most recent round to derive each player's currentPhase
       const previousRound =
@@ -198,6 +244,11 @@ export const roundsApi = {
       // Spread preserves minimum length of original; TS can't infer tuple minimum from spread
       const updatedScores = [...round.scores] as ArrayAtLeastOne<RoundScore>;
       updatedScores[scoreIndex] = { ...updatedScores[scoreIndex], ...updates };
+      assertPointsCardBreakdown(
+        updatedScores[scoreIndex],
+        game.settings.tiebreaker,
+        round.roundWinnerId,
+      );
 
       const updatedRound: Round = { ...round, scores: updatedScores };
       await roundsStore.put(updatedRound);

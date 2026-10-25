@@ -97,6 +97,7 @@ export function Scoreboard({ view, onGameCompleted }: ScoreboardProps) {
           open={dialogOpen}
           onClose={setDialogOpen}
           game={game}
+          nextRoundNumber={view.nextRoundNumber}
           players={players}
           draft={draft}
           onGameCompleted={onGameCompleted}

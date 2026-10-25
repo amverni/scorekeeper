@@ -14,6 +14,14 @@ export {
   getProgressAfterScore,
   phaseStatusAdvances,
 } from "./phaseProgress";
+export {
+  getPointsCardCount,
+  getPointsCardCountRule,
+  getPointsCardScore,
+  isPointsTiebreaker,
+  POINTS_CARD_VALUES,
+  type PointsCardCountRule,
+} from "./pointsCards";
 export { getRoundWinnerRequirement } from "./roundWinner";
 export { shuffle } from "./shuffle";
 export {
