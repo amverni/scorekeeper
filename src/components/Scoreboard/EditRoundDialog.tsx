@@ -49,9 +49,11 @@ function LoadedEditor({
   // The saved history version must stay paired with this editable snapshot.
   const [editor] = useState(initialEditor);
   const draft = useAddRoundDraft(
+    editor.game.id,
     editor.players,
     editor.game.settings,
     createEditRoundDraft(editor),
+    props.focusPlayerId,
   );
   return (
     <AddRoundDialog

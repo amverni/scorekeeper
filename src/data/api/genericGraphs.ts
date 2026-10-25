@@ -1,4 +1,5 @@
 import type {
+  GenericGame,
   GenericGameSettings,
   GenericGraphSeries,
   GenericScoreboardView,
@@ -10,10 +11,11 @@ export function deriveGenericGraphs(
   settings: GenericGameSettings,
   players: PlayerIdentity[],
   rounds: GenericScoreboardView["rounds"],
+  joins: GenericGame["playerJoins"] = [],
 ): Pick<GenericScoreboardView, "primaryGraph" | "tiebreakerGraph"> {
-  const primary = createSeries(players);
+  const primary = createSeries(players, joins);
   const secondary =
-    settings.mode === "points" && settings.tiebreaker ? createSeries(players) : null;
+    settings.mode === "points" && settings.tiebreaker ? createSeries(players, joins) : null;
 
   for (const round of rounds) {
     for (const score of round.scores) {
@@ -60,11 +62,19 @@ export function deriveGenericGraphs(
   };
 }
 
-function createSeries(players: PlayerIdentity[]) {
+function createSeries(players: PlayerIdentity[], joins: GenericGame["playerJoins"]) {
   return new Map(
     players.map(({ id, name, color }): [PlayerId, GenericGraphSeries] => [
       id,
-      { player: { id, name, color }, points: [{ roundNumber: 0, value: 0 }] },
+      {
+        player: { id, name, color },
+        points: [
+          {
+            roundNumber: joins?.find(({ playerId }) => playerId === id)?.afterRoundNumber ?? 0,
+            value: 0,
+          },
+        ],
+      },
     ]),
   );
 }

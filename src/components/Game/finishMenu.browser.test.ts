@@ -150,11 +150,12 @@ it.each(
       await menu.focus();
       await page.keyboard.press("Enter");
       await page.getByRole("navigation").waitFor();
-      expect(await page.getByRole("navigation").getByRole("link").allTextContents()).toEqual(
-        owner === "phase10"
+      expect(await page.getByRole("navigation").getByRole("link").allTextContents()).toEqual([
+        ...(owner === "phase10"
           ? ["Home", "Games", "Players", "Phases", "Settings"]
-          : ["Home", "Games", "Players"],
-      );
+          : ["Home", "Games", "Players"]),
+        ...(status === "active" ? ["Edit game"] : []),
+      ]);
       await page.keyboard.press("Escape");
       await expect
         .poll(() => menu.evaluate((element) => element === document.activeElement))

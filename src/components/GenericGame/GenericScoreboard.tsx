@@ -175,89 +175,105 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
                     </span>
                   </button>
                 </th>
-                {round.scores.map((score, index) => (
-                  // biome-ignore lint/a11y/useKeyWithClickEvents: The round control is the keyboard equivalent of this enlarged pointer target.
-                  <td
-                    key={score.playerId}
-                    onClick={() => toggleRound(round.roundNumber)}
-                    aria-label={`${view.players[index].name}, Round ${round.roundNumber}: ${"points" in score ? `${score.points} Points${score.tiebreaker !== undefined ? `, ${score.tiebreaker} Tiebreaker` : ""}` : "passed" in score ? (score.passed ? "Passed" : "Failed") : score.won ? "Won" : "Lost"}${round.dealerId === score.playerId ? ", Dealer" : ""}`}
-                    aria-describedby={
-                      expandedRound === round.roundNumber
-                        ? `${resultsId}-${round.roundNumber}-${index}`
-                        : undefined
-                    }
-                    className={[
-                      "scoreboard-cell scoreboard-cell--anchor-top cursor-pointer whitespace-nowrap tabular-nums",
-                      index === view.players.length - 1 ? "scoreboard-cell--last-col" : "",
-                      roundIndex === view.rounds.length - 1 ? "scoreboard-cell--last-row" : "",
-                    ].join(" ")}
-                  >
-                    <div className={entryClasses} data-scoreboard-column={index}>
-                      {round.dealerId === score.playerId && (
-                        <DealerMarker className="scoreboard-entry__dealer" />
-                      )}
-                      <div className="scoreboard-entry__value flex flex-col items-center gap-1 text-base font-medium leading-none [&>svg]:size-4">
-                        {"passed" in score ? (
-                          <PassFailOutcome passed={score.passed} />
-                        ) : "points" in score ? (
-                          <>
-                            <span>{score.points}</span>
-                            {score.tiebreaker !== undefined && (
-                              <span className="text-sm font-normal leading-none text-text-secondary">
-                                {score.tiebreaker}
-                              </span>
-                            )}
-                          </>
-                        ) : score.won ? (
-                          <Check className="mx-auto size-5 text-pt-green-500" aria-hidden />
-                        ) : (
-                          <X className="mx-auto size-5 text-pt-red-500" aria-hidden />
+                {view.players.map((player, index) => {
+                  const score = round.scores.find(({ playerId }) => playerId === player.id);
+                  if (!score) {
+                    return (
+                      <td
+                        key={player.id}
+                        aria-label={`${player.name}, Round ${round.roundNumber}: Did not play`}
+                        className={[
+                          "scoreboard-cell scoreboard-cell--anchor-top",
+                          index === view.players.length - 1 ? "scoreboard-cell--last-col" : "",
+                          roundIndex === view.rounds.length - 1 ? "scoreboard-cell--last-row" : "",
+                        ].join(" ")}
+                      />
+                    );
+                  }
+                  return (
+                    // biome-ignore lint/a11y/useKeyWithClickEvents: The round control is the keyboard equivalent of this enlarged pointer target.
+                    <td
+                      key={score.playerId}
+                      onClick={() => toggleRound(round.roundNumber)}
+                      aria-label={`${view.players[index].name}, Round ${round.roundNumber}: ${"points" in score ? `${score.points} Points${score.tiebreaker !== undefined ? `, ${score.tiebreaker} Tiebreaker` : ""}` : "passed" in score ? (score.passed ? "Passed" : "Failed") : score.won ? "Won" : "Lost"}${round.dealerId === score.playerId ? ", Dealer" : ""}`}
+                      aria-describedby={
+                        expandedRound === round.roundNumber
+                          ? `${resultsId}-${round.roundNumber}-${index}`
+                          : undefined
+                      }
+                      className={[
+                        "scoreboard-cell scoreboard-cell--anchor-top cursor-pointer whitespace-nowrap tabular-nums",
+                        index === view.players.length - 1 ? "scoreboard-cell--last-col" : "",
+                        roundIndex === view.rounds.length - 1 ? "scoreboard-cell--last-row" : "",
+                      ].join(" ")}
+                    >
+                      <div className={entryClasses} data-scoreboard-column={index}>
+                        {round.dealerId === score.playerId && (
+                          <DealerMarker className="scoreboard-entry__dealer" />
                         )}
-                      </div>
-                    </div>
-                    {expandedRound === round.roundNumber && (
-                      <div
-                        id={`${resultsId}-${round.roundNumber}-${index}`}
-                        className="scoreboard-extras scoreboard-extras--open"
-                      >
-                        <div className="text-xs leading-none text-text-secondary/70">
-                          <span
-                            aria-hidden
-                            className="my-0.5 h-px w-3/4 shrink-0 bg-text-secondary/70"
-                          />
-                          <span>
-                            <span className="sr-only">Accumulated {metric}: </span>
-                            {primaryTotal(score)}
-                          </span>
-                          {"totalTiebreaker" in score && score.totalTiebreaker !== undefined && (
-                            <span>
-                              <span className="sr-only">Accumulated Tiebreaker: </span>
-                              {score.totalTiebreaker}
-                            </span>
-                          )}
-                          {view.game.status === "active" && round.id && (
-                            <Button
-                              type="button"
-                              aria-label={`Edit Round ${round.roundNumber} for ${view.players[index].name}`}
-                              className="mt-2 min-h-11 px-3 text-xs"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                if (round.id) {
-                                  setEditTarget({
-                                    roundId: round.id,
-                                    playerId: score.playerId,
-                                  });
-                                }
-                              }}
-                            >
-                              Edit
-                            </Button>
+                        <div className="scoreboard-entry__value flex flex-col items-center gap-1 text-base font-medium leading-none [&>svg]:size-4">
+                          {"passed" in score ? (
+                            <PassFailOutcome passed={score.passed} />
+                          ) : "points" in score ? (
+                            <>
+                              <span>{score.points}</span>
+                              {score.tiebreaker !== undefined && (
+                                <span className="text-sm font-normal leading-none text-text-secondary">
+                                  {score.tiebreaker}
+                                </span>
+                              )}
+                            </>
+                          ) : score.won ? (
+                            <Check className="mx-auto size-5 text-pt-green-500" aria-hidden />
+                          ) : (
+                            <X className="mx-auto size-5 text-pt-red-500" aria-hidden />
                           )}
                         </div>
                       </div>
-                    )}
-                  </td>
-                ))}
+                      {expandedRound === round.roundNumber && (
+                        <div
+                          id={`${resultsId}-${round.roundNumber}-${index}`}
+                          className="scoreboard-extras scoreboard-extras--open"
+                        >
+                          <div className="text-xs leading-none text-text-secondary/70">
+                            <span
+                              aria-hidden
+                              className="my-0.5 h-px w-3/4 shrink-0 bg-text-secondary/70"
+                            />
+                            <span>
+                              <span className="sr-only">Accumulated {metric}: </span>
+                              {primaryTotal(score)}
+                            </span>
+                            {"totalTiebreaker" in score && score.totalTiebreaker !== undefined && (
+                              <span>
+                                <span className="sr-only">Accumulated Tiebreaker: </span>
+                                {score.totalTiebreaker}
+                              </span>
+                            )}
+                            {view.game.status === "active" && round.id && (
+                              <Button
+                                type="button"
+                                aria-label={`Edit Round ${round.roundNumber} for ${view.players[index].name}`}
+                                className="mt-2 min-h-11 px-3 text-xs"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  if (round.id) {
+                                    setEditTarget({
+                                      roundId: round.id,
+                                      playerId: score.playerId,
+                                    });
+                                  }
+                                }}
+                              >
+                                Edit
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
             {view.game.status === "active" && (

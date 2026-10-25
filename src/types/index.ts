@@ -10,6 +10,7 @@ export type {
   PhaseGame,
   StoredGame,
 } from "./game";
+export type { GenericGameEditor, PhaseGameEditor } from "./gameEditor";
 export type {
   ActiveGameMetadata,
   CompletedGameMetadata,
@@ -28,6 +29,7 @@ export type {
   ActiveGenericGame,
   CompletedGenericGame,
   CreateGenericGameInput,
+  EditGenericGameInput,
   GenericGame,
   GenericGameSettings,
   GenericGameView,

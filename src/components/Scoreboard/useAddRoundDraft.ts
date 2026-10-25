@@ -1,9 +1,12 @@
 import { useForm, useStore } from "@tanstack/react-form";
-import type { GameSettings, PhaseStatus, PlayerId, PlayerIdentity } from "../../types";
+import type { GameId, GameSettings, PhaseStatus, PlayerId, PlayerIdentity } from "../../types";
+import { useSessionRoundDrafts } from "../GameEditor/SessionRoundDrafts";
 import * as draftHelpers from "./addRoundDraft";
 
 export interface UseAddRoundDraft {
   draft: draftHelpers.AddRoundDraft;
+  selectedPlayerId: PlayerId | null;
+  selectPlayer: (playerId: PlayerId | null) => void;
   setResult: (playerId: PlayerId, result: PhaseStatus) => void;
   setScore: (playerId: PlayerId, score: number) => void;
   incrementQuick: (playerId: PlayerId, button: draftHelpers.PointsQuickButtonId) => void;
@@ -18,14 +21,20 @@ export interface UseAddRoundDraft {
 const POINTS_MAX = 250;
 
 export function useAddRoundDraft(
+  gameId: GameId,
   players: PlayerIdentity[],
   settings: GameSettings,
   initialDraft?: draftHelpers.AddRoundDraft,
+  initialSelectedPlayerId?: PlayerId,
 ): UseAddRoundDraft {
-  const form = useForm({
-    defaultValues: { draft: initialDraft ?? draftHelpers.createInitialDraft(players) },
-  });
-  const stored = useStore(form.store, (state) => state.values.draft);
+  const drafts = useSessionRoundDrafts();
+  const saved = initialDraft === undefined ? drafts.phase.get(gameId) : undefined;
+  const defaultValues: Pick<UseAddRoundDraft, "draft" | "selectedPlayerId"> = {
+    draft: initialDraft ?? saved?.draft ?? draftHelpers.createInitialDraft(players),
+    selectedPlayerId: initialSelectedPlayerId ?? saved?.selectedPlayerId ?? players[0]?.id ?? null,
+  };
+  const form = useForm({ defaultValues });
+  const stored = useStore(form.store, (state) => state.values);
   const currentDraft = (): draftHelpers.AddRoundDraft => {
     const saved = form.state.values.draft;
     return {
@@ -43,6 +52,12 @@ export function useAddRoundDraft(
 
   const setNextDraft = (nextDraft: draftHelpers.AddRoundDraft) => {
     form.setFieldValue("draft", nextDraft);
+    if (initialDraft === undefined) {
+      drafts.phase.set(gameId, {
+        draft: nextDraft,
+        selectedPlayerId: form.state.values.selectedPlayerId,
+      });
+    }
   };
 
   return {
@@ -50,9 +65,17 @@ export function useAddRoundDraft(
       players: draftHelpers
         .createInitialDraft(players)
         .players.map(
-          (player) => stored.players.find((entry) => entry.playerId === player.playerId) ?? player,
+          (player) =>
+            stored.draft.players.find((entry) => entry.playerId === player.playerId) ?? player,
         ),
-      roundWinnerId: stored.roundWinnerId,
+      roundWinnerId: stored.draft.roundWinnerId,
+    },
+    selectedPlayerId: stored.selectedPlayerId,
+    selectPlayer: (playerId) => {
+      form.setFieldValue("selectedPlayerId", playerId);
+      if (initialDraft === undefined) {
+        drafts.phase.set(gameId, { draft: currentDraft(), selectedPlayerId: playerId });
+      }
     },
     setResult: (playerId, result) => {
       setNextDraft(draftHelpers.applyResult(currentDraft(), playerId, result, settings));
@@ -79,7 +102,11 @@ export function useAddRoundDraft(
       setNextDraft(draftHelpers.applyClearRoundWinner(currentDraft(), settings));
     },
     reset: () => {
-      form.reset({ draft: draftHelpers.createInitialDraft(players) });
+      form.reset({
+        draft: draftHelpers.createInitialDraft(players),
+        selectedPlayerId: players[0]?.id ?? null,
+      });
+      if (initialDraft === undefined) drafts.phase.delete(gameId);
     },
   };
 }

@@ -51,7 +51,14 @@ export function GenericGame({ gameId }: { gameId: GameId }) {
             <ScorekeeperLogo height={64} />
           </div>
           <div className="content-container generic-game-header-controls absolute inset-y-0 z-10 flex items-center justify-end py-2">
-            <HomeMenu experience="scorekeeper" />
+            <HomeMenu
+              experience="scorekeeper"
+              editGameId={
+                view?.game.status === "active" && !isError && !isFetching && !isStale
+                  ? gameId
+                  : undefined
+              }
+            />
           </div>
         </div>
       }

@@ -6,6 +6,7 @@ import type {
   GameId,
   GameListItem,
   GameReadModel,
+  PhaseGameEditor,
   PhaseId,
   PhasesCardPlayerGroups,
   Player,
@@ -25,6 +26,7 @@ import {
 import { deriveGameReadModel } from "./gameReadModel";
 import { getGamePlayers } from "./gameResults";
 import { phaseRoundEdits } from "./phaseRoundEdits";
+import { phasesApi } from "./phases";
 import { resolveEarlyGameCompletion, resolveGameCompletion } from "./roundCompletion";
 import { deriveStandings } from "./standings";
 
@@ -32,6 +34,35 @@ export const gamesApi = {
   getRoundEditor: phaseRoundEdits.getEditor,
   previewRoundEdit: phaseRoundEdits.preview,
   editRound: phaseRoundEdits.edit,
+
+  async getEditor(id: GameId): Promise<PhaseGameEditor | null> {
+    const db = await getDB();
+    const tx = db.transaction(["games", "players"]);
+    const game = await tx.objectStore("games").get(id);
+    if (!game || game.scorekeeper !== "phase10") {
+      await tx.done;
+      return null;
+    }
+    if (game.status !== "active") {
+      throw new Error("Reopen this Completed Game for correction before editing.");
+    }
+    const players = await Promise.all(
+      game.players.map(async (playerId) => {
+        const player = await tx.objectStore("players").get(playerId);
+        if (!player) throw new Error(`Player no longer exists: ${playerId}`);
+        return player;
+      }),
+    );
+    await tx.done;
+    const found = await phasesApi.getByIds(game.phaseSet.phases);
+    const byId = new Map(found.map((phase) => [phase.id, phase]));
+    const phases = game.phaseSet.phases.map((phaseId) => {
+      const phase = byId.get(phaseId);
+      if (!phase) throw new Error(`Phase no longer exists: ${phaseId}`);
+      return phase;
+    });
+    return { game, players, phases };
+  },
 
   async getList({ activeOnly = false }: { activeOnly?: boolean } = {}): Promise<GameListItem[]> {
     const db = await getDB();

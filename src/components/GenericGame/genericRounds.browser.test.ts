@@ -149,7 +149,7 @@ it("rejects malformed and overflowing entries without losing the draft or saving
   }
 }, 60_000);
 
-it("discards unsaved entries on leaving or reloading the scoreboard and restores focus on close", async () => {
+it("retains unsaved session entries through navigation, clears them on reload, and restores focus on close", async () => {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   try {
     await openGame(page, ["Maya"]);
@@ -194,7 +194,7 @@ it("discards unsaved entries on leaving or reloading the scoreboard and restores
     await page.getByRole("link", { name: "Continue game with Maya", exact: true }).click();
     await add.click();
     expect(await dialog.getByRole("status", { name: "Maya Points", exact: true }).innerText()).toBe(
-      "0",
+      "8",
     );
     await dialog.getByRole("button", { name: "7", exact: true }).click();
     await page.reload();

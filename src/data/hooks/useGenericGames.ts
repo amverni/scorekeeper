@@ -3,6 +3,7 @@ import type {
   AddGenericRoundInput,
   CreateGenericGameInput,
   DeleteGenericRoundInput,
+  EditGenericGameInput,
   EditGenericRoundInput,
   GameId,
   GenericRoundId,
@@ -19,9 +20,20 @@ export const genericGameKeys = {
   details: () => [...genericGameKeys.all, "detail"] as const,
   detail: (id: GameId) => [...genericGameKeys.details(), id] as const,
   scoreboard: (id: GameId) => [...genericGameKeys.detail(id), "scoreboard"] as const,
+  editor: (id: GameId) => [...genericGameKeys.detail(id), "editor"] as const,
   roundEditor: (id: GameId, roundId: GenericRoundId) =>
     [...genericGameKeys.detail(id), "round-editor", roundId] as const,
 };
+
+export function genericGameEditorOptions(id: GameId) {
+  return queryOptions({
+    queryKey: genericGameKeys.editor(id),
+    queryFn: () => genericGamesApi.getEditor(id),
+    // Editors reread on entry so an unmounted editor cannot retain stale saved configuration.
+    staleTime: 0,
+    gcTime: 0,
+  });
+}
 
 export function genericRoundEditorOptions(gameId: GameId, roundId: GenericRoundId) {
   return queryOptions({
@@ -35,6 +47,25 @@ export function genericRoundEditorOptions(gameId: GameId, roundId: GenericRoundI
 export function usePreviewGenericRoundEdit() {
   return useMutation({
     mutationFn: (input: EditGenericRoundInput) => genericRoundsApi.previewEdit(input),
+  });
+}
+
+export function usePreviewGenericGameEdit() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: EditGenericGameInput) => genericGamesApi.previewEdit(input),
+    onError: () =>
+      queryClient.invalidateQueries({ queryKey: genericGameKeys.all, refetchType: "none" }),
+  });
+}
+
+export function useEditGenericGame() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: EditGenericGameInput) => genericGamesApi.edit(input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: genericGameKeys.all }),
+    onError: () =>
+      queryClient.invalidateQueries({ queryKey: genericGameKeys.all, refetchType: "none" }),
   });
 }
 

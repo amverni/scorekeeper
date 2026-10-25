@@ -7,7 +7,7 @@ let opening: Promise<IDBPDatabase<Phase10DB>> | null = null;
 export async function getDB(): Promise<IDBPDatabase<Phase10DB>> {
   if (dbInstance) return dbInstance;
   if (!opening) {
-    opening = openDB<Phase10DB>("phase10-db", 8, {
+    opening = openDB<Phase10DB>("phase10-db", 9, {
       upgrade(db, oldVersion) {
         // Version 8 deliberately resets disposable pre-Scorekeeper data, once only.
         if (oldVersion < 8) {

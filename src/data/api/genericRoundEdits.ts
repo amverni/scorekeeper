@@ -11,7 +11,12 @@ import {
   requirePlayers,
   withGameTransaction,
 } from "./gameLifecycle";
-import { assertGenericGame, deriveGenericScoreboard, orderGenericScores } from "./genericScoring";
+import {
+  assertGenericGame,
+  deriveGenericScoreboard,
+  genericRoundPlayerIds,
+  orderGenericScores,
+} from "./genericScoring";
 
 export const genericRoundEdits = {
   delete(input: DeleteGenericRoundInput): Promise<void> {
@@ -30,7 +35,20 @@ export const genericRoundEdits = {
         .filter((saved) => saved.scorekeeper !== "generic" || saved.id !== round.id)
         .sort((a, b) => a.roundNumber - b.roundNumber)
         .map((saved, index) => ({ ...saved, roundNumber: index + 1 }));
-      deriveGenericScoreboard(game, players, remaining);
+      const updatedGame = {
+        ...game,
+        ...(game.playerJoins
+          ? {
+              playerJoins: game.playerJoins.map((join) => ({
+                ...join,
+                afterRoundNumber:
+                  join.afterRoundNumber - Number(round.roundNumber <= join.afterRoundNumber),
+              })),
+            }
+          : {}),
+        lastActivityAt: Date.now(),
+      };
+      deriveGenericScoreboard(updatedGame, players, remaining);
       const store = tx.objectStore("rounds");
       for (const saved of rounds) {
         await store.delete([game.id, saved.roundNumber]);
@@ -38,7 +56,7 @@ export const genericRoundEdits = {
       for (const saved of remaining) {
         await store.add(saved);
       }
-      await tx.objectStore("games").put({ ...game, lastActivityAt: Date.now() });
+      await tx.objectStore("games").put(updatedGame);
     });
   },
 
@@ -47,7 +65,9 @@ export const genericRoundEdits = {
       const { game, players, round, version } = await loadEditor(tx, gameId, roundId);
       const metadata = {
         version,
-        players: players.map(({ id, name, color }) => ({ id, name, color })),
+        players: players
+          .filter(({ id }) => genericRoundPlayerIds(game, round.roundNumber).includes(id))
+          .map(({ id, name, color }) => ({ id, name, color })),
       };
       if (round.mode === "points") {
         return {
@@ -182,24 +202,25 @@ async function evaluateEdit(tx: GameLifecycleTransaction, draft: ReturnType<type
     throw new Error("Round mode must match the Game settings.");
   }
   const metadata = { ...saved, revision: saved.revision + 1 };
+  const eligible = genericRoundPlayerIds(game, saved.roundNumber);
   const round: GenericRoundEditor["round"] =
     draft.mode === "passFail"
       ? {
           ...metadata,
           mode: "passFail",
-          scores: orderGenericScores(game.players, draft.scores),
+          scores: orderGenericScores(eligible, draft.scores),
         }
       : draft.mode === "singleRoundWinner"
         ? {
             ...metadata,
             mode: draft.mode,
-            scores: orderGenericScores(game.players, draft.scores),
+            scores: orderGenericScores(eligible, draft.scores),
           }
         : {
             ...metadata,
             mode: "points",
             scores: orderGenericScores(
-              game.players,
+              eligible,
               draft.scores.map(({ playerId, points, tiebreaker }) =>
                 game.settings.tiebreaker
                   ? {

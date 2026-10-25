@@ -189,7 +189,7 @@ it("selects the mode in fresh setup and records one winner with reselection, ret
   }
 }, 60_000);
 
-it("keeps solo entry explicit, discards drafts on navigation and reload, and finishes only by request", async () => {
+it("keeps solo entry explicit, retains session drafts until reload, and finishes only by request", async () => {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   page.setDefaultTimeout(5_000);
   page.setDefaultNavigationTimeout(30_000);
@@ -222,8 +222,7 @@ it("keeps solo entry explicit, discards drafts on navigation and reload, and fin
     await returnToDashboard(page);
     await page.getByRole("link", { name: "Continue game with Solo", exact: true }).click();
     await add.click();
-    expect(await solo.isChecked()).toBe(false);
-    await solo.click();
+    expect(await solo.isChecked()).toBe(true);
     await page.reload();
     await add.click();
     expect(await solo.isChecked()).toBe(false);

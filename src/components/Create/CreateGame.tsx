@@ -1,24 +1,18 @@
-import { Tab, TabGroup, TabPanel } from "@headlessui/react";
+import { TabPanel } from "@headlessui/react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import type { LucideIcon } from "lucide-react";
-import { ListChecks, Play, Settings as SettingsIcon, Users, X } from "lucide-react";
+import { Play, X } from "lucide-react";
 import { useState } from "react";
 import { useCreateGame } from "../../data/hooks/useGames";
 import type { ArrayAtLeastOne, PhaseId, TemporaryPhaseSet } from "../../types";
 import { CardBackground } from "../CardBackground/CardBackground";
 import { HeaderLogo } from "../Logo/HeaderLogo";
-import { Button, ScrollFade, SwipeableTabPanels, TabList } from "../ui";
+import { Button, ScrollFade } from "../ui";
 import { useGamePhases, useGameSettings } from "./CreateGameContext";
+import { GameSetupTabs } from "./GameSetupTabs";
 import { Phases } from "./Phases";
 import { useGamePlayers } from "./PlayerSelectionContext";
 import { Players } from "./Players";
 import { Settings } from "./Settings";
-
-const TABS: { label: string; icon: LucideIcon }[] = [
-  { label: "Players", icon: Users },
-  { label: "Phases", icon: ListChecks },
-  { label: "Settings", icon: SettingsIcon },
-];
 
 export function CreateGame() {
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -62,60 +56,39 @@ export function CreateGame() {
         </div>
       }
       mainContent={
-        <TabGroup
+        <GameSetupTabs
+          experience="phaseCompan10n"
           selectedIndex={selectedIndex}
           onChange={setSelectedIndex}
-          className="flex h-full min-h-0 flex-col"
+          error={
+            startError && (
+              <p
+                className="content-container mb-2 rounded-xl bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300"
+                role="alert"
+              >
+                {startError}
+              </p>
+            )
+          }
         >
-          <div className="content-container w-full flex shrink-0 justify-center pt-2 pb-3">
-            <TabList>
-              {TABS.map(({ label, icon: Icon }) => (
-                <Tab
-                  key={label}
-                  className="relative z-10 flex-1 cursor-pointer rounded-full py-2 text-sm font-semibold opacity-60 outline-none hover:brightness-110 data-focus:outline-2 data-focus:outline-white/60 data-selected:opacity-100"
-                >
-                  <span className="inline-flex items-center justify-center gap-1.5">
-                    <Icon className="size-4" />
-                    {label}
-                  </span>
-                </Tab>
-              ))}
-            </TabList>
-          </div>
+          <TabPanel className="h-full px-4">
+            <ScrollFade className="h-full -mx-6 px-6 pb-(--slant)">
+              <Players />
+            </ScrollFade>
+          </TabPanel>
 
-          {startError && (
-            <p
-              className="content-container mb-2 rounded-xl bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300"
-              role="alert"
-            >
-              {startError}
-            </p>
-          )}
+          <TabPanel className="h-full px-4">
+            <ScrollFade className="h-full -mx-6 px-6 pb-(--slant)">
+              <Phases />
+            </ScrollFade>
+          </TabPanel>
 
-          <SwipeableTabPanels
-            selectedIndex={selectedIndex}
-            onChange={setSelectedIndex}
-            className="mx-auto w-full max-w-lg min-h-0 flex-1"
-          >
-            <TabPanel className="h-full px-4">
-              <ScrollFade className="h-full -mx-6 px-6 pb-(--slant)">
-                <Players />
-              </ScrollFade>
-            </TabPanel>
-
-            <TabPanel className="h-full px-4">
-              <ScrollFade className="h-full -mx-6 px-6 pb-(--slant)">
-                <Phases />
-              </ScrollFade>
-            </TabPanel>
-
-            <TabPanel className="h-full px-4">
-              <ScrollFade className="h-full -mx-6 px-6 pb-(--slant)">
-                <Settings />
-              </ScrollFade>
-            </TabPanel>
-          </SwipeableTabPanels>
-        </TabGroup>
+          <TabPanel className="h-full px-4">
+            <ScrollFade className="h-full -mx-6 px-6 pb-(--slant)">
+              <Settings />
+            </ScrollFade>
+          </TabPanel>
+        </GameSetupTabs>
       }
       footerContent={
         <div className="content-container flex h-full justify-between">

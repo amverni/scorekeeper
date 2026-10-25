@@ -39,6 +39,7 @@ it.each([
     const add = page.getByRole("dialog", { name: "Add Round", exact: true });
     await add.getByRole("button", { name: "Passed", exact: true }).click();
     await add.getByRole("button", { name: "Add 5 points (+5)", exact: true }).click();
+    await add.getByRole("tab", { name: "Cam", exact: true }).click();
     await add.getByRole("button", { name: "Close", exact: true }).click();
     await add.waitFor({ state: "detached" });
 
@@ -74,7 +75,15 @@ it.each([
     await editor.getByRole("button", { name: "Save round", exact: true }).click();
     await editor.waitFor({ state: "detached" });
     expect(await page.getByRole("dialog", { name: "Edit round", exact: true }).count()).toBe(0);
+    await page.getByRole("button", { name: "Menu", exact: true }).click();
+    await page.getByRole("link", { name: "Edit game", exact: true }).click();
+    await page.getByRole("tab", { name: "Players", exact: true }).waitFor();
+    await page.goBack();
     await page.getByRole("button", { name: "Add round 2", exact: true }).click();
+    expect(
+      await add.getByRole("tab", { name: "Cam", exact: true }).getAttribute("aria-selected"),
+    ).toBe("true");
+    await add.getByRole("tab", { name: "Amy", exact: true }).click();
     expect(
       await add.getByRole("button", { name: "Passed", exact: true }).getAttribute("aria-pressed"),
     ).toBe("true");
@@ -298,7 +307,7 @@ it("allows correcting an excluded Rounds Won entry without inventing a winner fo
         const ids = ${JSON.stringify(players.map((player) => player.id))};
         const game = await gamesApi.create({
           players: ids,
-          phaseSet: { id: "two", type: "temporary", name: "Two", phases: ["phase-1", "phase-2"] },
+          phaseSet: { id: "two", type: "temporary", name: "Two", phases: ["classic-1", "classic-2"] },
           settings: { tiebreaker: "roundsWon", roundSkipPenalty: 100, sitOutPenalty: 50 }
         });
         for (const winner of [ids[1], ids[0], null]) {
@@ -395,7 +404,7 @@ async function seedGame(page: Page, phases = 3) {
       ));
       const game = await gamesApi.create({
         players: players.map((player) => player.id),
-        phaseSet: { id: "short", type: "temporary", name: "Short", phases: Array(${phases}).fill("phase-1") },
+        phaseSet: { id: "short", type: "temporary", name: "Short", phases: Array(${phases}).fill("classic-1") },
         settings: { tiebreaker: "lowestPoints", roundSkipPenalty: 100, sitOutPenalty: 50 }
       });
       await roundsApi.add({

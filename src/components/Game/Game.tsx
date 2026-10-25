@@ -83,7 +83,10 @@ export function Game({ gameId }: GameProps) {
                 </Button>
               )}
               <div className="ml-auto">
-                <HomeMenu experience="phaseCompan10n" />
+                <HomeMenu
+                  experience="phaseCompan10n"
+                  editGameId={actionReady && game?.status === "active" ? game.id : undefined}
+                />
               </div>
             </div>
           </div>

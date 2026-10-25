@@ -29,6 +29,8 @@ import { Route as ScorekeeperGameGameIdRouteImport } from './routes/scorekeeper/
 import { Route as PhaseCompan10nPhasescardCustomRouteImport } from './routes/phaseCompan10n/phasescard/custom'
 import { Route as PhaseCompan10nPhasescardPhaseSetIdRouteImport } from './routes/phaseCompan10n/phasescard/$phaseSetId'
 import { Route as PhaseCompan10nGameGameIdRouteImport } from './routes/phaseCompan10n/game/$gameId'
+import { Route as ScorekeeperGameGameIdEditRouteImport } from './routes/scorekeeper/game/$gameId_.edit'
+import { Route as PhaseCompan10nGameGameIdEditRouteImport } from './routes/phaseCompan10n/game/$gameId_.edit'
 
 const ScorekeeperRoute = ScorekeeperRouteImport.update({
   id: '/scorekeeper',
@@ -136,6 +138,18 @@ const PhaseCompan10nGameGameIdRoute =
     path: '/game/$gameId',
     getParentRoute: () => PhaseCompan10nRoute,
   } as any)
+const ScorekeeperGameGameIdEditRoute =
+  ScorekeeperGameGameIdEditRouteImport.update({
+    id: '/game/$gameId_/edit',
+    path: '/game/$gameId/edit',
+    getParentRoute: () => ScorekeeperRoute,
+  } as any)
+const PhaseCompan10nGameGameIdEditRoute =
+  PhaseCompan10nGameGameIdEditRouteImport.update({
+    id: '/game/$gameId_/edit',
+    path: '/game/$gameId/edit',
+    getParentRoute: () => PhaseCompan10nRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -158,6 +172,8 @@ export interface FileRoutesByFullPath {
   '/scorekeeper/game/$gameId': typeof ScorekeeperGameGameIdRoute
   '/phaseCompan10n/create/': typeof PhaseCompan10nCreateIndexRoute
   '/phaseCompan10n/phasescard/': typeof PhaseCompan10nPhasescardIndexRoute
+  '/phaseCompan10n/game/$gameId/edit': typeof PhaseCompan10nGameGameIdEditRoute
+  '/scorekeeper/game/$gameId/edit': typeof ScorekeeperGameGameIdEditRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -176,6 +192,8 @@ export interface FileRoutesByTo {
   '/scorekeeper/game/$gameId': typeof ScorekeeperGameGameIdRoute
   '/phaseCompan10n/create': typeof PhaseCompan10nCreateIndexRoute
   '/phaseCompan10n/phasescard': typeof PhaseCompan10nPhasescardIndexRoute
+  '/phaseCompan10n/game/$gameId/edit': typeof PhaseCompan10nGameGameIdEditRoute
+  '/scorekeeper/game/$gameId/edit': typeof ScorekeeperGameGameIdEditRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -199,6 +217,8 @@ export interface FileRoutesById {
   '/scorekeeper/game/$gameId': typeof ScorekeeperGameGameIdRoute
   '/phaseCompan10n/create/': typeof PhaseCompan10nCreateIndexRoute
   '/phaseCompan10n/phasescard/': typeof PhaseCompan10nPhasescardIndexRoute
+  '/phaseCompan10n/game/$gameId_/edit': typeof PhaseCompan10nGameGameIdEditRoute
+  '/scorekeeper/game/$gameId_/edit': typeof ScorekeeperGameGameIdEditRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -223,6 +243,8 @@ export interface FileRouteTypes {
     | '/scorekeeper/game/$gameId'
     | '/phaseCompan10n/create/'
     | '/phaseCompan10n/phasescard/'
+    | '/phaseCompan10n/game/$gameId/edit'
+    | '/scorekeeper/game/$gameId/edit'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -241,6 +263,8 @@ export interface FileRouteTypes {
     | '/scorekeeper/game/$gameId'
     | '/phaseCompan10n/create'
     | '/phaseCompan10n/phasescard'
+    | '/phaseCompan10n/game/$gameId/edit'
+    | '/scorekeeper/game/$gameId/edit'
   id:
     | '__root__'
     | '/'
@@ -263,6 +287,8 @@ export interface FileRouteTypes {
     | '/scorekeeper/game/$gameId'
     | '/phaseCompan10n/create/'
     | '/phaseCompan10n/phasescard/'
+    | '/phaseCompan10n/game/$gameId_/edit'
+    | '/scorekeeper/game/$gameId_/edit'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -413,6 +439,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PhaseCompan10nGameGameIdRouteImport
       parentRoute: typeof PhaseCompan10nRoute
     }
+    '/scorekeeper/game/$gameId_/edit': {
+      id: '/scorekeeper/game/$gameId_/edit'
+      path: '/game/$gameId/edit'
+      fullPath: '/scorekeeper/game/$gameId/edit'
+      preLoaderRoute: typeof ScorekeeperGameGameIdEditRouteImport
+      parentRoute: typeof ScorekeeperRoute
+    }
+    '/phaseCompan10n/game/$gameId_/edit': {
+      id: '/phaseCompan10n/game/$gameId_/edit'
+      path: '/game/$gameId/edit'
+      fullPath: '/phaseCompan10n/game/$gameId/edit'
+      preLoaderRoute: typeof PhaseCompan10nGameGameIdEditRouteImport
+      parentRoute: typeof PhaseCompan10nRoute
+    }
   }
 }
 
@@ -455,6 +495,7 @@ interface PhaseCompan10nRouteChildren {
   PhaseCompan10nSettingsRoute: typeof PhaseCompan10nSettingsRoute
   PhaseCompan10nIndexRoute: typeof PhaseCompan10nIndexRoute
   PhaseCompan10nGameGameIdRoute: typeof PhaseCompan10nGameGameIdRoute
+  PhaseCompan10nGameGameIdEditRoute: typeof PhaseCompan10nGameGameIdEditRoute
 }
 
 const PhaseCompan10nRouteChildren: PhaseCompan10nRouteChildren = {
@@ -466,6 +507,7 @@ const PhaseCompan10nRouteChildren: PhaseCompan10nRouteChildren = {
   PhaseCompan10nSettingsRoute: PhaseCompan10nSettingsRoute,
   PhaseCompan10nIndexRoute: PhaseCompan10nIndexRoute,
   PhaseCompan10nGameGameIdRoute: PhaseCompan10nGameGameIdRoute,
+  PhaseCompan10nGameGameIdEditRoute: PhaseCompan10nGameGameIdEditRoute,
 }
 
 const PhaseCompan10nRouteWithChildren = PhaseCompan10nRoute._addFileChildren(
@@ -478,6 +520,7 @@ interface ScorekeeperRouteChildren {
   ScorekeeperPlayersRoute: typeof ScorekeeperPlayersRoute
   ScorekeeperIndexRoute: typeof ScorekeeperIndexRoute
   ScorekeeperGameGameIdRoute: typeof ScorekeeperGameGameIdRoute
+  ScorekeeperGameGameIdEditRoute: typeof ScorekeeperGameGameIdEditRoute
 }
 
 const ScorekeeperRouteChildren: ScorekeeperRouteChildren = {
@@ -486,6 +529,7 @@ const ScorekeeperRouteChildren: ScorekeeperRouteChildren = {
   ScorekeeperPlayersRoute: ScorekeeperPlayersRoute,
   ScorekeeperIndexRoute: ScorekeeperIndexRoute,
   ScorekeeperGameGameIdRoute: ScorekeeperGameGameIdRoute,
+  ScorekeeperGameGameIdEditRoute: ScorekeeperGameGameIdEditRoute,
 }
 
 const ScorekeeperRouteWithChildren = ScorekeeperRoute._addFileChildren(

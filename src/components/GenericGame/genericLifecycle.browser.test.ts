@@ -180,7 +180,7 @@ function readGame(page: Page, id: string) {
   })()`);
 }
 
-it("offers Pause and Delete without a saved Round and discards a draft only when leaving", async () => {
+it("offers Pause and Delete without a saved Round and retains the session draft through Pause", async () => {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true });
   page.setDefaultTimeout(5_000);
   page.setDefaultNavigationTimeout(30_000);
@@ -258,7 +258,7 @@ it("offers Pause and Delete without a saved Round and discards a draft only when
     await page.getByRole("link", { name: "Continue game with Maya, Rowan", exact: true }).click();
     await add.click();
     expect(await entry.getByRole("status", { name: "Maya Points", exact: true }).innerText()).toBe(
-      "0",
+      "8",
     );
     expect(await entry.getByRole("button", { name: "Save", exact: true }).isEnabled()).toBe(true);
   } finally {

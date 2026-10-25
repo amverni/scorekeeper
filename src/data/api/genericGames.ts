@@ -19,6 +19,7 @@ import {
   requirePlayers,
   withGameTransaction,
 } from "./gameLifecycle";
+import { genericGameEdits } from "./genericGameEdits";
 import {
   assertGenericGame,
   assertGenericSettings,
@@ -26,6 +27,8 @@ import {
 } from "./genericScoring";
 
 export const genericGamesApi = {
+  ...genericGameEdits,
+
   async getList({ activeOnly = false }: { activeOnly?: boolean } = {}): Promise<GameListItem[]> {
     const db = await getDB();
     const tx = db.transaction(["games", "players"]);

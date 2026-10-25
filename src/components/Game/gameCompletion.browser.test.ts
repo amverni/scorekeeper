@@ -1472,7 +1472,7 @@ it.each([
   }
 }, 120_000);
 
-it("offers Pause and Delete before a saved Round, retains a closed draft, and discards it only when leaving", async () => {
+it("offers Pause and Delete before a saved Round and retains the session draft through Pause", async () => {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true });
   page.setDefaultTimeout(5_000);
   page.setDefaultNavigationTimeout(30_000);
@@ -1542,7 +1542,7 @@ it("offers Pause and Delete before a saved Round, retains a closed draft, and di
     await page.getByRole("link", { name: /^Continue game with/ }).click();
     await page.getByRole("button", { name: "Add round 1", exact: true }).click();
     expect(await entry.getByRole("button", { name: /Round Winner/ }).innerText()).toContain(
-      "Choose winner",
+      "Amy Jones",
     );
   } finally {
     await page.close();

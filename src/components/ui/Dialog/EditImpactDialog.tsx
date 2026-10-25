@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Button } from "../Button/Button";
 import { ConfirmationDialog } from "./ConfirmationDialog";
 
@@ -16,6 +17,14 @@ export function EditImpactDialog({
   onEdit,
   onSave,
 }: EditImpactDialogProps) {
+  const editRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open || isPending) return;
+    // Headless UI skips initial focus on touch; keep the safe action explicit.
+    const frame = requestAnimationFrame(() => editRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [open, isPending]);
+
   return (
     <ConfirmationDialog
       open={open}
@@ -26,6 +35,7 @@ export function EditImpactDialog({
       actions={
         <div className="flex justify-end gap-3">
           <Button
+            ref={editRef}
             type="button"
             autoFocus
             disabled={isPending}

@@ -6,13 +6,7 @@ import {
   useEditPhaseRound,
   usePreviewPhaseRoundEdit,
 } from "../../data/hooks/useRounds";
-import type {
-  EditPhaseRoundInput,
-  Game,
-  PhaseRoundEditor,
-  PlayerId,
-  PlayerIdentity,
-} from "../../types";
+import type { EditPhaseRoundInput, Game, PhaseRoundEditor, PlayerIdentity } from "../../types";
 import { PlayerAvatar } from "../PlayerAvatar/PlayerAvatar";
 import {
   Button,
@@ -48,7 +42,6 @@ interface AddRoundDialogProps {
   afterLeave?: () => void;
   expectedVersion: string;
   editor?: PhaseRoundEditor;
-  focusPlayerId?: PlayerId;
 }
 
 const NO_WINNER_VALUE = "__none__";
@@ -70,15 +63,12 @@ export function AddRoundDialog({
   afterLeave,
   expectedVersion,
   editor,
-  focusPlayerId,
 }: AddRoundDialogProps) {
-  const [selectedIndex, setSelectedIndex] = useState(() =>
-    Math.max(
-      0,
-      players.findIndex((player) => player.id === focusPlayerId),
-    ),
+  const visibleIndex = Math.max(
+    0,
+    players.findIndex((player) => player.id === draft.selectedPlayerId),
   );
-  const visibleIndex = Math.min(selectedIndex, Math.max(players.length - 1, 0));
+  const setSelectedIndex = (index: number) => draft.selectPlayer(players[index]?.id ?? null);
   const [confirmation, setConfirmation] = useState<EditPhaseRoundInput | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const addRound = useAddRound(game.id);
@@ -105,7 +95,9 @@ export function AddRoundDialog({
     game.settings.tiebreaker,
     editor?.countedPlayerIds,
   );
-  const canSave = progress.ready && !locked;
+  const winnerPlayer = players.find((player) => player.id === draft.draft.roundWinnerId);
+  const unavailableWinner = draft.draft.roundWinnerId !== null && !winnerPlayer;
+  const canSave = progress.ready && !unavailableWinner && !locked;
   const showTiebreakerEntry = game.settings.tiebreaker !== "roundsWon";
   const playerTabColumnCount = Math.max(players.length, 1);
 
@@ -159,7 +151,6 @@ export function AddRoundDialog({
           expectedVersion,
         });
         draft.reset();
-        setSelectedIndex(0);
         completedAfterLeave.current = result.outcome === "gameCompleted";
         onClose(false);
       }
@@ -180,8 +171,6 @@ export function AddRoundDialog({
   };
 
   const winnerValue: WinnerSelectValue = draft.draft.roundWinnerId ?? NO_WINNER_VALUE;
-  const winnerPlayer = players.find((p) => p.id === draft.draft.roundWinnerId);
-  const unavailableWinner = draft.draft.roundWinnerId !== null && !winnerPlayer;
 
   return (
     <>

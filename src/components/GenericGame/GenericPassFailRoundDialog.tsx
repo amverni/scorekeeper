@@ -1,5 +1,6 @@
 import { useForm } from "@tanstack/react-form";
 import type { GameId, GenericPassFailRoundEditor, PlayerId, PlayerIdentity } from "../../types";
+import { type PassFailEntryValues, useSessionRoundDrafts } from "../GameEditor/SessionRoundDrafts";
 import { PlayerAvatar } from "../PlayerAvatar/PlayerAvatar";
 import { Button, DeleteRoundDialog, DialogScrollArea, EditImpactDialog } from "../ui";
 import {
@@ -26,16 +27,34 @@ export function GenericPassFailRoundDialog({
   editor,
   focusPlayerId,
 }: GenericPassFailRoundDialogProps) {
+  const drafts = useSessionRoundDrafts();
+  const emptyValues: PassFailEntryValues = {
+    scores: players.map((player) => ({ playerId: player.id, passed: false })),
+  };
   const roundDialog = useGenericRoundDialog(onClose, editor);
   const form = useForm({
     defaultValues: {
       scores: editor
         ? editor.round.scores.map(({ playerId, passed }) => ({ playerId, passed }))
-        : players.map((player) => ({ playerId: player.id, passed: false })),
+        : players.map(
+            (player) =>
+              drafts.passFail
+                .get(gameId)
+                ?.scores.find(({ playerId }) => playerId === player.id) ?? {
+                playerId: player.id,
+                passed: false,
+              },
+          ),
+    },
+    listeners: {
+      onChange: ({ formApi }) => {
+        if (!editor) drafts.passFail.set(gameId, formApi.state.values);
+      },
     },
     onSubmit: async ({ value }) => {
       await roundDialog.saveRound({ gameId, mode: "passFail", scores: value.scores }, () => {
-        form.reset();
+        form.reset(emptyValues);
+        if (!editor) drafts.passFail.delete(gameId);
       });
     },
   });

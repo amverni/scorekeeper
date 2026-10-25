@@ -163,8 +163,12 @@ sharing first place in Standings. Every completion requires at least one saved R
 retains the latest 20 Completed Games for its own Scorekeeper, removing evicted
 Games and their owned records atomically. Active Games never expire.
 
-Add Round drafts live only while their scoreboard is mounted. Closing the dialog
-retains a draft; saving clears it, and leaving (including Pause) discards it.
+Add Round drafts live in memory for the current app session, keyed by Game and
+Scorekeeper. Closing the dialog or navigating away (including Edit game and
+Pause) retains entered values, selected Players and explicit winners. Saving
+clears the saved draft; reloading starts a fresh draft. No draft is stored in
+IndexedDB or browser storage. Ineligible Phase entries remain in the session
+draft for later revalidation rather than being erased when the roster changes.
 Completed scoreboards, Standings, graphs, and Games lists use snapshots even after
 saved Players are edited or deleted.
 
@@ -195,6 +199,46 @@ Winner is preserved, clearly flagged, and blocks saving until explicitly
 changed or eligible again; no replacement winner is chosen automatically.
 Applicable retained history returns after reversal, while genuine missing
 entries contribute no scores, penalties, phase progress, or invented winners.
+
+### Game inspection
+
+The bottom **Edit game** action in an Active Game's menu opens
+`/phaseCompan10n/game/$gameId/edit` or `/scorekeeper/game/$gameId/edit` through
+hash navigation. These full-page routes reuse creation's `GameSetupTabs` and
+load saved configuration through `gamesApi.getEditor()` or
+`genericGamesApi.getEditor()`, not app defaults. Settings and ordered Phase
+references are static; current Phase Games use Sequential Phase Order.
+Unlike long-lived local view caches, editor queries reread on every entry and
+are released on unmount so reopening never reuses stale editor configuration.
+Completed, missing, wrong-Scorekeeper and unavailable-reference Games cannot
+be edited or implicitly reopened. Loading failures are explicit and retryable.
+
+Generic Game editors reuse saved-Player search, Favorites, and profile creation
+to append new Players to a staged roster. Minus undoes only unsaved additions;
+saved-member Withdrawal and drag/reordering controls remain hidden. The Save
+icon is enabled only for a changed valid roster and blocked while pending.
+`genericGamesApi.previewEdit()` and `edit()` validate the loaded Game/history
+version and commit the entire batch atomically. Joining after saved Rounds
+requires **Edit game** / **This edit will change game results.** confirmation;
+**Edit**, Escape, and outside dismissal retain the draft, and **Save** commits.
+Failures retain the draft with an explicit error. Phase Game membership and
+all saved rules remain read-only.
+
+X returns to the same Game; Back or navigation away discards the Game-editor
+draft without prompting. Explicitly created shared Player profiles remain saved
+independently of the Game draft. The retained next-Round draft preserves existing
+values and selections, revalidates the roster, and gives joining Players ordinary
+zero/unselected defaults.
+
+Join takes effect at the next unsaved Round with zero totals, wins, passes, and
+Tiebreaker. Saved Generic Games retain each joining Player's boundary in
+`playerJoins`; historical entry editors use that Round's eligible roster rather
+than today's roster. Earlier scorecard cells stay blank, graphs do not invent
+earlier contributions, and dealer rotation continues from the previous Dealer
+through Seating Order. Round Deletion updates Join boundaries in the same
+transaction as renumbering, preserving attendance at the remaining actual Rounds.
+Database version 9 adds these optional record fields without resetting records
+or changing stores/indexes.
 
 Active Generic Games support editing a saved Round from its expanded scorecard
 details in all three Scoring Modes. Edit opens the full prefilled entry form and

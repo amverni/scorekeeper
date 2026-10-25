@@ -10,7 +10,6 @@ import type {
   PlayerIdentity,
   StoredRound,
 } from "../../types";
-import { getDealerId } from "../../utils";
 import { deriveGenericGraphs } from "./genericGraphs";
 
 export function assertGenericSettings(settings: GenericGameSettings): void {
@@ -41,6 +40,35 @@ export function assertGenericGame(game: GenericGame): void {
   ) {
     throw new Error("Generic Game has an invalid Player roster.");
   }
+  if (
+    game.playerJoins !== undefined &&
+    (!Array.isArray(game.playerJoins) ||
+      new Set(game.playerJoins.map(({ playerId }) => playerId)).size !== game.playerJoins.length ||
+      game.playerJoins.some(
+        ({ playerId, afterRoundNumber }) =>
+          !game.players.includes(playerId) ||
+          !Number.isSafeInteger(afterRoundNumber) ||
+          afterRoundNumber < 0,
+      ))
+  ) {
+    throw new Error("Generic Game has invalid Join history.");
+  }
+}
+
+export function genericRoundPlayerIds(game: GenericGame, roundNumber: number): PlayerId[] {
+  return game.players.filter((id) => {
+    const join = game.playerJoins?.find(({ playerId }) => playerId === id);
+    return !join || roundNumber > join.afterRoundNumber;
+  });
+}
+
+function nextDealer(game: GenericGame, previous: PlayerId | null, eligible: PlayerId[]) {
+  const previousIndex = previous === null ? -1 : game.players.indexOf(previous);
+  for (let offset = 1; offset <= game.players.length; offset++) {
+    const candidate = game.players[(previousIndex + offset) % game.players.length];
+    if (eligible.includes(candidate)) return candidate;
+  }
+  throw new Error("A Round needs an eligible Dealer.");
 }
 
 export function orderGenericScores<T extends { playerId: PlayerId }>(
@@ -72,6 +100,7 @@ export function deriveGenericScoreboard(
   const totals = new Map(game.players.map((id) => [id, 0]));
   const tiebreakerTotals = new Map(game.players.map((id) => [id, 0]));
   const tiebreaker = game.settings.mode === "points" ? game.settings.tiebreaker : null;
+  let previousDealer: PlayerId | null = null;
   const rounds: GenericScoreboardView["rounds"] = [...storedRounds]
     .sort((a, b) => a.roundNumber - b.roundNumber)
     .map((round) => {
@@ -86,14 +115,19 @@ export function deriveGenericScoreboard(
       ) {
         throw new Error("Invalid Generic Round.");
       }
+      const eligible = genericRoundPlayerIds(game, round.roundNumber);
       const ordered =
         round.mode === "points"
-          ? orderGenericScores(game.players, round.scores).map(
-              ({ playerId, points, tiebreaker }) => ({ playerId, points, tiebreaker }),
-            )
+          ? orderGenericScores(eligible, round.scores).map(({ playerId, points, tiebreaker }) => ({
+              playerId,
+              points,
+              tiebreaker,
+            }))
           : round.mode === "singleRoundWinner"
-            ? orderWinnerScores(game.players, round.scores)
-            : orderPassFailScores(game.players, round.scores);
+            ? orderWinnerScores(eligible, round.scores)
+            : orderPassFailScores(eligible, round.scores);
+      const dealerId = game.settings.dealer ? nextDealer(game, previousDealer, eligible) : null;
+      previousDealer = dealerId;
       return {
         roundNumber: round.roundNumber,
         ...(typeof round.id === "string" &&
@@ -103,7 +137,7 @@ export function deriveGenericScoreboard(
         round.revision >= 0
           ? { id: round.id }
           : {}),
-        dealerId: game.settings.dealer ? getDealerId(round.roundNumber, game.players) : null,
+        dealerId,
         scores: ordered.map((score) => {
           const { playerId } = score;
           const previous = totals.get(playerId);
@@ -174,7 +208,7 @@ export function deriveGenericScoreboard(
   const nextRoundNumber = (rounds.at(-1)?.roundNumber ?? 0) + 1;
   const upcomingDealerId =
     game.status === "active" && game.settings.dealer
-      ? getDealerId(nextRoundNumber, game.players)
+      ? nextDealer(game, previousDealer, genericRoundPlayerIds(game, nextRoundNumber))
       : null;
   return {
     game,
@@ -182,7 +216,7 @@ export function deriveGenericScoreboard(
     rounds,
     standings,
     upcomingDealerId,
-    ...deriveGenericGraphs(game.settings, identities, rounds),
+    ...deriveGenericGraphs(game.settings, identities, rounds, game.playerJoins),
   };
 }
 
