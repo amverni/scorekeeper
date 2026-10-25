@@ -25,11 +25,16 @@ import {
 } from "./gameLifecycle";
 import { deriveGameReadModel } from "./gameReadModel";
 import { getGamePlayers } from "./gameResults";
+import { phaseRoundEdits } from "./phaseRoundEdits";
 import { phasesApi } from "./phases";
 import { resolveEarlyGameCompletion, resolveGameCompletion } from "./roundCompletion";
 import { deriveStandings } from "./standings";
 
 export const gamesApi = {
+  getRoundEditor: phaseRoundEdits.getEditor,
+  previewRoundEdit: phaseRoundEdits.preview,
+  editRound: phaseRoundEdits.edit,
+
   async getEditor(id: GameId): Promise<PhaseGameEditor | null> {
     const db = await getDB();
     const tx = db.transaction(["games", "players"]);

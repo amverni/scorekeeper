@@ -118,7 +118,7 @@ it.each([
       await seedGame(page, playerCount, true);
       const scoreboard = page.getByRole("region", { name: "Scoreboard", exact: true });
       const round = scoreboard.getByRole("button", { name: /^Round 1(?:, expanded)?$/ });
-      const cell = round.locator("xpath=following-sibling::div[1]");
+      const cell = round.locator("..").locator("xpath=following-sibling::div[1]");
       const phase = cell.getByText("1", { exact: true });
       const dealer = cell.getByText("D", { exact: true });
       const result = cell.locator("svg");
@@ -130,6 +130,7 @@ it.each([
           element.scrollTop = 0;
         });
         const bounds = await box(cell);
+        expect((await box(round)).height).toBe(44);
         const number = await box(phase);
         const glyph = await phase.evaluate((element) => {
           const text = Array.from(element.childNodes).find(
@@ -195,7 +196,7 @@ it.each([
           name: `Round ${roundNumber}`,
           exact: true,
         });
-        const resultCell = control.locator("xpath=following-sibling::div[1]");
+        const resultCell = control.locator("..").locator("xpath=following-sibling::div[1]");
         const bounds = await box(resultCell);
         const value = await box(resultCell.getByText(String(phaseNumber), { exact: true }));
         expect(
@@ -232,7 +233,13 @@ it.each([
         )
         .toBe("1");
       expect(await box(phase)).toEqual(before);
-      expect((await box(cell)).height).toBe(82);
+      const expandedCell = await box(cell);
+      const editAction = await box(cell.getByRole("button", { name: /^Edit Round 1 for/ }));
+      expect(expandedCell.height).toBeGreaterThan(82);
+      expect(editAction.height).toBeGreaterThanOrEqual(44);
+      expect(editAction.y + editAction.height).toBeLessThanOrEqual(
+        expandedCell.y + expandedCell.height,
+      );
       for (const value of await cell.locator(".scoreboard-extras span:not([aria-hidden])").all()) {
         const detail = await box(value);
         expect(detail.x + detail.width / 2).toBeCloseTo(before.x + before.width / 2, 1);
@@ -368,6 +375,7 @@ describe.each([320, 1280])("approved typography at %ipx viewport width", (width)
         expect(bounds.y + bounds.height / 2).toBeCloseTo(phaseBounds.y + phaseBounds.height / 2, 1);
       }
       const phase = round
+        .locator("..")
         .locator("xpath=following-sibling::div[1]")
         .locator(":scope > div > div > span.relative");
       const roundBounds = await box(round.locator("span"));

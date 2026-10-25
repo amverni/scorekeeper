@@ -139,6 +139,7 @@ const optionClasses = [
   "flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium",
   "cursor-pointer select-none",
   "data-[focus]:bg-black/5 dark:data-[focus]:bg-white/10",
+  "data-disabled:cursor-not-allowed data-disabled:opacity-40",
 ].join(" ");
 
 export function ListboxOption<TValue>({
@@ -146,15 +147,17 @@ export function ListboxOption<TValue>({
   value,
   className,
   selected: selectedOverride,
+  disabled,
 }: {
   children: ReactNode;
   value: TValue;
   className?: string;
   selected?: boolean;
+  disabled?: boolean;
 }) {
   const merged = [optionClasses, className].filter(Boolean).join(" ");
   return (
-    <HeadlessListboxOption value={value} className={merged}>
+    <HeadlessListboxOption value={value} disabled={disabled} className={merged}>
       {({ selected: headlessSelected }) => {
         const isSelected = selectedOverride ?? headlessSelected;
         return (

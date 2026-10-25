@@ -37,7 +37,7 @@ export interface AddRoundCompletedResult {
 
 export type AddRoundResult = AddRoundAddedResult | AddRoundCompletedResult;
 
-function assertPointsCardBreakdown(
+export function assertPointsCardBreakdown(
   score: AddRoundScoreInput,
   tiebreaker: GameTiebreaker,
   roundWinnerId: PlayerId | null,
@@ -351,7 +351,7 @@ export const roundsApi = {
   },
 };
 
-function validateScore(score: AddRoundScoreInput) {
+export function validateScore(score: AddRoundScoreInput) {
   if (!["completed", "failed", "skipped", "satOut"].includes(score.phaseStatus)) {
     throw new Error("Invalid Round Result");
   }

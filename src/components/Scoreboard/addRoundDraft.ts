@@ -2,6 +2,7 @@ import type {
   ArrayAtLeastOne,
   GameSettings,
   GameTiebreaker,
+  PhaseRoundEditor,
   PhaseStatus,
   PlayerId,
   PlayerIdentity,
@@ -374,6 +375,27 @@ export function createInitialDraft(players: PlayerIdentity[]): AddRoundDraft {
   };
 }
 
+export function createEditRoundDraft(editor: PhaseRoundEditor): AddRoundDraft {
+  const initial = createInitialDraft(editor.players);
+  return {
+    roundWinnerId: editor.round.roundWinnerId,
+    players: initial.players.map((player) => {
+      const source = editor.round.scores.find((score) => score.playerId === player.playerId);
+      if (!source) throw new Error("Recorded Round entry is unavailable.");
+      const quickCounts = { ...(source.pointsCardBreakdown ?? ZERO_QUICK_COUNTS) };
+      return {
+        ...player,
+        result: source.phaseStatus,
+        score: source.score,
+        lastManualScore: isManualResult(source.phaseStatus) ? source.score : 0,
+        quickCounts,
+        lastManualQuickCounts: { ...quickCounts },
+        expandedSecondary: source.phaseStatus === "skipped" || source.phaseStatus === "satOut",
+      };
+    }),
+  };
+}
+
 /**
  * Update a player's Round Result.
  *
@@ -734,11 +756,23 @@ export function areScoreEntriesComplete(
   );
 }
 
-export function getDraftProgress(draft: AddRoundDraft, tiebreaker: GameTiebreaker) {
-  const winnerRequirement = getRoundWinnerRequirement(
-    tiebreaker,
-    draft.players.map((player) => player.result),
-  );
+export function getDraftProgress(
+  draft: AddRoundDraft,
+  tiebreaker: GameTiebreaker,
+  countedPlayerIds?: readonly PlayerId[],
+) {
+  const winnerRequirement =
+    countedPlayerIds?.length === 0
+      ? "disabled"
+      : getRoundWinnerRequirement(
+          tiebreaker,
+          draft.players
+            .filter(
+              (player) =>
+                countedPlayerIds === undefined || countedPlayerIds.includes(player.playerId),
+            )
+            .map((player) => player.result),
+        );
   const winnerComplete = draft.players.some(
     (player) => player.playerId === draft.roundWinnerId && player.result === "completed",
   );
@@ -764,8 +798,9 @@ export function getDraftProgress(draft: AddRoundDraft, tiebreaker: GameTiebreake
 export function isDraftComplete(
   draft: AddRoundDraft,
   tiebreaker: GameTiebreaker,
+  countedPlayerIds?: readonly PlayerId[],
 ): draft is CompleteAddRoundDraft {
-  return getDraftProgress(draft, tiebreaker).ready;
+  return getDraftProgress(draft, tiebreaker, countedPlayerIds).ready;
 }
 
 /**
@@ -779,8 +814,9 @@ export function isDraftComplete(
 export function toRoundScores(
   draft: AddRoundDraft,
   tiebreaker: GameTiebreaker,
+  countedPlayerIds?: readonly PlayerId[],
 ): ArrayAtLeastOne<Omit<RoundScore, "currentPhase">> {
-  if (!isDraftComplete(draft, tiebreaker)) {
+  if (!isDraftComplete(draft, tiebreaker, countedPlayerIds)) {
     throw new Error("Cannot build round scores from an incomplete draft.");
   }
 

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useForm, useStore } from "@tanstack/react-form";
 import type { GameId, GameSettings, PhaseStatus, PlayerId, PlayerIdentity } from "../../types";
 import { useSessionRoundDrafts } from "../GameEditor/SessionRoundDrafts";
 import * as draftHelpers from "./addRoundDraft";
@@ -24,75 +24,89 @@ export function useAddRoundDraft(
   gameId: GameId,
   players: PlayerIdentity[],
   settings: GameSettings,
+  initialDraft?: draftHelpers.AddRoundDraft,
+  initialSelectedPlayerId?: PlayerId,
 ): UseAddRoundDraft {
   const drafts = useSessionRoundDrafts();
-  const [draft, setDraft] = useState(
-    () => drafts.phase.get(gameId)?.draft ?? draftHelpers.createInitialDraft(players),
-  );
-  const [selectedPlayerId, setSelectedPlayerId] = useState<PlayerId | null>(
-    () => drafts.phase.get(gameId)?.selectedPlayerId ?? players[0]?.id ?? null,
-  );
-  const draftRef = useRef(draft);
-  const initial = draftHelpers.createInitialDraft(players);
-  const retainedDraft = {
-    ...draft,
-    players: [
-      ...draft.players,
-      ...initial.players.filter(
-        (player) => !draft.players.some((entry) => entry.playerId === player.playerId),
-      ),
-    ],
+  const saved = initialDraft === undefined ? drafts.phase.get(gameId) : undefined;
+  const defaultValues: Pick<UseAddRoundDraft, "draft" | "selectedPlayerId"> = {
+    draft: initialDraft ?? saved?.draft ?? draftHelpers.createInitialDraft(players),
+    selectedPlayerId: initialSelectedPlayerId ?? saved?.selectedPlayerId ?? players[0]?.id ?? null,
   };
-  draftRef.current = retainedDraft;
+  const form = useForm({ defaultValues });
+  const stored = useStore(form.store, (state) => state.values);
+  const currentDraft = (): draftHelpers.AddRoundDraft => {
+    const saved = form.state.values.draft;
+    return {
+      players: [
+        ...saved.players,
+        ...draftHelpers
+          .createInitialDraft(players)
+          .players.filter(
+            (player) => !saved.players.some((entry) => entry.playerId === player.playerId),
+          ),
+      ],
+      roundWinnerId: saved.roundWinnerId,
+    };
+  };
 
   const setNextDraft = (nextDraft: draftHelpers.AddRoundDraft) => {
-    draftRef.current = nextDraft;
-    drafts.phase.set(gameId, { draft: nextDraft, selectedPlayerId });
-    setDraft(nextDraft);
+    form.setFieldValue("draft", nextDraft);
+    if (initialDraft === undefined) {
+      drafts.phase.set(gameId, {
+        draft: nextDraft,
+        selectedPlayerId: form.state.values.selectedPlayerId,
+      });
+    }
   };
 
   return {
     draft: {
-      ...retainedDraft,
-      players: players.flatMap((player) =>
-        retainedDraft.players.filter((entry) => entry.playerId === player.id),
-      ),
+      players: draftHelpers
+        .createInitialDraft(players)
+        .players.map(
+          (player) =>
+            stored.draft.players.find((entry) => entry.playerId === player.playerId) ?? player,
+        ),
+      roundWinnerId: stored.draft.roundWinnerId,
     },
-    selectedPlayerId,
+    selectedPlayerId: stored.selectedPlayerId,
     selectPlayer: (playerId) => {
-      setSelectedPlayerId(playerId);
-      drafts.phase.set(gameId, { draft: draftRef.current, selectedPlayerId: playerId });
+      form.setFieldValue("selectedPlayerId", playerId);
+      if (initialDraft === undefined) {
+        drafts.phase.set(gameId, { draft: currentDraft(), selectedPlayerId: playerId });
+      }
     },
     setResult: (playerId, result) => {
-      setNextDraft(draftHelpers.applyResult(draftRef.current, playerId, result, settings));
+      setNextDraft(draftHelpers.applyResult(currentDraft(), playerId, result, settings));
     },
     setScore: (playerId, score) => {
-      setNextDraft(draftHelpers.applyScore(draftRef.current, playerId, score, settings));
+      setNextDraft(draftHelpers.applyScore(currentDraft(), playerId, score, settings));
     },
     incrementQuick: (playerId, button) => {
-      setNextDraft(
-        draftHelpers.applyQuickIncrement(draftRef.current, playerId, button, POINTS_MAX),
-      );
+      setNextDraft(draftHelpers.applyQuickIncrement(currentDraft(), playerId, button, POINTS_MAX));
     },
     decrementQuick: (playerId, button) => {
-      setNextDraft(draftHelpers.applyQuickDecrement(draftRef.current, playerId, button));
+      setNextDraft(draftHelpers.applyQuickDecrement(currentDraft(), playerId, button));
     },
     resetQuick: (playerId) => {
-      setNextDraft(draftHelpers.applyQuickReset(draftRef.current, playerId));
+      setNextDraft(draftHelpers.applyQuickReset(currentDraft(), playerId));
     },
     setExpandedSecondary: (playerId, expanded) => {
-      setNextDraft(draftHelpers.applyExpandedSecondary(draftRef.current, playerId, expanded));
+      setNextDraft(draftHelpers.applyExpandedSecondary(currentDraft(), playerId, expanded));
     },
     setRoundWinner: (playerId) => {
-      setNextDraft(draftHelpers.applyRoundWinner(draftRef.current, playerId, settings));
+      setNextDraft(draftHelpers.applyRoundWinner(currentDraft(), playerId, settings));
     },
     clearRoundWinner: () => {
-      setNextDraft(draftHelpers.applyClearRoundWinner(draftRef.current, settings));
+      setNextDraft(draftHelpers.applyClearRoundWinner(currentDraft(), settings));
     },
     reset: () => {
-      setNextDraft(draftHelpers.createInitialDraft(players));
-      setSelectedPlayerId(players[0]?.id ?? null);
-      drafts.phase.delete(gameId);
+      form.reset({
+        draft: draftHelpers.createInitialDraft(players),
+        selectedPlayerId: players[0]?.id ?? null,
+      });
+      if (initialDraft === undefined) drafts.phase.delete(gameId);
     },
   };
 }

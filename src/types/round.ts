@@ -1,6 +1,7 @@
+import type { Game, GameId } from "./game";
 import type { RoundMetadata } from "./gameLifecycle";
 import type { GenericRound } from "./genericRound";
-import type { PlayerId } from "./player";
+import type { PlayerId, PlayerIdentity } from "./player";
 import type { ArrayAtLeastOne } from "./utils";
 
 export type Round = PhaseRound;
@@ -8,8 +9,26 @@ export type StoredRound = PhaseRound | GenericRound;
 
 export interface PhaseRound extends RoundMetadata {
   scorekeeper: "phase10";
+  revision?: number;
   scores: ArrayAtLeastOne<RoundScore>;
   roundWinnerId: PlayerId | null;
+}
+
+export interface PhaseRoundEditor {
+  game: Game;
+  round: Round;
+  players: PlayerIdentity[];
+  countedPlayerIds: PlayerId[];
+  version: string;
+}
+
+export interface EditPhaseRoundInput {
+  gameId: GameId;
+  roundNumber: number;
+  version: string;
+  scores: Omit<RoundScore, "currentPhase">[];
+  roundWinnerId: PlayerId | null;
+  confirmImpact?: boolean;
 }
 
 export type PhaseStatus = "failed" | "completed" | "skipped" | "satOut";
