@@ -1,7 +1,7 @@
 import type {
-  EditGenericPointsRoundInput,
+  EditGenericRoundInput,
   GameId,
-  GenericPointsRoundEditor,
+  GenericRoundEditor,
   GenericRoundId,
 } from "../../types";
 import { parseGenericPoints } from "../../utils/genericPoints";
@@ -13,19 +13,23 @@ import {
 import { assertGenericGame, deriveGenericScoreboard, orderGenericScores } from "./genericScoring";
 
 export const genericRoundEdits = {
-  getEditor(gameId: GameId, roundId: GenericRoundId): Promise<GenericPointsRoundEditor> {
+  getEditor(gameId: GameId, roundId: GenericRoundId): Promise<GenericRoundEditor> {
     return withGameTransaction(async (tx) => {
       const { game, players, round, version } = await loadEditor(tx, gameId, roundId);
-      return {
-        round,
-        version,
-        players: players.map(({ id, name, color }) => ({ id, name, color })),
-        tiebreakerEnabled: game.settings.tiebreaker !== null,
-      };
+      const identities = players.map(({ id, name, color }) => ({ id, name, color }));
+      return round.mode === "points"
+        ? {
+            mode: "points",
+            round,
+            version,
+            players: identities,
+            tiebreakerEnabled: game.settings.tiebreaker !== null,
+          }
+        : { mode: "passFail", round, version, players: identities };
     });
   },
 
-  async previewEdit(input: EditGenericPointsRoundInput) {
+  async previewEdit(input: EditGenericRoundInput) {
     const draft = parseEdit(input);
     return await withGameTransaction(async (tx) => {
       const { requiresConfirmation } = await evaluateEdit(tx, draft);
@@ -33,7 +37,7 @@ export const genericRoundEdits = {
     });
   },
 
-  async edit(input: EditGenericPointsRoundInput) {
+  async edit(input: EditGenericRoundInput) {
     const draft = parseEdit(input);
     return await withGameTransaction(async (tx) => {
       const { game, round, requiresConfirmation } = await evaluateEdit(tx, draft);
@@ -50,22 +54,39 @@ export const genericRoundEdits = {
   },
 };
 
-function parseEdit(input: EditGenericPointsRoundInput) {
-  if (input.mode !== "points") throw new Error("Only Points Rounds can be edited.");
+function parseEdit(input: EditGenericRoundInput) {
+  if (input.mode !== "points" && input.mode !== "passFail") {
+    throw new Error("Only Points and Pass/Fail Rounds can be edited.");
+  }
   if (!Array.isArray(input.scores)) {
     throw new Error("A Round must include every Player exactly once.");
   }
-  return {
+  const metadata = {
     gameId: input.gameId,
     roundId: input.roundId,
     version: input.version,
     confirmImpact: input.confirmImpact,
-    scores: input.scores.map(({ playerId, points, tiebreaker }) => ({
-      playerId,
-      points: parseGenericPoints(points),
-      tiebreaker,
-    })),
   };
+  return input.mode === "passFail"
+    ? {
+        ...metadata,
+        mode: input.mode,
+        scores: input.scores.map((score) => {
+          if (!score || typeof score.passed !== "boolean") {
+            throw new Error("Round contains an invalid Pass/Fail outcome.");
+          }
+          return { playerId: score.playerId, passed: score.passed };
+        }),
+      }
+    : {
+        ...metadata,
+        mode: input.mode,
+        scores: input.scores.map(({ playerId, points, tiebreaker }) => ({
+          playerId,
+          points: parseGenericPoints(points),
+          tiebreaker,
+        })),
+      };
 }
 
 async function loadEditor(tx: GameLifecycleTransaction, gameId: GameId, roundId: GenericRoundId) {
@@ -73,13 +94,15 @@ async function loadEditor(tx: GameLifecycleTransaction, gameId: GameId, roundId:
   if (!game || game.scorekeeper !== "generic") throw new Error("Generic Game not found.");
   if (game.status !== "active") throw new Error("Cannot edit a Completed Game.");
   assertGenericGame(game);
-  if (game.settings.mode !== "points") throw new Error("Only Points Rounds can be edited.");
+  if (game.settings.mode !== "points" && game.settings.mode !== "passFail") {
+    throw new Error("Only Points and Pass/Fail Rounds can be edited.");
+  }
   const rounds = await tx.objectStore("rounds").index("by-game").getAll(gameId);
   const round = rounds.find((saved) => saved.scorekeeper === "generic" && saved.id === roundId);
   if (
     !round ||
     round.scorekeeper !== "generic" ||
-    round.mode !== "points" ||
+    (round.mode !== "points" && round.mode !== "passFail") ||
     typeof round.id !== "string" ||
     round.id.length === 0 ||
     !Number.isSafeInteger(round.revision) ||
@@ -89,7 +112,7 @@ async function loadEditor(tx: GameLifecycleTransaction, gameId: GameId, roundId:
     throw new Error("Round cannot be edited. Legacy or missing Round history is read-only.");
   }
   const players = await requirePlayers(tx, game.players);
-  const editable: GenericPointsRoundEditor["round"] = {
+  const editable = {
     ...round,
     id: round.id,
     revision: round.revision,
@@ -117,22 +140,33 @@ async function evaluateEdit(tx: GameLifecycleTransaction, draft: ReturnType<type
   if (draft.version !== version) {
     throw new Error("Game history changed. Close and reopen Edit Round to load the saved values.");
   }
-  const round: GenericPointsRoundEditor["round"] = {
-    ...saved,
-    revision: saved.revision + 1,
-    scores: orderGenericScores(
-      game.players,
-      draft.scores.map(({ playerId, points, tiebreaker }) =>
-        game.settings.tiebreaker
-          ? {
-              playerId,
-              points,
-              tiebreaker: parseGenericPoints(tiebreaker ?? "", "Tiebreaker"),
-            }
-          : { playerId, points },
-      ),
-    ),
-  };
+  if (draft.mode !== game.settings.mode || draft.mode !== saved.mode) {
+    throw new Error("Round mode must match the Game settings.");
+  }
+  const metadata = { ...saved, revision: saved.revision + 1 };
+  const round: GenericRoundEditor["round"] =
+    draft.mode === "passFail"
+      ? {
+          ...metadata,
+          mode: "passFail",
+          scores: orderGenericScores(game.players, draft.scores),
+        }
+      : {
+          ...metadata,
+          mode: "points",
+          scores: orderGenericScores(
+            game.players,
+            draft.scores.map(({ playerId, points, tiebreaker }) =>
+              game.settings.tiebreaker
+                ? {
+                    playerId,
+                    points,
+                    tiebreaker: parseGenericPoints(tiebreaker ?? "", "Tiebreaker"),
+                  }
+                : { playerId, points },
+            ),
+          ),
+        };
   const after = deriveGenericScoreboard(
     game,
     players,

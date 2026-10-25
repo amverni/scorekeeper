@@ -326,7 +326,7 @@ it.each([
         ? { mode, pointsDirection: "high", tiebreaker: null, dealer: false }
         : { mode, tiebreaker: null, dealer: false },
     );
-    if (mode === "points") {
+    if (mode !== "singleRoundWinner") {
       await page.evaluate(`(async () => {
           const { genericGamesApi } = await import("/scorekeeper/src/data/api/genericGames.ts");
           await genericGamesApi.finish(${JSON.stringify(gameId)});

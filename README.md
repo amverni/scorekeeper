@@ -119,9 +119,11 @@ retains a draft; saving clears it, and leaving (including Pause) discards it.
 Completed scoreboards, Standings, graphs, and Games lists use snapshots even after
 saved Players are edited or deleted.
 
-Active Generic Points Games support editing a saved Round from its expanded
+Active Generic Points and Pass/Fail Games support editing a saved Round from its expanded
 scorecard details. Edit opens the full prefilled entry form and selects the
-chosen Player. Closing an unsaved editor discards only that correction; the
+chosen Player's control without changing its value. Pass/Fail retains the familiar
+outcome controls and allows any number of passes, including none or all Players.
+Closing an unsaved editor discards only that correction; the
 separate Add Round draft is retained. Changed totals and graph points save
 directly when places do not change. Changed places (including shared places)
 require the compact **Edit round** confirmation; **Edit**, Escape, and outside
@@ -129,11 +131,11 @@ dismissal return to the unchanged draft, while **Save** commits it. Generic
 completion remains an explicit Finish Game action.
 
 The public `genericRoundsApi.getEditor`, `previewEdit`, and `edit` commands
-validate Active Game ownership, Points mode, Player entries, and the loaded
+validate Active Game ownership, matching Points/Pass-Fail mode, Player entries, and the loaded
 history version. Preview never writes. Save revalidates the version and impact
 inside the same transaction as the Round/activity writes, then invalidates
 related Generic Game queries. New Generic Rounds carry stable IDs and revisions
 without changing IndexedDB stores or indexes. Existing Rounds lacking this
 metadata remain readable but cannot be edited; no backfill or reset is performed.
-Completed Games, Single Round Winner/Pass-Fail editing, Round deletion,
+Completed Games, Single Round Winner editing, Round deletion,
 cross-reload draft persistence, and production debug controls are not exposed.

@@ -72,14 +72,32 @@ export type AddGenericRoundInput =
   | AddGenericPassFailRoundInput;
 
 export interface GenericPointsRoundEditor {
+  mode: "points";
   round: GenericPointsRound & { id: GenericRoundId; revision: number };
   players: PlayerIdentity[];
   tiebreakerEnabled: boolean;
   version: string;
 }
 
+export interface GenericPassFailRoundEditor {
+  mode: "passFail";
+  round: GenericPassFailRound & { id: GenericRoundId; revision: number };
+  players: PlayerIdentity[];
+  version: string;
+}
+
+export type GenericRoundEditor = GenericPointsRoundEditor | GenericPassFailRoundEditor;
+
 export interface EditGenericPointsRoundInput extends AddGenericPointsRoundInput {
   roundId: GenericRoundId;
   version: string;
   confirmImpact?: boolean;
 }
+
+export interface EditGenericPassFailRoundInput extends AddGenericPassFailRoundInput {
+  roundId: GenericRoundId;
+  version: string;
+  confirmImpact?: boolean;
+}
+
+export type EditGenericRoundInput = EditGenericPointsRoundInput | EditGenericPassFailRoundInput;

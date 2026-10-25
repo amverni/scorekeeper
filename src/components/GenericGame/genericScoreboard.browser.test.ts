@@ -301,7 +301,7 @@ it.each(
       await cell.tap();
       expect(await box(value)).toEqual(before);
       expect((await box(cell)).height).toBe(
-        settings.mode === "points"
+        settings.mode !== "singleRoundWinner"
           ? settings.tiebreaker
             ? playerCount === 1
               ? 151
@@ -312,6 +312,9 @@ it.each(
           : playerCount === 1
             ? 65
             : 66,
+      );
+      expect(await cell.getByRole("button", { name: /^Edit Round/ }).count()).toBe(
+        settings.mode === "singleRoundWinner" ? 0 : 1,
       );
       for (const detail of await cell.locator(".scoreboard-extras span:has(> .sr-only)").all()) {
         const bounds = await box(detail);
