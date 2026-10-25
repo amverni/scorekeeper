@@ -121,3 +121,9 @@ export type EditGenericRoundInput =
   | EditGenericPointsRoundInput
   | EditGenericWinnerRoundInput
   | EditGenericPassFailRoundInput;
+
+export interface DeleteGenericRoundInput {
+  gameId: GameId;
+  roundId: GenericRoundId;
+  version: string;
+}

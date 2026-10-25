@@ -49,6 +49,7 @@ export type {
   AddGenericPointsRoundInput,
   AddGenericRoundInput,
   AddGenericWinnerRoundInput,
+  DeleteGenericRoundInput,
   EditGenericPassFailRoundInput,
   EditGenericPointsRoundInput,
   EditGenericRoundInput,

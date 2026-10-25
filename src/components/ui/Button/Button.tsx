@@ -1,5 +1,5 @@
 import { type ButtonProps, Button as HeadlessButton } from "@headlessui/react";
-import type { ElementType, ReactElement } from "react";
+import type { ComponentPropsWithRef, ElementType, ReactElement } from "react";
 import { mergeClassName } from "../mergeClassName";
 import { interactiveClasses } from "../sharedClasses";
 
@@ -21,6 +21,7 @@ const variantClasses = {
 };
 
 type StyledButtonProps<TTag extends ElementType = "button"> = ButtonProps<TTag> & {
+  ref?: ComponentPropsWithRef<TTag>["ref"];
   variant?: "default" | "plain" | "ready";
 };
 

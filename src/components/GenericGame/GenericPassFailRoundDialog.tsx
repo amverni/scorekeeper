@@ -1,7 +1,7 @@
 import { useForm } from "@tanstack/react-form";
 import type { GameId, GenericPassFailRoundEditor, PlayerId, PlayerIdentity } from "../../types";
 import { PlayerAvatar } from "../PlayerAvatar/PlayerAvatar";
-import { Button, DialogScrollArea, EditImpactDialog } from "../ui";
+import { Button, DeleteRoundDialog, DialogScrollArea, EditImpactDialog } from "../ui";
 import {
   GenericRoundDialog,
   GenericRoundDialogActions,
@@ -57,6 +57,7 @@ export function GenericPassFailRoundDialog({
                 formId={formId}
                 submitting={submitting || roundDialog.isPending}
                 canSave
+                onDelete={editor ? roundDialog.requestDelete : undefined}
               />
             )}
           </form.Subscribe>
@@ -105,6 +106,15 @@ export function GenericPassFailRoundDialog({
         onEdit={roundDialog.cancelConfirmation}
         onSave={roundDialog.confirmSave}
       />
+      {editor && (
+        <DeleteRoundDialog
+          open={roundDialog.deleteConfirmationOpen}
+          roundNumber={editor.round.roundNumber}
+          isPending={roundDialog.isPending}
+          onCancel={roundDialog.cancelDelete}
+          onDelete={roundDialog.confirmDelete}
+        />
+      )}
     </>
   );
 }

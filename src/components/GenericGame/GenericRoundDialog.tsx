@@ -1,8 +1,9 @@
 import { DialogTitle } from "@headlessui/react";
-import { Check, Loader2 } from "lucide-react";
+import { Check, Loader2, Trash2 } from "lucide-react";
 import { type ReactNode, useId, useRef, useState } from "react";
 import {
   useAddGenericRound,
+  useDeleteGenericRound,
   useEditGenericRound,
   usePreviewGenericRoundEdit,
 } from "../../data/hooks/useGenericGames";
@@ -14,6 +15,7 @@ export function useGenericRoundDialog(
   editor?: GenericRoundEditor,
 ) {
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const [confirmation, setConfirmation] = useState<{
     input: EditGenericRoundInput;
     resetDraft: () => void;
@@ -22,7 +24,9 @@ export function useGenericRoundDialog(
   const addRound = useAddGenericRound();
   const previewEdit = usePreviewGenericRoundEdit();
   const editRound = useEditGenericRound();
-  const isPending = addRound.isPending || previewEdit.isPending || editRound.isPending;
+  const deleteRound = useDeleteGenericRound();
+  const isPending =
+    addRound.isPending || previewEdit.isPending || editRound.isPending || deleteRound.isPending;
 
   async function saveRound(input: AddGenericRoundInput, resetDraft: () => void) {
     if (editor) {
@@ -44,14 +48,15 @@ export function useGenericRoundDialog(
     setSubmitError(null);
   }
 
-  function handleSubmit(submit: () => Promise<void>) {
+  function handleSubmit(submit: () => Promise<void>, fallbackMessage = "Unable to save Round.") {
     if (submitting.current) return;
     submitting.current = true;
     clearSubmitError();
     submit()
       .catch((error: unknown) => {
         setConfirmation(null);
-        setSubmitError(error instanceof Error ? error.message : "Unable to save Round.");
+        setDeleteConfirmationOpen(false);
+        setSubmitError(error instanceof Error ? error.message : fallbackMessage);
       })
       .finally(() => {
         submitting.current = false;
@@ -60,6 +65,26 @@ export function useGenericRoundDialog(
 
   return {
     isPending,
+    deleteConfirmationOpen,
+    requestDelete: () => {
+      if (!editor || submitting.current) return;
+      clearSubmitError();
+      setDeleteConfirmationOpen(true);
+    },
+    cancelDelete: () => {
+      if (!submitting.current) setDeleteConfirmationOpen(false);
+    },
+    confirmDelete: () =>
+      handleSubmit(async () => {
+        if (!editor || !deleteConfirmationOpen) return;
+        await deleteRound.mutateAsync({
+          gameId: editor.round.gameId,
+          roundId: editor.round.id,
+          version: editor.version,
+        });
+        setDeleteConfirmationOpen(false);
+        onClose(false);
+      }, "Unable to delete Round."),
     confirmationOpen: confirmation !== null,
     cancelConfirmation: () => {
       if (!submitting.current) setConfirmation(null);
@@ -150,6 +175,7 @@ interface GenericRoundDialogActionsProps {
   submitting: boolean;
   canSave: boolean;
   children?: ReactNode;
+  onDelete?: () => void;
 }
 
 const roundActionClasses = [
@@ -162,9 +188,21 @@ export function GenericRoundDialogActions({
   submitting,
   canSave,
   children,
+  onDelete,
 }: GenericRoundDialogActionsProps) {
   return (
     <div className="flex items-center justify-end gap-3 px-2 pt-1 pb-2">
+      {onDelete && (
+        <Button
+          type="button"
+          aria-label="Delete Round"
+          disabled={submitting}
+          onClick={onDelete}
+          className={[roundActionClasses, "mr-auto text-pt-red-500"].join(" ")}
+        >
+          <Trash2 className="size-4" aria-hidden />
+        </Button>
+      )}
       {children && <div className="min-w-0 flex-1 text-center">{children}</div>}
       <Button
         type="submit"

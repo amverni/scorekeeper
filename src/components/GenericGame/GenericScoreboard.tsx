@@ -155,7 +155,7 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
           </thead>
           <tbody>
             {view.rounds.map((round, roundIndex) => (
-              <tr key={round.roundNumber}>
+              <tr key={round.id ?? round.roundNumber}>
                 <th
                   scope="row"
                   className={[

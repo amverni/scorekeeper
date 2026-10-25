@@ -2,6 +2,7 @@ import { queryOptions, useMutation, useQueryClient } from "@tanstack/react-query
 import type {
   AddGenericRoundInput,
   CreateGenericGameInput,
+  DeleteGenericRoundInput,
   EditGenericRoundInput,
   GameId,
   GenericRoundId,
@@ -41,6 +42,14 @@ export function useEditGenericRound() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: EditGenericRoundInput) => genericRoundsApi.edit(input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: genericGameKeys.all }),
+  });
+}
+
+export function useDeleteGenericRound() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: DeleteGenericRoundInput) => genericRoundsApi.delete(input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: genericGameKeys.all }),
   });
 }

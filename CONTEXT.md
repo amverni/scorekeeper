@@ -27,7 +27,7 @@ _Avoid_: Hand, turn cycle
 A correction to the recorded scores or outcomes of an existing Round in an Active Game, rather than the recording of a new Round. Any saved Round may be edited.
 
 **Round Deletion**:
-The removal of a saved Round from an Active Game. Any saved Round may be deleted in either Scorekeeper.
+The removal of a saved Round from an Active Game. Any saved Round may be deleted in either Scorekeeper. Only the selected Round is removed; remaining Rounds are renumbered consecutively and results and dealers are recalculated. Deleting the sole Round retains the same empty Active Game, roster, and settings.
 
 **Active Game**:
 A Game whose competitive result is not finalized, accepting new Rounds or Round Edits as its rules allow.

@@ -1,4 +1,5 @@
 import type {
+  DeleteGenericRoundInput,
   EditGenericRoundInput,
   GameId,
   GenericRoundEditor,
@@ -13,6 +14,34 @@ import {
 import { assertGenericGame, deriveGenericScoreboard, orderGenericScores } from "./genericScoring";
 
 export const genericRoundEdits = {
+  delete(input: DeleteGenericRoundInput): Promise<void> {
+    return withGameTransaction(async (tx) => {
+      const { game, players, rounds, round, version } = await loadEditor(
+        tx,
+        input.gameId,
+        input.roundId,
+      );
+      if (input.version !== version) {
+        throw new Error(
+          "Game history changed. Close and reopen Edit Round to load the saved values.",
+        );
+      }
+      const remaining = rounds
+        .filter((saved) => saved.scorekeeper !== "generic" || saved.id !== round.id)
+        .sort((a, b) => a.roundNumber - b.roundNumber)
+        .map((saved, index) => ({ ...saved, roundNumber: index + 1 }));
+      deriveGenericScoreboard(game, players, remaining);
+      const store = tx.objectStore("rounds");
+      for (const saved of rounds) {
+        await store.delete([game.id, saved.roundNumber]);
+      }
+      for (const saved of remaining) {
+        await store.add(saved);
+      }
+      await tx.objectStore("games").put({ ...game, lastActivityAt: Date.now() });
+    });
+  },
+
   getEditor(gameId: GameId, roundId: GenericRoundId): Promise<GenericRoundEditor> {
     return withGameTransaction(async (tx) => {
       const { game, players, round, version } = await loadEditor(tx, gameId, roundId);

@@ -4,7 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import type { GameId, GenericRoundEditor, PlayerId, PlayerIdentity } from "../../types";
 import { parseGenericPoints } from "../../utils/genericPoints";
 import { PlayerAvatar } from "../PlayerAvatar/PlayerAvatar";
-import { EditImpactDialog, SwipeableTabPanels, TabList, tabClasses } from "../ui";
+import {
+  DeleteRoundDialog,
+  EditImpactDialog,
+  SwipeableTabPanels,
+  TabList,
+  tabClasses,
+} from "../ui";
 import {
   GenericRoundDialog,
   GenericRoundDialogActions,
@@ -138,6 +144,7 @@ export function GenericAddRoundDialog({
                 formId={formId}
                 submitting={submitting || roundDialog.isPending}
                 canSave={canSave}
+                onDelete={editor ? roundDialog.requestDelete : undefined}
               >
                 {mode === "singleRoundWinner" && (
                   <output aria-live="polite" className="text-sm text-text-secondary">
@@ -250,6 +257,15 @@ export function GenericAddRoundDialog({
         onEdit={roundDialog.cancelConfirmation}
         onSave={roundDialog.confirmSave}
       />
+      {editor && (
+        <DeleteRoundDialog
+          open={roundDialog.deleteConfirmationOpen}
+          roundNumber={editor.round.roundNumber}
+          isPending={roundDialog.isPending}
+          onCancel={roundDialog.cancelDelete}
+          onDelete={roundDialog.confirmDelete}
+        />
+      )}
     </>
   );
 }
