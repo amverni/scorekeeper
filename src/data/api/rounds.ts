@@ -331,6 +331,16 @@ export const roundsApi = {
       }
 
       await store.delete([gameId, roundNumber]);
+      if (game.playerJoins) {
+        await tx.objectStore("games").put({
+          ...game,
+          playerJoins: game.playerJoins.map((join) => ({
+            ...join,
+            afterRoundNumber: Math.min(join.afterRoundNumber, roundNumber - 1),
+          })),
+          lastActivityAt: Date.now(),
+        });
+      }
     });
   },
 
@@ -347,6 +357,13 @@ export const roundsApi = {
       const rounds = await store.index("by-game").getAll(gameId);
       assertPhaseRounds(rounds);
       await Promise.all(rounds.map((r) => store.delete([r.gameId, r.roundNumber])));
+      if (game.playerJoins) {
+        await tx.objectStore("games").put({
+          ...game,
+          playerJoins: game.playerJoins.map((join) => ({ ...join, afterRoundNumber: 0 })),
+          lastActivityAt: Date.now(),
+        });
+      }
     });
   },
 };

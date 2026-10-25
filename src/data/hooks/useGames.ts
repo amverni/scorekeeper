@@ -1,5 +1,5 @@
 import { type QueryClient, queryOptions, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { CreateGameInput, Game, GameId } from "../../types";
+import type { CreateGameInput, EditGamePlayersInput, Game, GameId } from "../../types";
 import { gamesApi } from "../api/games";
 import { phaseSetKeys } from "./usePhaseSets";
 import { phaseKeys } from "./usePhases";
@@ -73,6 +73,21 @@ export function useCreateGame() {
       queryClient.invalidateQueries({ queryKey: gameKeys.lists() });
       queryClient.setQueryData(gameKeys.detail(game.id), game);
     },
+  });
+}
+
+export function usePreviewGameEdit() {
+  return useMutation({
+    mutationFn: (input: EditGamePlayersInput) => gamesApi.previewEdit(input),
+  });
+}
+
+export function useEditGame() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: EditGamePlayersInput) => gamesApi.edit(input),
+    onSuccess: (game) => refreshGameCache(queryClient, game),
+    onError: () => queryClient.invalidateQueries({ queryKey: gameKeys.all, refetchType: "none" }),
   });
 }
 

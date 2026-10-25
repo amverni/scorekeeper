@@ -33,6 +33,7 @@ interface PhaseGameFields {
   phaseSet: TemporaryPhaseSet;
   settings: GameSettings;
   continuation?: boolean;
+  playerJoins?: Array<{ playerId: PlayerId; afterRoundNumber: number }>;
 }
 
 export type CreateGameInput = Pick<ActiveGame, "players" | "phaseSet" | "settings">;

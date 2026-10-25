@@ -5,6 +5,7 @@ import type {
   PlayerId,
   StandingsDerivation,
   StandingsInput,
+  StandingsRow,
 } from "../../types";
 import {
   formatTiebreakerValue,
@@ -24,6 +25,11 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
   const sortedRounds = rounds.slice().sort((a, b) => a.roundNumber - b.roundNumber);
   const version = JSON.stringify([game, sortedRounds]);
   const totalPhases = game.phaseSet.phases.length;
+  const joinBoundary = new Map(
+    (game.playerJoins ?? []).map(({ playerId, afterRoundNumber }) => [playerId, afterRoundNumber]),
+  );
+  const hasJoined = (id: PlayerId, roundNumber: number) =>
+    (joinBoundary.get(id) ?? 0) < roundNumber;
   const gameOrder = new Map(game.players.map((playerId, index) => [playerId, index]));
   const columnIds = game.status === "active" ? game.activePlayers : game.players;
   const playerById = new Map(includedPlayers.map((player) => [player.id, player]));
@@ -40,10 +46,12 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
         tiebreakerTotal: 0,
         finishingRound: null as number | null,
         mostRecentWin: -1,
-        phasePoints: [{ roundNumber: 0, ...getInitialPlayerProgress() }],
+        phasePoints: [
+          { roundNumber: joinBoundary.get(player.id) ?? 0, ...getInitialPlayerProgress() },
+        ],
         tiebreakerPoints: [
           {
-            roundNumber: 0,
+            roundNumber: joinBoundary.get(player.id) ?? 0,
             value: 0,
             standingValue: toTiebreakerStandingValue(0, game.settings.tiebreaker),
           },
@@ -73,14 +81,17 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
     const counted = gameEndingRound === null;
     const participatingIds = columnIds.filter(
       (id) =>
-        !stateFor(id).progress.isFinished && round.scores.some((score) => score.playerId === id),
+        hasJoined(id, round.roundNumber) &&
+        !stateFor(id).progress.isFinished &&
+        round.scores.some((score) => score.playerId === id),
     );
     const dealerId = counted ? nextDealer(participatingIds) : null;
     if (dealerId !== null) nextSeat = (gameOrder.get(dealerId) ?? 0) + 1;
     const scores = orderedPlayers.map((player) => {
       const state = stateFor(player.id);
       const recorded = round.scores.find((entry) => entry.playerId === player.id);
-      const entryCounts = counted && !state.progress.isFinished && recorded !== undefined;
+      const joined = hasJoined(player.id, round.roundNumber);
+      const entryCounts = counted && joined && !state.progress.isFinished && recorded !== undefined;
       // Phase assignment is derived from counted history, never from an excluded entry.
       const effectiveScore = entryCounts
         ? { ...recorded, currentPhase: state.progress.currentPhase }
@@ -99,7 +110,7 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
         if (round.roundWinnerId === player.id) state.mostRecentWin = round.roundNumber;
         if (state.progress.isFinished) state.finishingRound = round.roundNumber;
       }
-      if (counted && !wasFinished) {
+      if (counted && joined && !wasFinished) {
         state.phasePoints.push({ roundNumber: round.roundNumber, ...state.progress });
         state.tiebreakerPoints.push({
           roundNumber: round.roundNumber,
@@ -119,16 +130,18 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
     });
     roundViews.push({ source: round, dealerId, scores, counted });
     if (counted) {
-      const finishedCount = includedPlayers.filter(
+      const members = includedPlayers.filter((player) => hasJoined(player.id, round.roundNumber));
+      const finishedCount = members.filter(
         (player) => stateFor(player.id).progress.isFinished,
       ).length;
-      automaticCompletion = finishedCount > 0 && finishedCount >= includedPlayers.length - 1;
+      automaticCompletion = finishedCount > 0 && finishedCount >= members.length - 1;
       if (automaticCompletion || (finishedCount > 0 && !game.continuation)) {
         gameEndingRound = round.roundNumber;
       }
     }
   }
 
+  const eligible = (id: PlayerId) => gameEndingRound === null || hasJoined(id, gameEndingRound);
   const sortedRows = includedPlayers
     .map((player) => {
       const state = stateFor(player.id);
@@ -143,6 +156,7 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
       };
     })
     .sort((a, b) => {
+      if (eligible(a.player.id) !== eligible(b.player.id)) return eligible(a.player.id) ? -1 : 1;
       const finishComparison = (a.finishingRound ?? Infinity) - (b.finishingRound ?? Infinity);
       if (a.finishingRound !== b.finishingRound) return finishComparison;
       return (
@@ -153,7 +167,8 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
       );
     });
   let place = 1;
-  const rows = sortedRows.map((row, index) => {
+  const rows: StandingsRow[] = sortedRows.map((row, index) => {
+    if (!eligible(row.player.id)) return { ...row, place: null, showPlace: false };
     const previous = sortedRows[index - 1];
     const sharedPlace =
       previous !== undefined &&
@@ -176,11 +191,11 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
     rows,
     phaseGraphSeries: includedPlayers.map((player) => ({
       player,
-      points: stateFor(player.id).phasePoints,
+      points: eligible(player.id) ? stateFor(player.id).phasePoints : [],
     })),
     tiebreakerGraphSeries: includedPlayers.map((player) => ({
       player,
-      points: stateFor(player.id).tiebreakerPoints,
+      points: eligible(player.id) ? stateFor(player.id).tiebreakerPoints : [],
     })),
     hasFinishedPlayers,
     gameWinner,
@@ -189,7 +204,9 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
     game.status === "active" && !game.continuation && gameWinner && !automaticCompletion
       ? { winner: gameWinner.player, token: version }
       : null;
-  const playingPlayerIds = columnIds.filter((id) => !stateFor(id).progress.isFinished);
+  const playingPlayerIds = columnIds.filter(
+    (id) => eligible(id) && !stateFor(id).progress.isFinished,
+  );
   const playerViews = orderedPlayers.map((player) => {
     const state = stateFor(player.id);
     const row = rows.find((row) => row.player.id === player.id);
@@ -220,7 +237,9 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
       gameEndingRound ??
       (game.status === "completed" ? (sortedRounds.at(-1)?.roundNumber ?? null) : null),
     automaticCompletion,
-    playingPlayers: playerViews.filter((player) => !player.progress.isFinished),
+    playingPlayers: playerViews.filter(
+      (player) => eligible(player.id) && !player.progress.isFinished,
+    ),
     standings,
     tiebreakerGraphPlayerOrder: includedPlayers
       .slice()

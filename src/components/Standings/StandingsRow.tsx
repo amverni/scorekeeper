@@ -18,9 +18,13 @@ export function StandingsRow({ row }: StandingsRowProps) {
     .join(" ");
 
   return (
-    <li className={standingsRowClasses}>
+    <li className={[standingsRowClasses, row.place === null ? "opacity-45" : ""].join(" ")}>
       <span className="sr-only">
-        {row.showPlace ? `Place ${row.place}` : `Tied for place ${row.place}`}
+        {row.place === null
+          ? "Unranked"
+          : row.showPlace
+            ? `Place ${row.place}`
+            : `Tied for place ${row.place}`}
       </span>
       <span className={placeClasses} aria-hidden>
         {row.place}

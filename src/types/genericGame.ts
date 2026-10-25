@@ -1,4 +1,4 @@
-import type { GameId } from "./game";
+import type { EditGamePlayersInput } from "./gameEditor";
 import type { ActiveGameMetadata, CompletedGameMetadata } from "./gameLifecycle";
 import type { GenericRoundId } from "./genericRound";
 import type { PlayerId, PlayerIdentity } from "./player";
@@ -58,12 +58,7 @@ export interface CreateGenericGameInput {
   settings: GenericGameSettings;
 }
 
-export interface EditGenericGameInput {
-  gameId: GameId;
-  version: string;
-  players: PlayerId[];
-  confirmImpact?: boolean;
-}
+export type EditGenericGameInput = EditGamePlayersInput;
 
 export interface GenericGameView {
   game: GenericGame;

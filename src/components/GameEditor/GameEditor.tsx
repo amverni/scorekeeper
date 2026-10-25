@@ -1,21 +1,16 @@
-import { TabPanel } from "@headlessui/react";
 import { type UseQueryResult, useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { TIEBREAKER_LABELS } from "../../data/constants/gameSettings";
-import { gameEditorOptions } from "../../data/hooks/useGames";
-import { genericGameEditorOptions } from "../../data/hooks/useGenericGames";
-import type {
-  ActiveGenericGame,
-  GameId,
-  GenericGameEditor,
-  PhaseGameEditor,
-  PlayerIdentity,
-} from "../../types";
+import { gameEditorOptions, useEditGame, usePreviewGameEdit } from "../../data/hooks/useGames";
+import {
+  genericGameEditorOptions,
+  useEditGenericGame,
+  usePreviewGenericGameEdit,
+} from "../../data/hooks/useGenericGames";
+import type { ActiveGenericGame, GameId, GenericGameEditor, PhaseGameEditor } from "../../types";
 import { formatPhaseDisplayName } from "../../utils";
-import { GameSetupTabs } from "../Create/GameSetupTabs";
-import { PlayerRow } from "../Create/Players/PlayerRow";
-import { InlineError, List, ScrollFade } from "../ui";
-import { GenericMembershipEditor } from "./GenericMembershipEditor";
+import { InlineError } from "../ui";
+import { GameMembershipEditor } from "./GameMembershipEditor";
 import { StagedGameEditor } from "./StagedGameEditor";
 
 function SettingsReference({ rows }: { rows: Array<[string, string]> }) {
@@ -28,20 +23,6 @@ function SettingsReference({ rows }: { rows: Array<[string, string]> }) {
         </div>
       ))}
     </dl>
-  );
-}
-
-function PlayersReference({ players }: { players: PlayerIdentity[] }) {
-  return (
-    <div className="py-4">
-      <List role="list" rowVariant="compact-content">
-        {players.map((player) => (
-          <li key={player.id} className="list-none">
-            <PlayerRow player={player} />
-          </li>
-        ))}
-      </List>
-    </div>
   );
 }
 
@@ -74,50 +55,6 @@ function genericSettingsRows(game: ActiveGenericGame): Array<[string, string]> {
   return rows;
 }
 
-function Inspection({ editor }: { editor: PhaseGameEditor | GenericGameEditor }) {
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const { game, players } = editor;
-  const rows: Array<[string, string]> =
-    game.scorekeeper === "phase10"
-      ? [
-          ["In-order phases", "On"],
-          ["Tiebreaker", TIEBREAKER_LABELS[game.settings.tiebreaker]],
-          ["Round Skip Penalty", String(game.settings.roundSkipPenalty)],
-          ["Sit Out Penalty", String(game.settings.sitOutPenalty)],
-        ]
-      : genericSettingsRows(game);
-  return (
-    <GameSetupTabs
-      experience={game.scorekeeper === "phase10" ? "phaseCompan10n" : "scorekeeper"}
-      selectedIndex={selectedIndex}
-      onChange={setSelectedIndex}
-    >
-      <TabPanel className="h-full px-4">
-        <ScrollFade className="h-full -mx-6 px-6 pb-(--slant)">
-          <PlayersReference players={players} />
-        </ScrollFade>
-      </TabPanel>
-      {"phases" in editor && (
-        <TabPanel className="h-full px-4">
-          <ScrollFade className="h-full -mx-6 px-6 pb-(--slant)">
-            <ol className="glass my-4 list-decimal space-y-4 rounded-2xl py-4 pr-4 pl-10 text-sm">
-              {editor.phases.map((phase, index) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: Saved Phase positions are immutable, and repeated objectives are separate positions.
-                <li key={index}>{formatPhaseDisplayName(phase)}</li>
-              ))}
-            </ol>
-          </ScrollFade>
-        </TabPanel>
-      )}
-      <TabPanel className="h-full px-4">
-        <ScrollFade className="h-full -mx-6 px-6 pb-(--slant)">
-          <SettingsReference rows={rows} />
-        </ScrollFade>
-      </TabPanel>
-    </GameSetupTabs>
-  );
-}
-
 function EditorContent({
   query,
 }: {
@@ -133,15 +70,50 @@ function EditorContent({
   if (query.isPending) {
     return <output className="content-container block py-4">Loading Game...</output>;
   }
-  return query.data ? (
-    <Inspection editor={query.data} />
-  ) : (
+  return (
     <output className="content-container block py-4">This Game is no longer available.</output>
   );
 }
 
 export function PhaseGameEditorPage({ gameId }: { gameId: GameId }) {
   const query = useQuery(gameEditorOptions(gameId));
+  const preview = usePreviewGameEdit();
+  const edit = useEditGame();
+  const navigate = useNavigate();
+  if (query.data && !query.isError) {
+    const editor = query.data;
+    return (
+      <GameMembershipEditor
+        key={gameId}
+        editor={editor}
+        experience="phaseCompan10n"
+        isPending={preview.isPending || edit.isPending}
+        preview={(input) => preview.mutateAsync(input)}
+        save={async (input) => {
+          await edit.mutateAsync(input);
+          await navigate({ to: "/phaseCompan10n/game/$gameId", params: { gameId } });
+        }}
+        phases={
+          <ol className="glass my-4 list-decimal space-y-4 rounded-2xl py-4 pr-4 pl-10 text-sm">
+            {editor.phases.map((phase, index) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: Saved Phase positions are immutable.
+              <li key={index}>{formatPhaseDisplayName(phase)}</li>
+            ))}
+          </ol>
+        }
+        settings={
+          <SettingsReference
+            rows={[
+              ["In-order phases", "On"],
+              ["Tiebreaker", TIEBREAKER_LABELS[editor.game.settings.tiebreaker]],
+              ["Round Skip Penalty", String(editor.game.settings.roundSkipPenalty)],
+              ["Sit Out Penalty", String(editor.game.settings.sitOutPenalty)],
+            ]}
+          />
+        }
+      />
+    );
+  }
   return (
     <StagedGameEditor experience="phaseCompan10n" gameId={gameId} save={{ status: "unsupported" }}>
       <EditorContent query={query} />
@@ -151,11 +123,21 @@ export function PhaseGameEditorPage({ gameId }: { gameId: GameId }) {
 
 export function GenericGameEditorPage({ gameId }: { gameId: GameId }) {
   const query = useQuery(genericGameEditorOptions(gameId));
+  const preview = usePreviewGenericGameEdit();
+  const edit = useEditGenericGame();
+  const navigate = useNavigate();
   if (query.data && !query.isError) {
     return (
-      <GenericMembershipEditor
+      <GameMembershipEditor
         key={gameId}
         editor={query.data}
+        experience="scorekeeper"
+        isPending={preview.isPending || edit.isPending}
+        preview={(input) => preview.mutateAsync(input)}
+        save={async (input) => {
+          await edit.mutateAsync(input);
+          await navigate({ to: "/scorekeeper/game/$gameId", params: { gameId } });
+        }}
         settings={<SettingsReference rows={genericSettingsRows(query.data.game)} />}
       />
     );

@@ -17,6 +17,8 @@ beforeAll(async () => {
   const address = server.httpServer?.address();
   if (!address || typeof address === "string") throw new Error("Missing test server address");
   appUrl = `http://127.0.0.1:${address.port}/scorekeeper/`;
+  await server.warmupRequest("/src/main.tsx");
+  await server.waitForRequestsIdle();
   browser = await webkit.launch();
 }, 60_000);
 
@@ -282,15 +284,18 @@ it("reuses Player search and profile creation, retaining explicitly saved profil
   }
 }, 60_000);
 
-it("blocks pending duplicate Game saves and retains the staged addition after storage failure", async () => {
+it.each([
+  "phase10",
+  "generic",
+] as const)("blocks pending duplicate %s Game saves and retains the staged addition after storage failure", async (owner) => {
   const page = await newPage(390, 844);
   try {
-    const game = await seed(page, "generic");
+    const game = await seed(page, owner);
     const cam = await page.evaluate<Player>(`(async () => {
       const { playersApi } = await import("/scorekeeper/src/data/api/players.ts");
       return playersApi.create({ name: "Cam", color: "Lime", isFavorite: 1 });
     })()`);
-    await page.goto(`${appUrl}#/scorekeeper/game/${game.id}`);
+    await page.goto(`${appUrl}#${home(owner)}/game/${game.id}`);
     await openEditor(page);
     await page.getByRole("button", { name: "Cam", exact: true }).click();
     await movePlayerUp(page, "Cam");
@@ -316,18 +321,22 @@ it("blocks pending duplicate Game saves and retains the staged addition after st
     await page.getByRole("alert").filter({ hasText: "Membership storage unavailable" }).waitFor();
     await page.getByRole("button", { name: "Remove Cam", exact: true }).waitFor();
     const saved = await page.evaluate<StoredGame>(`(async () => {
-      const { genericGamesApi } = await import("/scorekeeper/src/data/api/genericGames.ts");
-      return genericGamesApi.getById(${JSON.stringify(game.id)});
+      ${apiImport(owner)}
+      return api.getById(${JSON.stringify(game.id)});
     })()`);
     expect(saved).toEqual(game);
     await save.click();
-    await page.getByRole("columnheader").filter({ hasText: "Cam" }).waitFor();
+    const member =
+      owner === "phase10"
+        ? page.getByRole("button", { name: "Cam: Show all Player names", exact: true })
+        : page.getByRole("columnheader").filter({ hasText: "Cam" });
+    await member.waitFor();
     await page.reload();
-    await page.getByRole("columnheader").filter({ hasText: "Cam" }).waitFor();
+    await member.waitFor();
     expect(
       await page.evaluate<string[]>(`(async () => {
-      const { genericGamesApi } = await import("/scorekeeper/src/data/api/genericGames.ts");
-      return (await genericGamesApi.getById(${JSON.stringify(game.id)})).players;
+      ${apiImport(owner)}
+      return (await api.getById(${JSON.stringify(game.id)})).players;
     })()`),
     ).toEqual([game.players[0], cam.id, game.players[1]]);
   } finally {
@@ -485,6 +494,90 @@ it.each([
   }
 }, 60_000);
 
+it("confirms a prospective Phase 10 Join, locks the saved seat and displays corrected late entries as unranked and not counted", async () => {
+  const page = await newPage(390, 844);
+  try {
+    const game = await seed(page, "phase10");
+    await page.evaluate(`(async () => {
+      const { playersApi } = await import("/scorekeeper/src/data/api/players.ts");
+      const { roundsApi } = await import("/scorekeeper/src/data/api/rounds.ts");
+      await playersApi.create({ name: "Cam", color: "Lime", isFavorite: 1 });
+      const ids = ${JSON.stringify(game.players)};
+      for (let number = 1; number <= 3; number++) {
+        await roundsApi.add({
+          gameId: ${JSON.stringify(game.id)}, roundWinnerId: null,
+          scores: ids.map((playerId, index) => ({
+            playerId, score: index + 1,
+            phaseStatus: index === 0 && number > 1 ? "completed" : "failed"
+          }))
+        });
+      }
+    })()`);
+    await page.goto(`${appUrl}#/phaseCompan10n/game/${game.id}`);
+    await openEditor(page);
+    await page.getByRole("button", { name: "Cam", exact: true }).click();
+    await movePlayerUp(page, "Cam");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    const confirmation = page.getByRole("dialog", { name: "Edit game", exact: true });
+    await expect
+      .poll(() =>
+        confirmation
+          .getByRole("button", { name: "Edit", exact: true })
+          .evaluate((button) => button === document.activeElement),
+      )
+      .toBe(true);
+    await page.keyboard.press("Escape");
+    await confirmation.waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Remove Cam", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await confirmation.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByRole("button", { name: "Cam: Show all Player names", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Round 1", exact: true }).click();
+    expect(
+      await page.getByRole("button", { name: "Edit Round 1 for Cam", exact: true }).count(),
+    ).toBe(0);
+    await openEditor(page);
+    expect(await page.getByRole("button", { name: /^Reorder |^Remove / }).count()).toBe(0);
+    expect(await page.getByRole("button", { name: "Save", exact: true }).isDisabled()).toBe(true);
+    await page.getByRole("link", { name: "Cancel", exact: true }).click();
+    await page.evaluate(`(async () => {
+      const { gamesApi } = await import("/scorekeeper/src/data/api/games.ts");
+      const { roundsApi } = await import("/scorekeeper/src/data/api/rounds.ts");
+      const game = await gamesApi.getById(${JSON.stringify(game.id)});
+      await roundsApi.add({
+        gameId: game.id, roundWinnerId: null,
+        scores: game.players.map((playerId) => ({
+          playerId, score: 2, phaseStatus: playerId === ${JSON.stringify(game.players[0])} ? "failed" : "completed"
+        }))
+      });
+      const editor = await gamesApi.getRoundEditor(game.id, 1);
+      await gamesApi.editRound({
+        gameId: game.id, roundNumber: 1, version: editor.version,
+        roundWinnerId: null, confirmImpact: true,
+        scores: editor.round.scores.map((score) => score.playerId === ${JSON.stringify(game.players[0])}
+          ? {...score, phaseStatus: "completed"} : score)
+      });
+    })()`);
+    await page.reload();
+    await page.getByRole("dialog").getByText("Unranked", { exact: true }).waitFor();
+    await page.keyboard.press("Escape");
+    await page.getByRole("dialog").waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Round 4, not counted", exact: true }).waitFor();
+    await page.getByText("Retained entry, not counted.", { exact: true }).first().waitFor();
+    await page.getByText("Unranked", { exact: true }).first().waitFor();
+    const view = await page.evaluate<import("../../types").GameReadModel>(`(async () => {
+      const { gamesApi } = await import("/scorekeeper/src/data/api/games.ts");
+      return gamesApi.getView(${JSON.stringify(game.id)});
+    })()`);
+    expect(view.game.status).toBe("completed");
+    expect(view.players[1]).toMatchObject({ name: "Cam", place: null, tiebreakerTotal: 0 });
+    expect(view.rounds[0].source.scores).toHaveLength(2);
+    expect(view.rounds[3].source.scores).toHaveLength(3);
+  } finally {
+    await page.close();
+  }
+}, 60_000);
+
 it.each([
   "phase10",
   "generic",
@@ -626,10 +719,14 @@ it("preserves typed Points, Tiebreaker and selected Player through editing, but 
   }
 }, 60_000);
 
-it("preserves Phase Round outcomes, count entries, winner and selected Player across the edit route", async () => {
+it("joins a Phase 10 Player without resetting unfinished Round outcomes, counts, winner or selected Player", async () => {
   const page = await newPage(390, 844);
   try {
     const game = await seed(page, "phase10");
+    await page.evaluate(`(async () => {
+      const { playersApi } = await import("/scorekeeper/src/data/api/players.ts");
+      await playersApi.create({ name: "Cam", color: "Lime", isFavorite: 1 });
+    })()`);
     await page.goto(`${appUrl}#/phaseCompan10n/game/${game.id}`);
     const add = page.getByRole("button", { name: "Add round 1", exact: true });
     const dialog = page.getByRole("dialog", { name: "Add Round", exact: true });
@@ -642,7 +739,10 @@ it("preserves Phase Round outcomes, count entries, winner and selected Player ac
     await page.keyboard.press("Escape");
     await dialog.waitFor({ state: "detached" });
     await openEditor(page);
-    await page.goBack();
+    await page.getByRole("button", { name: "Cam", exact: true }).click();
+    await movePlayerUp(page, "Cam");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByRole("button", { name: "Menu", exact: true }).waitFor();
     await add.click();
     expect(
       await dialog.getByRole("tab", { name: "Amy", exact: true }).getAttribute("aria-selected"),
@@ -658,6 +758,16 @@ it("preserves Phase Round outcomes, count entries, winner and selected Player ac
         .getByRole("spinbutton", { name: "Wilds used", exact: true })
         .getAttribute("aria-valuenow"),
     ).toBe("3");
+    expect(await dialog.getByRole("button", { name: "Save round", exact: true }).isDisabled()).toBe(
+      true,
+    );
+    await dialog.getByRole("tab", { name: "Cam", exact: true }).click();
+    expect(
+      await dialog
+        .getByRole("button", { name: "Failed", exact: true })
+        .getAttribute("aria-pressed"),
+    ).toBe("false");
+    await dialog.getByRole("button", { name: "Failed", exact: true }).click();
     await dialog.getByRole("button", { name: "Save round", exact: true }).click();
     await dialog.waitFor({ state: "detached" });
     await page.reload();
@@ -671,6 +781,7 @@ it("preserves Phase Round outcomes, count entries, winner and selected Player ac
       roundWinnerId: game.players[0],
       scores: [
         { playerId: game.players[0], phaseStatus: "completed", score: 0 },
+        { phaseStatus: "failed", score: 0, currentPhase: 1 },
         { playerId: game.players[1], phaseStatus: "failed", score: 3 },
       ],
     });

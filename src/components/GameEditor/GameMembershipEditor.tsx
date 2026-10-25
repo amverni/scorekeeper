@@ -1,9 +1,12 @@
 import { TabPanel } from "@headlessui/react";
 import { useForm } from "@tanstack/react-form";
-import { useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useRef, useState } from "react";
-import { useEditGenericGame, usePreviewGenericGameEdit } from "../../data/hooks/useGenericGames";
-import type { EditGenericGameInput, GenericGameEditor } from "../../types";
+import type {
+  EditGamePlayersInput,
+  GenericGameEditor,
+  PhaseGameEditor,
+  ScorekeeperExperience,
+} from "../../types";
 import { GameSetupTabs } from "../Create/GameSetupTabs";
 import { PlayerSelectionProvider } from "../Create/PlayerSelectionContext";
 import { AddPlayerButton } from "../Create/Players/AddPlayerButton";
@@ -12,22 +15,28 @@ import { EditImpactDialog, InlineError, List, ScrollFade } from "../ui";
 import { GameMembershipPlayers } from "./GameMembershipPlayers";
 import { StagedGameEditor } from "./StagedGameEditor";
 
-export function GenericMembershipEditor({
+export function GameMembershipEditor({
   editor,
+  experience,
+  phases,
   settings,
+  isPending,
+  preview,
+  save,
 }: {
-  editor: GenericGameEditor;
+  editor: GenericGameEditor | PhaseGameEditor;
+  experience: ScorekeeperExperience;
+  phases?: ReactNode;
   settings: ReactNode;
+  isPending: boolean;
+  preview: (input: EditGamePlayersInput) => Promise<{ requiresConfirmation: boolean }>;
+  save: (input: EditGamePlayersInput) => Promise<void>;
 }) {
   const { game } = editor;
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [confirmation, setConfirmation] = useState<EditGenericGameInput | null>(null);
+  const [confirmation, setConfirmation] = useState<EditGamePlayersInput | null>(null);
   const submitting = useRef(false);
-  const preview = usePreviewGenericGameEdit();
-  const edit = useEditGenericGame();
-  const navigate = useNavigate();
-  const isPending = preview.isPending || edit.isPending;
   const savedIds = new Set(game.players);
   const form = useForm({
     defaultValues: { players: editor.players },
@@ -37,7 +46,7 @@ export function GenericMembershipEditor({
         version: editor.version,
         players: value.players.map(({ id }) => id),
       };
-      const impact = await preview.mutateAsync(input);
+      const impact = await preview(input);
       if (impact.requiresConfirmation) {
         setConfirmation(input);
       } else {
@@ -45,11 +54,6 @@ export function GenericMembershipEditor({
       }
     },
   });
-
-  async function save(input: EditGenericGameInput) {
-    await edit.mutateAsync(input);
-    await navigate({ to: "/scorekeeper/game/$gameId", params: { gameId: game.id } });
-  }
 
   function submit(action: () => Promise<void>) {
     if (submitting.current) return;
@@ -74,7 +78,7 @@ export function GenericMembershipEditor({
     >
       {({ players, isSubmitting }) => (
         <StagedGameEditor
-          experience="scorekeeper"
+          experience={experience}
           gameId={game.id}
           save={
             isPending || isSubmitting
@@ -85,7 +89,7 @@ export function GenericMembershipEditor({
           }
         >
           <GameSetupTabs
-            experience="scorekeeper"
+            experience={experience}
             selectedIndex={selectedIndex}
             onChange={setSelectedIndex}
             error={
@@ -138,6 +142,11 @@ export function GenericMembershipEditor({
                 </form.Field>
               </ScrollFade>
             </TabPanel>
+            {phases && (
+              <TabPanel className="h-full px-4">
+                <ScrollFade className="h-full -mx-6 px-6 pb-4">{phases}</ScrollFade>
+              </TabPanel>
+            )}
             <TabPanel className="h-full px-4">
               <ScrollFade className="h-full -mx-6 px-6 pb-4">{settings}</ScrollFade>
             </TabPanel>
