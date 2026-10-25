@@ -4,7 +4,8 @@ import type { Browser, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import type { ScorekeeperId, StoredGame } from "../../types";
+import { holdRoundStorage, releaseRoundStorage } from "../../test/roundStorage";
+import type { Player, ScorekeeperId, StoredGame } from "../../types";
 
 let server: ViteDevServer;
 let browser: Browser;
@@ -73,6 +74,281 @@ async function openEditor(page: Page) {
   await page.getByRole("link", { name: "Edit game", exact: true }).click();
   await page.getByRole("heading", { name: "Edit game", exact: true }).waitFor();
 }
+
+it("stages a favorite Player, undoes additions, discards on Cancel, and saves only once", async () => {
+  const page = await newPage();
+  try {
+    const game = await seed(page, "generic");
+    const cam = await page.evaluate<Player>(`(async () => {
+      const { playersApi } = await import("/scorekeeper/src/data/api/players.ts");
+      return playersApi.create({ name: "Cam", color: "Lime", isFavorite: 1 });
+    })()`);
+    await page.goto(`${appUrl}#/scorekeeper/game/${game.id}`);
+    await openEditor(page);
+    const save = page.getByRole("button", { name: "Save", exact: true });
+    await page.getByRole("button", { name: "Cam", exact: true }).click();
+    expect(await save.isEnabled()).toBe(true);
+    expect(await page.getByRole("button", { name: /Reorder|Remove Bob|Remove Amy/ }).count()).toBe(
+      0,
+    );
+    await page.getByRole("button", { name: "Remove Cam", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Remove Cam", exact: true })
+      .waitFor({ state: "detached" });
+    expect(await save.isDisabled()).toBe(true);
+    await page.getByRole("button", { name: "Cam", exact: true }).click();
+    await page.getByRole("link", { name: "Cancel", exact: true }).click();
+    await openEditor(page);
+    expect(await save.isDisabled()).toBe(true);
+    await page.getByRole("button", { name: "Cam", exact: true }).click();
+    await save.click();
+    await page.getByRole("button", { name: "Menu", exact: true }).waitFor();
+    await page.reload();
+    await page.getByRole("columnheader").filter({ hasText: "Cam" }).waitFor();
+    const saved = await page.evaluate<StoredGame>(`(async () => {
+      const { genericGamesApi } = await import("/scorekeeper/src/data/api/genericGames.ts");
+      return genericGamesApi.getById(${JSON.stringify(game.id)});
+    })()`);
+    expect(saved.players).toEqual([...game.players, cam.id]);
+    expect(await page.getByRole("dialog").count()).toBe(0);
+  } finally {
+    await page.close();
+  }
+}, 60_000);
+
+it("reuses Player search and profile creation, retaining explicitly saved profiles when navigating away", async () => {
+  const page = await newPage();
+  try {
+    const game = await seed(page, "generic");
+    await page.goto(`${appUrl}#/scorekeeper/game/${game.id}`);
+    await openEditor(page);
+    await page.getByRole("button", { name: "Add Player", exact: true }).click();
+    const add = page.getByRole("dialog", { name: "Add player", exact: true });
+    expect(await add.getByRole("button", { name: "Bob", exact: true }).isDisabled()).toBe(true);
+    await add.getByRole("textbox").fill("Dora");
+    await add.getByRole("button", { name: "Create new player", exact: true }).click();
+    const create = page.getByRole("dialog", { name: "Create player", exact: true });
+    expect(await create.getByRole("textbox", { name: "Name", exact: true }).inputValue()).toBe(
+      "Dora",
+    );
+    await create.getByRole("button", { name: "Save", exact: true }).click();
+    await add.getByRole("button", { name: "Dora", exact: true }).waitFor();
+    await add.getByRole("button", { name: "Close", exact: true }).click();
+    await add.waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Remove Dora", exact: true }).waitFor();
+    await page.goBack();
+    await page.getByRole("button", { name: "Menu", exact: true }).waitFor();
+    await openEditor(page);
+    expect(await page.getByRole("button", { name: "Save", exact: true }).isDisabled()).toBe(true);
+    await page.getByRole("button", { name: "Add Player", exact: true }).click();
+    await add.getByRole("textbox").fill("Dora");
+    await add.getByRole("button", { name: "Dora", exact: true }).click();
+    await add.getByRole("button", { name: "Close", exact: true }).click();
+    await add.waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByRole("columnheader").filter({ hasText: "Dora" }).waitFor();
+    await page.reload();
+    await page.getByRole("columnheader").filter({ hasText: "Dora" }).waitFor();
+  } finally {
+    await page.close();
+  }
+}, 60_000);
+
+it("blocks pending duplicate Game saves and retains the staged addition after storage failure", async () => {
+  const page = await newPage(390, 844);
+  try {
+    const game = await seed(page, "generic");
+    await page.evaluate(`(async () => {
+      const { playersApi } = await import("/scorekeeper/src/data/api/players.ts");
+      await playersApi.create({ name: "Cam", color: "Lime", isFavorite: 1 });
+    })()`);
+    await page.goto(`${appUrl}#/scorekeeper/game/${game.id}`);
+    await openEditor(page);
+    await page.getByRole("button", { name: "Cam", exact: true }).click();
+    await holdRoundStorage(page);
+    await page.evaluate((id) => {
+      const put = IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put = function (value, key) {
+        if (value?.id === id) {
+          IDBObjectStore.prototype.put = put;
+          throw new DOMException("Membership storage unavailable", "QuotaExceededError");
+        }
+        return put.call(this, value, key);
+      };
+    }, game.id);
+    const save = page.getByRole("button", { name: "Save", exact: true });
+    await save.click();
+    await expect.poll(() => save.isDisabled()).toBe(true);
+    await save.evaluate((button: HTMLButtonElement) => {
+      button.click();
+      button.click();
+    });
+    await releaseRoundStorage(page);
+    await page.getByRole("alert").filter({ hasText: "Membership storage unavailable" }).waitFor();
+    await page.getByRole("button", { name: "Remove Cam", exact: true }).waitFor();
+    const saved = await page.evaluate<StoredGame>(`(async () => {
+      const { genericGamesApi } = await import("/scorekeeper/src/data/api/genericGames.ts");
+      return genericGamesApi.getById(${JSON.stringify(game.id)});
+    })()`);
+    expect(saved).toEqual(game);
+    await save.click();
+    await page.getByRole("columnheader").filter({ hasText: "Cam" }).waitFor();
+    await page.reload();
+    await page.getByRole("columnheader").filter({ hasText: "Cam" }).waitFor();
+  } finally {
+    await releaseRoundStorage(page);
+    await page.close();
+  }
+}, 60_000);
+
+it("surfaces stale Game history without discarding the recoverable addition", async () => {
+  const page = await newPage();
+  try {
+    const game = await seed(page, "generic");
+    await page.evaluate(`(async () => {
+      const { playersApi } = await import("/scorekeeper/src/data/api/players.ts");
+      await playersApi.create({ name: "Cam", color: "Lime", isFavorite: 1 });
+    })()`);
+    await page.goto(`${appUrl}#/scorekeeper/game/${game.id}`);
+    await openEditor(page);
+    await page.getByRole("button", { name: "Cam", exact: true }).click();
+    await page.evaluate(`(async () => {
+      const { genericRoundsApi } = await import("/scorekeeper/src/data/api/genericRounds.ts");
+      await genericRoundsApi.add({
+        gameId: ${JSON.stringify(game.id)}, mode: "points",
+        scores: ${JSON.stringify(game.players)}.map(playerId => ({ playerId, points: "4", tiebreaker: "1" }))
+      });
+    })()`);
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByRole("alert").filter({ hasText: "Game history changed" }).waitFor();
+    await page.getByRole("button", { name: "Remove Cam", exact: true }).waitFor();
+    await page.getByRole("link", { name: "Cancel", exact: true }).click();
+    await page.getByRole("button", { name: "Expand Round 1", exact: true }).waitFor();
+    await openEditor(page);
+    expect(await page.getByRole("button", { name: "Save", exact: true }).isDisabled()).toBe(true);
+    await page.getByRole("button", { name: "Cam", exact: true }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    const confirmation = page.getByRole("dialog", { name: "Edit game", exact: true });
+    await confirmation.getByRole("button", { name: "Edit", exact: true }).waitFor();
+    await page.keyboard.press("Escape");
+    await confirmation.waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Remove Cam", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await confirmation.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByRole("columnheader").filter({ hasText: "Cam" }).waitFor();
+    await page.reload();
+    await page.getByRole("cell", { name: "Cam, Round 1: Did not play", exact: true }).waitFor();
+  } finally {
+    await page.close();
+  }
+}, 60_000);
+
+it.each([
+  "points",
+  "singleRoundWinner",
+  "passFail",
+])("joins in %s with blank history and preserves the unfinished next Round", async (mode) => {
+  const page = await newPage(390, 844);
+  try {
+    const game = await seed(page, "generic", mode);
+    await page.evaluate(`(async () => {
+        const { playersApi } = await import("/scorekeeper/src/data/api/players.ts");
+        const { genericRoundsApi } = await import("/scorekeeper/src/data/api/genericRounds.ts");
+        await playersApi.create({ name: "Cam", color: "Lime", isFavorite: 1 });
+        const ids = ${JSON.stringify(game.players)};
+        await genericRoundsApi.add({
+          gameId: ${JSON.stringify(game.id)}, mode: ${JSON.stringify(mode)},
+          scores: ids.map((playerId, index) => ({
+            playerId,
+            ${mode === "points" ? 'points: "5", tiebreaker: "2"' : mode === "passFail" ? "passed: index === 0" : "won: index === 0"}
+          }))
+        });
+      })()`);
+    await page.goto(`${appUrl}#/scorekeeper/game/${game.id}`);
+    const add = page.getByRole("button", { name: "Add Round", exact: true });
+    const round = page.getByRole("dialog", { name: "Add Round", exact: true });
+    await add.click();
+    if (mode === "points") {
+      await round.getByRole("button", { name: "7", exact: true }).click();
+      await round.getByRole("tab", { name: "Amy", exact: true }).click();
+      await round.getByRole("button", { name: "Amy Tiebreaker", exact: true }).click();
+      await page.keyboard.type("9");
+    } else {
+      await round
+        .getByRole(mode === "passFail" ? "button" : "radio", { name: "Amy", exact: true })
+        .click();
+    }
+    await page.keyboard.press("Escape");
+    await round.waitFor({ state: "detached" });
+    await openEditor(page);
+    await page.getByRole("button", { name: "Cam", exact: true }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    const confirmation = page.getByRole("dialog", { name: "Edit game", exact: true });
+    await confirmation.getByText("This edit will change game results.", { exact: true }).waitFor();
+    await expect
+      .poll(() =>
+        confirmation
+          .getByRole("button", { name: "Edit", exact: true })
+          .evaluate((element) => element === document.activeElement),
+      )
+      .toBe(true);
+    await confirmation.getByRole("button", { name: "Edit", exact: true }).click();
+    await confirmation.waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Remove Cam", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await confirmation.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByRole("columnheader").filter({ hasText: "Cam" }).waitFor();
+    const historical = page
+      .getByRole("row")
+      .filter({ has: page.getByRole("button", { name: "Expand Round 1", exact: true }) });
+    expect(await historical.getByRole("cell").count()).toBe(3);
+    expect(await historical.getByRole("cell").nth(2).innerText()).toBe("");
+    await add.click();
+    if (mode === "points") {
+      expect(
+        await round.getByRole("status", { name: "Amy Tiebreaker", exact: true }).innerText(),
+      ).toBe("9");
+      await round.getByRole("tab", { name: "Bob", exact: true }).click();
+      expect(await round.getByRole("status", { name: "Bob Points", exact: true }).innerText()).toBe(
+        "7",
+      );
+      await round.getByRole("tab", { name: "Cam", exact: true }).click();
+      expect(await round.getByRole("status", { name: "Cam Points", exact: true }).innerText()).toBe(
+        "0",
+      );
+      expect(
+        await round.getByRole("status", { name: "Cam Tiebreaker", exact: true }).innerText(),
+      ).toBe("0");
+    } else {
+      const role = mode === "passFail" ? "button" : "radio";
+      const attribute = mode === "passFail" ? "aria-pressed" : "aria-checked";
+      expect(
+        await round.getByRole(role, { name: "Amy", exact: true }).getAttribute(attribute),
+      ).toBe("true");
+      expect(
+        await round.getByRole(role, { name: "Cam", exact: true }).getAttribute(attribute),
+      ).toBe("false");
+    }
+    await round.getByRole("button", { name: "Save", exact: true }).click();
+    await round.waitFor({ state: "detached" });
+    await page.reload();
+    await page.getByRole("button", { name: "Expand Round 2", exact: true }).waitFor();
+    const view = await page.evaluate<import("../../types").GenericScoreboardView>(`(async () => {
+        const { genericGamesApi } = await import("/scorekeeper/src/data/api/genericGames.ts");
+        return genericGamesApi.getScoreboard(${JSON.stringify(game.id)});
+      })()`);
+    expect(view.rounds.map(({ scores }) => scores.length)).toEqual([2, 3]);
+    expect(view.players[2]).toMatchObject(
+      mode === "points"
+        ? { totalPoints: 0, totalTiebreaker: 0 }
+        : mode === "passFail"
+          ? { totalPasses: 0 }
+          : { totalWins: 0 },
+    );
+  } finally {
+    await page.close();
+  }
+}, 60_000);
 
 it.each([
   "phase10",

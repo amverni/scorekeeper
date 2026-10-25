@@ -185,14 +185,32 @@ are released on unmount so reopening never reuses stale editor configuration.
 Completed, missing, wrong-Scorekeeper and unavailable-reference Games cannot
 be edited or implicitly reopened. Loading failures are explicit and retryable.
 
-This slice only inspects configuration: Players and rules cannot yet be changed,
-and the Save icon stays visible and disabled. `StagedGameEditor` separates the
-Game-editor presentation from membership controls and accepts an explicit Save
-state (`unsupported`, `unchanged`, `invalid`, `pending`, or `ready`). Later
-membership features supply their staged form and a ready Save action only for
-net supported valid changes; there is no placeholder mutation. X returns to the
-same Game, while Back or navigation away discards the Game-editor draft without
-prompting. That lifecycle is independent of the retained next-Round draft.
+Generic Game editors reuse saved-Player search, Favorites, and profile creation
+to append new Players to a staged roster. Minus undoes only unsaved additions;
+saved-member Withdrawal and drag/reordering controls remain hidden. The Save
+icon is enabled only for a changed valid roster and blocked while pending.
+`genericGamesApi.previewEdit()` and `edit()` validate the loaded Game/history
+version and commit the entire batch atomically. Joining after saved Rounds
+requires **Edit game** / **This edit will change game results.** confirmation;
+**Edit**, Escape, and outside dismissal retain the draft, and **Save** commits.
+Failures retain the draft with an explicit error. Phase Game membership and
+all saved rules remain read-only.
+
+X returns to the same Game; Back or navigation away discards the Game-editor
+draft without prompting. Explicitly created shared Player profiles remain saved
+independently of the Game draft. The retained next-Round draft preserves existing
+values and selections, revalidates the roster, and gives joining Players ordinary
+zero/unselected defaults.
+
+Join takes effect at the next unsaved Round with zero totals, wins, passes, and
+Tiebreaker. Saved Generic Games retain each joining Player's boundary in
+`playerJoins`; historical entry editors use that Round's eligible roster rather
+than today's roster. Earlier scorecard cells stay blank, graphs do not invent
+earlier contributions, and dealer rotation continues from the previous Dealer
+through Seating Order. Round Deletion updates Join boundaries in the same
+transaction as renumbering, preserving attendance at the remaining actual Rounds.
+Database version 9 adds these optional record fields without resetting records
+or changing stores/indexes.
 
 Active Generic Games support editing a saved Round from its expanded scorecard
 details in all three Scoring Modes. Edit opens the full prefilled entry form and

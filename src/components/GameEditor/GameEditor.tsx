@@ -15,6 +15,7 @@ import { formatPhaseDisplayName } from "../../utils";
 import { GameSetupTabs } from "../Create/GameSetupTabs";
 import { PlayerRow } from "../Create/Players/PlayerRow";
 import { InlineError, List, ScrollFade } from "../ui";
+import { GenericMembershipEditor } from "./GenericMembershipEditor";
 import { StagedGameEditor } from "./StagedGameEditor";
 
 function SettingsReference({ rows }: { rows: Array<[string, string]> }) {
@@ -150,6 +151,15 @@ export function PhaseGameEditorPage({ gameId }: { gameId: GameId }) {
 
 export function GenericGameEditorPage({ gameId }: { gameId: GameId }) {
   const query = useQuery(genericGameEditorOptions(gameId));
+  if (query.data && !query.isError) {
+    return (
+      <GenericMembershipEditor
+        key={gameId}
+        editor={query.data}
+        settings={<SettingsReference rows={genericSettingsRows(query.data.game)} />}
+      />
+    );
+  }
   return (
     <StagedGameEditor experience="scorekeeper" gameId={gameId} save={{ status: "unsupported" }}>
       <EditorContent query={query} />

@@ -29,6 +29,7 @@ export type {
   ActiveGenericGame,
   CompletedGenericGame,
   CreateGenericGameInput,
+  EditGenericGameInput,
   GenericGame,
   GenericGameSettings,
   GenericGameView,

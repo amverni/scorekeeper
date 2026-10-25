@@ -3,6 +3,7 @@ import type {
   AddGenericRoundInput,
   CreateGenericGameInput,
   DeleteGenericRoundInput,
+  EditGenericGameInput,
   EditGenericRoundInput,
   GameId,
   GenericRoundId,
@@ -46,6 +47,25 @@ export function genericRoundEditorOptions(gameId: GameId, roundId: GenericRoundI
 export function usePreviewGenericRoundEdit() {
   return useMutation({
     mutationFn: (input: EditGenericRoundInput) => genericRoundsApi.previewEdit(input),
+  });
+}
+
+export function usePreviewGenericGameEdit() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: EditGenericGameInput) => genericGamesApi.previewEdit(input),
+    onError: () =>
+      queryClient.invalidateQueries({ queryKey: genericGameKeys.all, refetchType: "none" }),
+  });
+}
+
+export function useEditGenericGame() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: EditGenericGameInput) => genericGamesApi.edit(input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: genericGameKeys.all }),
+    onError: () =>
+      queryClient.invalidateQueries({ queryKey: genericGameKeys.all, refetchType: "none" }),
   });
 }
 

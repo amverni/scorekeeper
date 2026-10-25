@@ -1,7 +1,7 @@
 import type { ActiveGame } from "./game";
 import type { ActiveGenericGame } from "./genericGame";
 import type { Phase } from "./phase";
-import type { PlayerIdentity } from "./player";
+import type { Player, PlayerIdentity } from "./player";
 
 export interface PhaseGameEditor {
   game: ActiveGame;
@@ -11,5 +11,6 @@ export interface PhaseGameEditor {
 
 export interface GenericGameEditor {
   game: ActiveGenericGame;
-  players: PlayerIdentity[];
+  players: Player[];
+  version: string;
 }

@@ -1,3 +1,4 @@
+import type { GameId } from "./game";
 import type { ActiveGameMetadata, CompletedGameMetadata } from "./gameLifecycle";
 import type { GenericRoundId } from "./genericRound";
 import type { PlayerId, PlayerIdentity } from "./player";
@@ -40,6 +41,7 @@ interface GenericGameFields {
   scorekeeper: "generic";
   name?: string;
   settings: GenericGameSettings;
+  playerJoins?: Array<{ playerId: PlayerId; afterRoundNumber: number }>;
 }
 
 export interface ActiveGenericGame extends ActiveGameMetadata<"generic">, GenericGameFields {}
@@ -54,6 +56,13 @@ export interface CreateGenericGameInput {
   name?: string;
   players: PlayerId[];
   settings: GenericGameSettings;
+}
+
+export interface EditGenericGameInput {
+  gameId: GameId;
+  version: string;
+  players: PlayerId[];
+  confirmImpact?: boolean;
 }
 
 export interface GenericGameView {

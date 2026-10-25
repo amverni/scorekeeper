@@ -33,10 +33,18 @@ export function GenericPassFailRoundDialog({
   };
   const roundDialog = useGenericRoundDialog(onClose, editor);
   const form = useForm({
-    defaultValues: (!editor && drafts.passFail.get(gameId)) || {
+    defaultValues: {
       scores: editor
         ? editor.round.scores.map(({ playerId, passed }) => ({ playerId, passed }))
-        : players.map((player) => ({ playerId: player.id, passed: false })),
+        : players.map(
+            (player) =>
+              drafts.passFail
+                .get(gameId)
+                ?.scores.find(({ playerId }) => playerId === player.id) ?? {
+                playerId: player.id,
+                passed: false,
+              },
+          ),
     },
     listeners: {
       onChange: ({ formApi }) => {

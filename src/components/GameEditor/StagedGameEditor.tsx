@@ -46,6 +46,10 @@ export function StagedGameEditor({ experience, gameId, save, children }: StagedG
               }
               params={{ gameId }}
               className="page-shell-button p-0"
+              aria-disabled={save.status === "pending" || undefined}
+              onClick={(event) => {
+                if (save.status === "pending") event.preventDefault();
+              }}
             >
               <X className="size-8" aria-hidden />
             </Link>

@@ -56,7 +56,11 @@ it("inspects saved Generic configuration and refuses missing, wrong-owner and Co
     },
   });
   closeDB();
-  expect(await genericGamesApi.getEditor(game.id)).toEqual({ game, players: [amy] });
+  expect(await genericGamesApi.getEditor(game.id)).toMatchObject({
+    game,
+    players: [amy],
+    version: expect.any(String),
+  });
   expect(await gamesApi.getEditor(game.id)).toBeNull();
   expect(await genericGamesApi.getEditor("missing")).toBeNull();
   expect(await gamesApi.getEditor("missing")).toBeNull();

@@ -80,7 +80,7 @@ export function GenericAddRoundDialog({
   const tabListRef = useRef<HTMLDivElement>(null);
   const roundDialog = useGenericRoundDialog(onClose, editor);
   const form = useForm({
-    defaultValues: savedDraft?.values ?? {
+    defaultValues: {
       scores:
         editor?.round.mode === "points"
           ? editor.round.scores.map(({ playerId, points, tiebreaker }) => ({
@@ -88,8 +88,21 @@ export function GenericAddRoundDialog({
               points: String(points),
               tiebreaker: String(tiebreaker ?? 0),
             }))
-          : players.map((player) => ({ playerId: player.id, points: "0", tiebreaker: "0" })),
-      winnerId: editor && "winnerId" in editor ? editor.winnerId : (null as PlayerId | null),
+          : players.map(
+              (player) =>
+                savedDraft?.values.scores.find(({ playerId }) => playerId === player.id) ?? {
+                  playerId: player.id,
+                  points: "0",
+                  tiebreaker: "0",
+                },
+            ),
+      winnerId:
+        editor && "winnerId" in editor
+          ? editor.winnerId
+          : savedDraft?.values.winnerId &&
+              players.some(({ id }) => id === savedDraft.values.winnerId)
+            ? savedDraft.values.winnerId
+            : (null as PlayerId | null),
     },
     listeners: {
       onChange: ({ formApi }) => {
@@ -159,7 +172,7 @@ export function GenericAddRoundDialog({
               canSave:
                 mode === "points"
                   ? state.values.scores.every((score) => !entryError(score, tiebreakerEnabled))
-                  : state.values.winnerId !== null,
+                  : players.some(({ id }) => id === state.values.winnerId),
               submitting: state.isSubmitting,
             })}
           >
