@@ -4,6 +4,7 @@ import {
   type DragEndEvent,
   KeyboardSensor,
   PointerSensor,
+  type UniqueIdentifier,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
@@ -116,11 +117,29 @@ interface SortableRowProps {
   removable?: boolean;
   onRemove?: (id: string) => void;
   label: string;
+  reorderable: boolean;
 }
 
-function SortableRow({ id, children, className, removable, onRemove, label }: SortableRowProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+function SortableRow({
+  id,
+  children,
+  className,
+  removable,
+  onRemove,
+  label,
+  reorderable,
+}: SortableRowProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
     id,
+    disabled: { draggable: !reorderable, droppable: false },
   });
 
   const style = {
@@ -137,15 +156,21 @@ function SortableRow({ id, children, className, removable, onRemove, label }: So
         {removable && onRemove && (
           <RemoveButton label={`Remove ${label}`} onClick={() => onRemove(id)} />
         )}
-        <Button
-          type="button"
-          className="touch-none cursor-grab rounded-full p-1 text-text-secondary hover:bg-black/5 active:cursor-grabbing dark:hover:bg-white/10"
-          aria-label={`Reorder ${label}`}
-          {...attributes}
-          {...listeners}
-        >
-          <ChevronsUpDown className="h-5 w-5 shrink-0" />
-        </Button>
+        {reorderable ? (
+          <Button
+            type="button"
+            ref={setActivatorNodeRef}
+            data-swipe-navigation-ignore=""
+            className="touch-none cursor-grab rounded-full p-1 text-text-secondary hover:bg-black/5 active:cursor-grabbing dark:hover:bg-white/10"
+            aria-label={`Reorder ${label}`}
+            {...attributes}
+            {...listeners}
+          >
+            <ChevronsUpDown className="h-5 w-5 shrink-0" aria-hidden />
+          </Button>
+        ) : (
+          <span className="size-7 shrink-0" aria-hidden />
+        )}
       </div>
     </div>
   );
@@ -312,6 +337,8 @@ function prefersReducedMotion() {
 export interface SortableItem {
   id: string;
   label?: string;
+  /** Locked rows remain insertion targets without exposing a drag handle. */
+  reorderable?: boolean;
 }
 
 export interface ListProps {
@@ -680,6 +707,7 @@ export function List({
     const oldIndex = items.findIndex((item) => item.id === active.id);
     const newIndex = items.findIndex((item) => item.id === over.id);
     if (oldIndex === -1 || newIndex === -1) return;
+    if (items[oldIndex].reorderable === false) return;
 
     const reordered = [...items];
     const [moved] = reordered.splice(oldIndex, 1);
@@ -690,6 +718,14 @@ export function List({
 
   function handleDragCancel() {
     isDraggingRef.current = false;
+  }
+
+  function itemLabel(id: UniqueIdentifier) {
+    return items?.find((item) => item.id === id)?.label ?? "item";
+  }
+
+  function itemPosition(id: UniqueIdentifier) {
+    return `position ${sortableIds.indexOf(String(id)) + 1} of ${sortableIds.length}`;
   }
 
   function renderRow(row: RenderRow, index: number, totalCount: number) {
@@ -714,6 +750,7 @@ export function List({
             removable={removable}
             onRemove={onRemove}
             label={items?.find((item) => item.id === row.sortableId)?.label ?? "item"}
+            reorderable={items?.find((item) => item.id === row.sortableId)?.reorderable !== false}
           >
             {row.child}
           </SortableRow>
@@ -765,6 +802,20 @@ export function List({
         <ShimmerRows count={shimmerRows} />
       ) : sortable && items ? (
         <DndContext
+          accessibility={{
+            announcements: {
+              onDragStart: ({ active }) =>
+                `Picked up ${itemLabel(active.id)}, ${itemPosition(active.id)}.`,
+              onDragOver: ({ active, over }) =>
+                over
+                  ? `${itemLabel(active.id)} moved to ${itemPosition(over.id)}.`
+                  : `${itemLabel(active.id)} is outside the list.`,
+              onDragEnd: ({ active, over }) =>
+                `Dropped ${itemLabel(active.id)} at ${itemPosition(over?.id ?? active.id)}.`,
+              onDragCancel: ({ active }) =>
+                `Cancelled moving ${itemLabel(active.id)}. Returned to ${itemPosition(active.id)}.`,
+            },
+          }}
           sensors={sensors}
           collisionDetection={closestCenter}
           modifiers={[restrictToVerticalAxis]}

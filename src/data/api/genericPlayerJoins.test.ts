@@ -37,6 +37,127 @@ const pointsSettings: GenericGameSettings[] = [
   ),
 ];
 
+it("inserts new seats among saved Players and locks them before any Round is recorded", async () => {
+  const { game, amy, bob, cam } = await setup({
+    mode: "points",
+    pointsDirection: "high",
+    tiebreaker: null,
+    dealer: true,
+  });
+  const dora = await playersApi.create({ name: "Dora", color: "Ocean", isFavorite: 0 });
+  const editor = await genericGamesApi.getEditor(game.id);
+  if (!editor) throw new Error("Missing Game editor");
+  const input = {
+    gameId: game.id,
+    version: editor.version,
+    players: [cam.id, amy.id, dora.id, bob.id],
+  };
+  expect(await genericGamesApi.previewEdit(input)).toEqual({ requiresConfirmation: false });
+  await genericGamesApi.edit(input);
+  closeDB();
+  const saved = await genericGamesApi.getEditor(game.id);
+  expect(saved?.players.map(({ id }) => id)).toEqual([cam.id, amy.id, dora.id, bob.id]);
+  expect(saved?.game.playerJoins).toEqual([
+    { playerId: cam.id, afterRoundNumber: 0 },
+    { playerId: dora.id, afterRoundNumber: 0 },
+  ]);
+  expect((await genericGamesApi.getScoreboard(game.id))?.upcomingDealerId).toBe(cam.id);
+  expect((await genericGamesApi.getScoreboard(game.id))?.players.map(({ id }) => id)).toEqual(
+    input.players,
+  );
+  const eli = await playersApi.create({ name: "Eli", color: "Jam", isFavorite: 0 });
+  if (!saved) throw new Error("Missing saved Game editor");
+  for (const players of [
+    [amy.id, cam.id, dora.id, bob.id, eli.id],
+    [cam.id, dora.id, amy.id, bob.id, eli.id],
+    [cam.id, amy.id, bob.id, eli.id],
+  ]) {
+    const invalid = { gameId: game.id, version: saved.version, players };
+    await expect(genericGamesApi.previewEdit(invalid)).rejects.toThrow("Seating Order");
+    await expect(genericGamesApi.edit(invalid)).rejects.toThrow("Seating Order");
+    closeDB();
+    expect(await genericGamesApi.getById(game.id)).toEqual(saved.game);
+  }
+});
+
+it.each([
+  "points",
+  "singleRoundWinner",
+  "passFail",
+] as const)("uses inserted Seating Order for %s without changing earlier Rounds or breaking shared ties", async (mode) => {
+  const { game, amy, bob, cam } = await setup(
+    mode === "points"
+      ? { mode, pointsDirection: "high", tiebreaker: null, dealer: true }
+      : { mode, tiebreaker: null, dealer: true },
+  );
+  await genericRoundsApi.add(
+    mode === "points"
+      ? {
+          gameId: game.id,
+          mode,
+          scores: [
+            { playerId: amy.id, points: "0" },
+            { playerId: bob.id, points: "0" },
+          ],
+        }
+      : mode === "passFail"
+        ? {
+            gameId: game.id,
+            mode,
+            scores: [
+              { playerId: amy.id, passed: false },
+              { playerId: bob.id, passed: false },
+            ],
+          }
+        : {
+            gameId: game.id,
+            mode,
+            scores: [
+              { playerId: amy.id, won: true },
+              { playerId: bob.id, won: false },
+            ],
+          },
+  );
+  const history = await genericRoundsApi.getByGameId(game.id);
+  const editor = await genericGamesApi.getEditor(game.id);
+  if (!editor) throw new Error("Missing Game editor");
+  const input = {
+    gameId: game.id,
+    version: editor.version,
+    players: [amy.id, cam.id, bob.id],
+  };
+  expect(await genericGamesApi.previewEdit(input)).toEqual({ requiresConfirmation: true });
+  await expect(genericGamesApi.edit(input)).rejects.toThrow("Confirm");
+  expect(await genericGamesApi.getById(game.id)).toEqual(editor.game);
+  await genericGamesApi.edit({ ...input, confirmImpact: true });
+  closeDB();
+  const view = await genericGamesApi.getScoreboard(game.id);
+  expect(view?.players.map(({ id }) => id)).toEqual([amy.id, cam.id, bob.id]);
+  expect(view?.rounds[0].scores.map(({ playerId }) => playerId)).toEqual([amy.id, bob.id]);
+  expect(view?.rounds[0].dealerId).toBe(amy.id);
+  expect(view?.upcomingDealerId).toBe(cam.id);
+  expect(await genericRoundsApi.getByGameId(game.id)).toEqual(history);
+  expect(view?.standings.map(({ player, place }) => [player.id, place])).toEqual(
+    mode === "singleRoundWinner"
+      ? [
+          [amy.id, 1],
+          [cam.id, 2],
+          [bob.id, 2],
+        ]
+      : [
+          [amy.id, 1],
+          [cam.id, 1],
+          [bob.id, 1],
+        ],
+  );
+  const finished = await genericGamesApi.finish(game.id);
+  closeDB();
+  expect((await genericGamesApi.getById(game.id))?.players).toEqual(input.players);
+  expect(finished.winnerIds).toEqual(
+    mode === "singleRoundWinner" ? [amy.id] : [amy.id, cam.id, bob.id],
+  );
+});
+
 it.each(
   pointsSettings,
 )("keeps Points directions, optional Tiebreakers and shared wins correct after Join: %j", async (settings) => {
@@ -296,7 +417,7 @@ it("rejects invalid, unavailable, stale and duplicate roster saves atomically", 
   });
   const editor = await genericGamesApi.getEditor(game.id);
   if (!editor) throw new Error("Missing Game editor");
-  const input = { gameId: game.id, version: editor.version, players: [...game.players, cam.id] };
+  const input = { gameId: game.id, version: editor.version, players: [amy.id, cam.id, bob.id] };
   for (const ids of [
     [],
     [amy.id],
@@ -317,7 +438,7 @@ it("rejects invalid, unavailable, stale and duplicate roster saves atomically", 
   closeDB();
   const saved = await genericGamesApi.getById(game.id);
   await expect(genericGamesApi.edit(input)).rejects.toThrow("history changed");
-  expect(saved?.players).toEqual([...game.players, cam.id]);
+  expect(saved?.players).toEqual([amy.id, cam.id, bob.id]);
   expect(await genericGamesApi.getById(game.id)).toEqual(saved);
   expect(await genericGamesApi.getEditor("missing")).toBeNull();
 });
@@ -334,7 +455,7 @@ it("rejects a stale Join after history changes and rolls back a failed write for
   const input = {
     gameId: game.id,
     version: editor.version,
-    players: [...game.players, cam.id],
+    players: [cam.id, ...game.players],
     confirmImpact: true,
   };
   await genericRoundsApi.add({
@@ -365,7 +486,7 @@ it("rejects a stale Join after history changes and rolls back a failed write for
   expect(await genericGamesApi.getScoreboard(game.id)).toEqual(before);
   await genericGamesApi.edit({ ...input, version: fresh.version });
   closeDB();
-  expect((await genericGamesApi.getById(game.id))?.players).toEqual([...game.players, cam.id]);
+  expect((await genericGamesApi.getById(game.id))?.players).toEqual([cam.id, ...game.players]);
 });
 it("joins next Round without backfilling Points or restarting dealing, and survives reload", async () => {
   const { game, amy, bob, cam } = await setup({

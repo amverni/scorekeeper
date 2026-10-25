@@ -186,11 +186,19 @@ Completed, missing, wrong-Scorekeeper and unavailable-reference Games cannot
 be edited or implicitly reopened. Loading failures are explicit and retryable.
 
 Generic Game editors reuse saved-Player search, Favorites, and profile creation
-to append new Players to a staged roster. Minus undoes only unsaved additions;
-saved-member Withdrawal and drag/reordering controls remain hidden. The Save
-icon is enabled only for a changed valid roster and blocked while pending.
+to append new Players to a staged roster. Only these unsaved rows have drag
+handles and can be inserted anywhere using pointer, touch, or keyboard
+(Space to pick up/drop, arrow keys to move, Escape to cancel). Saved members
+remain insertion targets without handles, reserving the same blank handle
+space to keep controls aligned. Their relative Seating Order cannot change,
+and new seats lock immediately on Save, even before recording a Round.
+Minus undoes only unsaved additions; Cancel restores the saved order.
+Saved-member Withdrawal remains unavailable. The Save icon is enabled only
+for a changed valid roster and blocked while pending.
 `genericGamesApi.previewEdit()` and `edit()` validate the loaded Game/history
-version and commit the entire batch atomically. Joining after saved Rounds
+version and saved relative Seating Order, committing the entire batch atomically.
+The shared membership list contract also supports future Phase Game joining;
+drag handles do not initiate tab-swipe navigation. Joining after saved Rounds
 requires **Edit game** / **This edit will change game results.** confirmation;
 **Edit**, Escape, and outside dismissal retain the draft, and **Save** commits.
 Failures retain the draft with an explicit error. Phase Game membership and

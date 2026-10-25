@@ -57,18 +57,20 @@ async function evaluateEdit(tx: GameLifecycleTransaction, input: EditGenericGame
   if (input.version !== version) {
     throw new Error("Game history changed. Close and reopen Edit game to load the saved values.");
   }
+  const savedIds = new Set(game.players);
   if (
     !Array.isArray(input.players) ||
     input.players.length <= game.players.length ||
     new Set(input.players).size !== input.players.length ||
     input.players.some((id) => typeof id !== "string" || id.length === 0) ||
-    game.players.some((id, index) => input.players[index] !== id)
+    input.players.filter((id) => savedIds.has(id)).length !== game.players.length ||
+    input.players.filter((id) => savedIds.has(id)).some((id, index) => game.players[index] !== id)
   ) {
     throw new Error(
-      "Add new Players after the saved Seating Order. No other roster edits are supported.",
+      "Only new Players can be positioned. Preserve every saved Player's relative Seating Order.",
     );
   }
-  const addedIds = input.players.slice(game.players.length);
+  const addedIds = input.players.filter((id) => !savedIds.has(id));
   const addedPlayers = await requirePlayers(tx, addedIds);
   const afterRoundNumber = rounds.reduce((latest, round) => Math.max(latest, round.roundNumber), 0);
   const proposed = {

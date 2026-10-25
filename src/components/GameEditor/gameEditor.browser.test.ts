@@ -75,6 +75,23 @@ async function openEditor(page: Page) {
   await page.getByRole("heading", { name: "Edit game", exact: true }).waitFor();
 }
 
+async function movePlayerUp(page: Page, name: string, dropKey = "Space") {
+  await page.evaluate(() =>
+    Promise.allSettled(document.getAnimations().map((animation) => animation.finished)),
+  );
+  await page.getByRole("button", { name: `Reorder ${name}`, exact: true }).focus();
+  await page.keyboard.press("Space");
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  await expect
+    .poll(() => page.locator("[aria-live]").innerText())
+    .toContain(`${name} moved to position 3 of 3.`);
+  await page.keyboard.press("ArrowUp");
+  await expect
+    .poll(() => page.locator("[aria-live]").innerText())
+    .toContain(`${name} moved to position 2 of 3.`);
+  await page.keyboard.press(dropKey);
+}
+
 it("stages a favorite Player, undoes additions, discards on Cancel, and saves only once", async () => {
   const page = await newPage();
   try {
@@ -88,9 +105,11 @@ it("stages a favorite Player, undoes additions, discards on Cancel, and saves on
     const save = page.getByRole("button", { name: "Save", exact: true });
     await page.getByRole("button", { name: "Cam", exact: true }).click();
     expect(await save.isEnabled()).toBe(true);
-    expect(await page.getByRole("button", { name: /Reorder|Remove Bob|Remove Amy/ }).count()).toBe(
-      0,
-    );
+    expect(
+      await page
+        .getByRole("button", { name: /Reorder Bob|Reorder Amy|Remove Bob|Remove Amy/ })
+        .count(),
+    ).toBe(0);
     await page.getByRole("button", { name: "Remove Cam", exact: true }).click();
     await page
       .getByRole("button", { name: "Remove Cam", exact: true })
@@ -111,6 +130,115 @@ it("stages a favorite Player, undoes additions, discards on Cancel, and saves on
     })()`);
     expect(saved.players).toEqual([...game.players, cam.id]);
     expect(await page.getByRole("dialog").count()).toBe(0);
+  } finally {
+    await page.close();
+  }
+}, 60_000);
+
+it.each([
+  320, 390,
+])("positions only new seats with keyboard and pointer at %spx, then locks them on Save", async (width) => {
+  const page = await newPage(width, 844);
+  const rowOrder = () =>
+    page.getByRole("listitem").evaluateAll((rows) =>
+      rows.map((row) => {
+        const copy = row.cloneNode(true);
+        if (!(copy instanceof Element)) throw new Error("Missing Player row");
+        for (const hidden of copy.querySelectorAll("[aria-hidden='true']")) hidden.remove();
+        return copy.textContent?.trim();
+      }),
+    );
+  try {
+    const game = await seed(page, "generic");
+    const cam = await page.evaluate<Player>(`(async () => {
+      const { playersApi } = await import("/scorekeeper/src/data/api/players.ts");
+      return playersApi.create({ name: "Cam", color: "Lime", isFavorite: 1 });
+    })()`);
+    await page.goto(`${appUrl}#/scorekeeper/game/${game.id}`);
+    await openEditor(page);
+    await page.getByRole("button", { name: "Cam", exact: true }).click();
+    await expect.poll(rowOrder).toEqual(["Bob", "Amy", "Cam"]);
+    expect(await page.getByRole("button", { name: /^Reorder / }).allTextContents()).toHaveLength(1);
+    const rowEdges = await page
+      .getByRole("listitem")
+      .evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().right));
+    expect(Math.max(...rowEdges) - Math.min(...rowEdges)).toBeLessThanOrEqual(1);
+    await page.getByRole("button", { name: "Reorder Cam", exact: true }).evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      for (const [type, clientX] of [
+        ["touchstart", bounds.right],
+        ["touchmove", bounds.right - 200],
+        ["touchend", bounds.right - 200],
+      ] as const) {
+        const touch = { identifier: 1, target: element, clientX, clientY: bounds.y };
+        const event = new Event(type, { bubbles: true, cancelable: true });
+        Object.defineProperties(event, {
+          touches: { value: type === "touchend" ? [] : [touch] },
+          changedTouches: { value: [touch] },
+        });
+        element.dispatchEvent(event);
+      }
+    });
+    expect(
+      await page.getByRole("tab", { name: "Players", exact: true }).getAttribute("aria-selected"),
+    ).toBe("true");
+    await movePlayerUp(page, "Cam", "Escape");
+    await expect.poll(rowOrder).toEqual(["Bob", "Amy", "Cam"]);
+    await expect
+      .poll(() => page.locator("[aria-live]").innerText())
+      .toBe("Cancelled moving Cam. Returned to position 3 of 3.");
+    expect(
+      await page
+        .getByRole("button", { name: "Reorder Cam", exact: true })
+        .evaluate((element) => element === document.activeElement),
+    ).toBe(true);
+    await movePlayerUp(page, "Cam");
+    await expect.poll(rowOrder).toEqual(["Bob", "Cam", "Amy"]);
+    await expect
+      .poll(() => page.locator("[aria-live]").innerText())
+      .toBe("Dropped Cam at position 2 of 3.");
+    await page.getByRole("button", { name: "Remove Cam", exact: true }).click();
+    await expect.poll(rowOrder).toEqual(["Bob", "Amy"]);
+    expect(await page.getByRole("button", { name: "Save", exact: true }).isDisabled()).toBe(true);
+    await page.getByRole("button", { name: "Cam", exact: true }).click();
+    await movePlayerUp(page, "Cam");
+    await page.getByRole("link", { name: "Cancel", exact: true }).click();
+    await openEditor(page);
+    await expect.poll(rowOrder).toEqual(["Bob", "Amy"]);
+    await page.getByRole("button", { name: "Cam", exact: true }).click();
+    await movePlayerUp(page, "Cam");
+    await page.evaluate(() =>
+      Promise.allSettled(document.getAnimations().map((animation) => animation.finished)),
+    );
+    const handle = await page
+      .getByRole("button", { name: "Reorder Cam", exact: true })
+      .boundingBox();
+    const bob = await page.getByRole("listitem").filter({ hasText: "Bob" }).boundingBox();
+    if (!handle || !bob) throw new Error("Missing drag positions");
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(handle.x + handle.width / 2, bob.y + bob.height / 2, { steps: 10 });
+    await page.mouse.up();
+    await expect.poll(rowOrder).toEqual(["Cam", "Bob", "Amy"]);
+    expect(
+      await page.getByRole("tab", { name: "Players", exact: true }).getAttribute("aria-selected"),
+    ).toBe("true");
+    await page.evaluate(() =>
+      Promise.allSettled(document.getAnimations().map((animation) => animation.finished)),
+    );
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByRole("columnheader").filter({ hasText: "Cam" }).waitFor();
+    await page.reload();
+    await page.getByRole("columnheader").filter({ hasText: "Cam" }).waitFor();
+    const saved = await page.evaluate<StoredGame>(`(async () => {
+      const { genericGamesApi } = await import("/scorekeeper/src/data/api/genericGames.ts");
+      return genericGamesApi.getById(${JSON.stringify(game.id)});
+    })()`);
+    expect(saved.players).toEqual([cam.id, ...game.players]);
+    await openEditor(page);
+    await expect.poll(rowOrder).toEqual(["Cam", "Bob", "Amy"]);
+    expect(await page.getByRole("button", { name: /^Reorder |^Remove / }).count()).toBe(0);
+    expect(await page.getByRole("button", { name: "Save", exact: true }).isDisabled()).toBe(true);
   } finally {
     await page.close();
   }
@@ -158,13 +286,14 @@ it("blocks pending duplicate Game saves and retains the staged addition after st
   const page = await newPage(390, 844);
   try {
     const game = await seed(page, "generic");
-    await page.evaluate(`(async () => {
+    const cam = await page.evaluate<Player>(`(async () => {
       const { playersApi } = await import("/scorekeeper/src/data/api/players.ts");
-      await playersApi.create({ name: "Cam", color: "Lime", isFavorite: 1 });
+      return playersApi.create({ name: "Cam", color: "Lime", isFavorite: 1 });
     })()`);
     await page.goto(`${appUrl}#/scorekeeper/game/${game.id}`);
     await openEditor(page);
     await page.getByRole("button", { name: "Cam", exact: true }).click();
+    await movePlayerUp(page, "Cam");
     await holdRoundStorage(page);
     await page.evaluate((id) => {
       const put = IDBObjectStore.prototype.put;
@@ -195,6 +324,12 @@ it("blocks pending duplicate Game saves and retains the staged addition after st
     await page.getByRole("columnheader").filter({ hasText: "Cam" }).waitFor();
     await page.reload();
     await page.getByRole("columnheader").filter({ hasText: "Cam" }).waitFor();
+    expect(
+      await page.evaluate<string[]>(`(async () => {
+      const { genericGamesApi } = await import("/scorekeeper/src/data/api/genericGames.ts");
+      return (await genericGamesApi.getById(${JSON.stringify(game.id)})).players;
+    })()`),
+    ).toEqual([game.players[0], cam.id, game.players[1]]);
   } finally {
     await releaseRoundStorage(page);
     await page.close();
