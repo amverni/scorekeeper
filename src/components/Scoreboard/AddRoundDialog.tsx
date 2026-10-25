@@ -29,11 +29,11 @@ interface AddRoundDialogProps {
   open: boolean;
   onClose: (open: boolean) => void;
   game: Game;
+  nextRoundNumber: number;
   players: PlayerIdentity[];
   draft: UseAddRoundDraft;
   onGameCompleted?: () => void;
   afterLeave?: () => void;
-  nextRoundNumber: number;
   expectedVersion: string;
 }
 
@@ -49,11 +49,11 @@ export function AddRoundDialog({
   open,
   onClose,
   game,
+  nextRoundNumber,
   players,
   draft,
   onGameCompleted,
   afterLeave,
-  nextRoundNumber,
   expectedVersion,
 }: AddRoundDialogProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);

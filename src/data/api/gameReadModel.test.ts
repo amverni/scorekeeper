@@ -112,6 +112,253 @@ it("reads saved Round inputs, scorecard running values, Standings and graphs tog
     { id: amy.id, totals: [0, 0, 50] },
   ]);
   expect(view?.tiebreakerGraphPlayerOrder).toEqual([amy.id, bob.id]);
+  expect(view?.rounds[0].source.scores.every((score) => !("pointsCardBreakdown" in score))).toBe(
+    true,
+  );
+});
+
+it.each([
+  "lowestPoints",
+  "highestPoints",
+] as const)("reloads different original card combinations with equal %s totals without inventing penalty cards", async (tiebreaker) => {
+  const { amy, bob, game } = await createGame(tiebreaker, 3);
+  await roundsApi.add({
+    gameId: game.id,
+    expectedRoundNumber: 1,
+    roundWinnerId: null,
+    scores: [
+      {
+        playerId: amy.id,
+        phaseStatus: "completed",
+        score: 55,
+        pointsCardBreakdown: { p5: 1, p10: 1, skipCard: 1, wild: 1 },
+      },
+      {
+        playerId: bob.id,
+        phaseStatus: "completed",
+        score: 55,
+        pointsCardBreakdown: { p5: 3, p10: 0, skipCard: 1, wild: 1 },
+      },
+    ],
+  });
+  await roundsApi.add({
+    gameId: game.id,
+    expectedRoundNumber: 2,
+    roundWinnerId: null,
+    scores: [
+      { playerId: amy.id, phaseStatus: "skipped", score: 100 },
+      { playerId: bob.id, phaseStatus: "satOut", score: 50 },
+    ],
+  });
+  closeDB();
+
+  const view = await gamesApi.getView(game.id);
+  expect(view?.rounds[0].scores.map((entry) => entry.source?.pointsCardBreakdown)).toEqual([
+    { p5: 1, p10: 1, skipCard: 1, wild: 1 },
+    { p5: 3, p10: 0, skipCard: 1, wild: 1 },
+  ]);
+  expect(view?.rounds[1].source.scores).toEqual([
+    { playerId: amy.id, phaseStatus: "skipped", score: 100, currentPhase: 2 },
+    { playerId: bob.id, phaseStatus: "satOut", score: 50, currentPhase: 2 },
+  ]);
+  expect(view?.players.map((player) => player.tiebreakerTotal)).toEqual([155, 105]);
+  expect(await roundsApi.getByGameId(game.id)).toEqual(view?.rounds.map((round) => round.source));
+});
+
+it.each([
+  "fewestWilds",
+  "fewestSkips",
+  "mostSkipped",
+  "roundsWon",
+] as const)("keeps %s event values separate from remaining-card counters", async (tiebreaker) => {
+  const { amy, bob, game } = await createGame(tiebreaker, 3);
+  await roundsApi.add({
+    gameId: game.id,
+    roundWinnerId: amy.id,
+    scores: [
+      { playerId: amy.id, phaseStatus: "completed", score: 3 },
+      { playerId: bob.id, phaseStatus: "failed", score: 2 },
+    ],
+  });
+  closeDB();
+  const view = await gamesApi.getView(game.id);
+  expect(view?.rounds[0].source.scores).toEqual([
+    { playerId: amy.id, phaseStatus: "completed", score: 3, currentPhase: 1 },
+    { playerId: bob.id, phaseStatus: "failed", score: 2, currentPhase: 1 },
+  ]);
+  expect(view?.players.map((player) => player.tiebreakerTotal)).toEqual(
+    tiebreaker === "roundsWon" ? [1, 0] : [3, 2],
+  );
+  await expect(
+    roundsApi.add({
+      gameId: game.id,
+      roundWinnerId: amy.id,
+      scores: [
+        {
+          playerId: amy.id,
+          phaseStatus: "completed",
+          score: 0,
+          pointsCardBreakdown: { p5: 0, p10: 0, skipCard: 0, wild: 0 },
+        },
+        { playerId: bob.id, phaseStatus: "failed", score: 2 },
+      ],
+    }),
+  ).rejects.toThrow("Points Card Breakdown");
+  closeDB();
+  expect(await gamesApi.getView(game.id)).toEqual(view);
+});
+
+it.each([
+  {
+    reason: "negative counters",
+    phaseStatus: "completed",
+    score: 5,
+    pointsCardBreakdown: { p5: -1, p10: 1, skipCard: 0, wild: 0 },
+  },
+  {
+    reason: "fractional counters",
+    phaseStatus: "completed",
+    score: 5,
+    pointsCardBreakdown: { p5: 0, p10: 0.5, skipCard: 0, wild: 0 },
+  },
+  {
+    reason: "non-finite counters",
+    phaseStatus: "completed",
+    score: 5,
+    pointsCardBreakdown: { p5: Number.NaN, p10: 0, skipCard: 0, wild: 0 },
+  },
+  {
+    reason: "a total that differs from the cards",
+    phaseStatus: "completed",
+    score: 10,
+    pointsCardBreakdown: { p5: 1, p10: 0, skipCard: 0, wild: 0 },
+  },
+  {
+    reason: "too few cards for Failed",
+    phaseStatus: "failed",
+    score: 5,
+    pointsCardBreakdown: { p5: 1, p10: 0, skipCard: 0, wild: 0 },
+  },
+  {
+    reason: "too many cards for Passed",
+    phaseStatus: "completed",
+    score: 50,
+    pointsCardBreakdown: { p5: 10, p10: 0, skipCard: 0, wild: 0 },
+  },
+  {
+    reason: "remaining cards for a Round Winner",
+    phaseStatus: "completed",
+    score: 5,
+    pointsCardBreakdown: { p5: 1, p10: 0, skipCard: 0, wild: 0 },
+    winner: true,
+  },
+  {
+    reason: "remaining cards for Round Skip",
+    phaseStatus: "skipped",
+    score: 100,
+    pointsCardBreakdown: { p5: 0, p10: 0, skipCard: 0, wild: 0 },
+  },
+  {
+    reason: "remaining cards for Sit Out",
+    phaseStatus: "satOut",
+    score: 50,
+    pointsCardBreakdown: { p5: 0, p10: 0, skipCard: 0, wild: 0 },
+  },
+] as const)("rejects $reason without changing the saved Game", async ({
+  phaseStatus,
+  score,
+  pointsCardBreakdown,
+  ...scenario
+}) => {
+  const { amy, bob, game } = await createGame("lowestPoints", 3);
+  const before = await gamesApi.getView(game.id);
+  await expect(
+    roundsApi.add({
+      gameId: game.id,
+      roundWinnerId: "winner" in scenario ? amy.id : null,
+      scores: [
+        { playerId: amy.id, phaseStatus, score, pointsCardBreakdown },
+        {
+          playerId: bob.id,
+          phaseStatus: "completed",
+          score: 0,
+          pointsCardBreakdown: { p5: 0, p10: 0, skipCard: 0, wild: 0 },
+        },
+      ],
+    }),
+  ).rejects.toThrow(/cards|Card|Points/);
+  closeDB();
+  expect(await gamesApi.getView(game.id)).toEqual(before);
+});
+
+it("rejects a stale Add Round submission instead of saving the same card entry twice", async () => {
+  const { amy, bob, game } = await createGame("lowestPoints", 3);
+  const draft = {
+    gameId: game.id,
+    expectedRoundNumber: 1,
+    roundWinnerId: null,
+    scores: [
+      {
+        playerId: amy.id,
+        phaseStatus: "completed",
+        score: 55,
+        pointsCardBreakdown: { p5: 1, p10: 1, skipCard: 1, wild: 1 },
+      },
+      {
+        playerId: bob.id,
+        phaseStatus: "failed",
+        score: 50,
+        pointsCardBreakdown: { p5: 10, p10: 0, skipCard: 0, wild: 0 },
+      },
+    ],
+  } satisfies Parameters<typeof roundsApi.add>[0] & { expectedRoundNumber: number };
+  const outcomes = await Promise.allSettled([roundsApi.add(draft), roundsApi.add(draft)]);
+  expect(outcomes.map((result) => result.status)).toEqual(["fulfilled", "rejected"]);
+  expect(outcomes[1]).toMatchObject({
+    reason: new Error("Round history changed. Reload before saving."),
+  });
+  closeDB();
+  const view = await gamesApi.getView(game.id);
+  expect(view?.rounds).toHaveLength(1);
+  expect(view?.players.map((player) => player.tiebreakerTotal)).toEqual([55, 50]);
+  const saved = view;
+  await expect(roundsApi.add(draft)).rejects.toThrow("Round history changed");
+  closeDB();
+  expect(await gamesApi.getView(game.id)).toEqual(saved);
+});
+
+it("keeps saved card source consistent when the existing Round edit API changes an entry", async () => {
+  const { amy, bob, game } = await createGame("lowestPoints", 3);
+  await roundsApi.add({
+    gameId: game.id,
+    roundWinnerId: null,
+    scores: [
+      {
+        playerId: amy.id,
+        phaseStatus: "completed",
+        score: 55,
+        pointsCardBreakdown: { p5: 1, p10: 1, skipCard: 1, wild: 1 },
+      },
+      { playerId: bob.id, phaseStatus: "failed", score: 50 },
+    ],
+  });
+  const before = await gamesApi.getView(game.id);
+  await expect(roundsApi.edit(game.id, 1, amy.id, { score: 50 })).rejects.toThrow(
+    "Points must match cards",
+  );
+  closeDB();
+  expect(await gamesApi.getView(game.id)).toEqual(before);
+  await roundsApi.edit(game.id, 1, amy.id, {
+    score: 50,
+    pointsCardBreakdown: { p5: 0, p10: 1, skipCard: 1, wild: 1 },
+  });
+  closeDB();
+  const view = await gamesApi.getView(game.id);
+  expect(view?.rounds[0].scores[0].source).toMatchObject({
+    score: 50,
+    pointsCardBreakdown: { p5: 0, p10: 1, skipCard: 1, wild: 1 },
+  });
+  expect(view?.players[0].tiebreakerTotal).toBe(50);
 });
 
 it("preserves shared manual wins and result snapshots across reloads and rejected repeat writes", async () => {

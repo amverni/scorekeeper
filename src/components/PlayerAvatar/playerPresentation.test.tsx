@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { deriveGameReadModel } from "../../data/api/gameReadModel";
@@ -27,7 +28,7 @@ const game: CompletedGame = {
 function renderPresentation(players: PlayerIdentity[]) {
   const standings = deriveStandings({ game, players, rounds: [] });
   return renderToStaticMarkup(
-    <>
+    <QueryClientProvider client={new QueryClient()}>
       {players.map((player) => (
         <PlayerRow key={player.id} player={player} />
       ))}
@@ -42,7 +43,7 @@ function renderPresentation(players: PlayerIdentity[]) {
         tiebreaker={game.settings.tiebreaker}
         rounds={[]}
       />
-    </>,
+    </QueryClientProvider>,
   );
 }
 

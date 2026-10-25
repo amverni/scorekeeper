@@ -5,22 +5,24 @@ import type {
   PhaseStatus,
   PlayerId,
   PlayerIdentity,
+  PointsCardBreakdown,
   RoundScore,
 } from "../../types";
-import { getRoundWinnerRequirement } from "../../utils";
+import {
+  getPointsCardCount,
+  getPointsCardCountRule,
+  getPointsCardScore,
+  getRoundWinnerRequirement,
+  isPointsTiebreaker,
+  POINTS_CARD_VALUES,
+  type PointsCardCountRule,
+} from "../../utils";
 
 type ManualResult = Extract<PhaseStatus, "failed" | "completed">;
 
-export type PointsQuickButtonId = "p5" | "p10" | "skipCard" | "wild";
+export type PointsQuickButtonId = keyof PointsCardBreakdown;
 
-export const POINTS_QUICK_BUTTON_DELTAS: Record<PointsQuickButtonId, number> = {
-  p5: 5,
-  p10: 10,
-  skipCard: 15,
-  wild: 25,
-};
-
-export type QuickCounts = Record<PointsQuickButtonId, number>;
+export type QuickCounts = PointsCardBreakdown;
 
 const ZERO_QUICK_COUNTS: QuickCounts = { p5: 0, p10: 0, skipCard: 0, wild: 0 };
 
@@ -28,12 +30,6 @@ interface PointsEntrySnapshot {
   score: number;
   lastManualScore: number;
   quickCounts: QuickCounts;
-}
-
-interface PointsCardCountRule {
-  minCards: number;
-  maxCards: number;
-  reason: string;
 }
 
 export interface ScoreEntryCompletion {
@@ -74,7 +70,7 @@ type ResultSettings = PenaltySettings & Pick<GameSettings, "tiebreaker">;
 const FAILED_POINTS_DEFAULT_SCORE = 50;
 const FAILED_POINTS_DEFAULT_QUICK_COUNTS: QuickCounts = {
   ...ZERO_QUICK_COUNTS,
-  p5: FAILED_POINTS_DEFAULT_SCORE / POINTS_QUICK_BUTTON_DELTAS.p5,
+  p5: FAILED_POINTS_DEFAULT_SCORE / POINTS_CARD_VALUES.p5,
 };
 const POINTS_MAX = 250;
 const POINTS_STEP = 5;
@@ -82,29 +78,6 @@ const allowedPointScoresCache = new Map<string, number[]>();
 
 function isManualResult(result: PhaseStatus | null): result is ManualResult {
   return result === "failed" || result === "completed";
-}
-
-function isPointsTiebreaker(tiebreaker: GameTiebreaker): boolean {
-  return tiebreaker === "lowestPoints" || tiebreaker === "highestPoints";
-}
-
-function getPointsCardCountRule(
-  result: PhaseStatus | null,
-  isRoundWinner: boolean,
-): PointsCardCountRule | null {
-  if (isRoundWinner) {
-    return { minCards: 0, maxCards: 0, reason: "Winner needs 0 cards." };
-  }
-
-  if (result === "failed") {
-    return { minCards: 10, maxCards: 10, reason: "Needs 10 cards." };
-  }
-
-  if (result === "completed") {
-    return { minCards: 0, maxCards: 9, reason: "Needs 9 or fewer cards." };
-  }
-
-  return null;
 }
 
 function getPointsPenaltyScore(result: PhaseStatus, settings: PenaltySettings): number | null {
@@ -117,19 +90,6 @@ function getPointsPenaltyScore(result: PhaseStatus, settings: PenaltySettings): 
   }
 
   return null;
-}
-
-function getQuickCountsPoints(quickCounts: QuickCounts): number {
-  return (
-    quickCounts.p5 * POINTS_QUICK_BUTTON_DELTAS.p5 +
-    quickCounts.p10 * POINTS_QUICK_BUTTON_DELTAS.p10 +
-    quickCounts.skipCard * POINTS_QUICK_BUTTON_DELTAS.skipCard +
-    quickCounts.wild * POINTS_QUICK_BUTTON_DELTAS.wild
-  );
-}
-
-function getPointsCardCount(quickCounts: QuickCounts): number {
-  return quickCounts.p5 + quickCounts.p10 + quickCounts.skipCard + quickCounts.wild;
 }
 
 function isBetterQuickCounts(candidate: QuickCounts, current: QuickCounts): boolean {
@@ -159,7 +119,7 @@ function findQuickCountsForPoints(score: number, rule: PointsCardCountRule): Qui
             continue;
           }
 
-          if (getQuickCountsPoints(quickCounts) !== score) {
+          if (getPointsCardScore(quickCounts) !== score) {
             continue;
           }
 
@@ -584,7 +544,7 @@ export function applyQuickIncrement(
     if (quickCounts === player.quickCounts) {
       return player;
     }
-    const nextScore = Math.min(max, getQuickCountsPoints(quickCounts));
+    const nextScore = Math.min(max, getPointsCardScore(quickCounts));
     return {
       ...player,
       score: nextScore,
@@ -612,7 +572,7 @@ export function applyQuickDecrement(
       return player;
     }
 
-    const nextScore = getQuickCountsPoints(quickCounts);
+    const nextScore = getPointsCardScore(quickCounts);
     return {
       ...player,
       score: nextScore,
@@ -753,7 +713,7 @@ export function getScoreEntryCompletion({
     return { complete: false, reason: rule.reason };
   }
 
-  if (player.score !== getQuickCountsPoints(player.quickCounts)) {
+  if (player.score !== getPointsCardScore(player.quickCounts)) {
     return { complete: false, reason: "Points must match cards." };
   }
 
@@ -828,5 +788,8 @@ export function toRoundScores(
     playerId: player.playerId,
     score: player.score,
     phaseStatus: player.result,
+    ...(isPointsTiebreaker(tiebreaker) && isManualResult(player.result)
+      ? { pointsCardBreakdown: { ...player.quickCounts } }
+      : {}),
   })) as ArrayAtLeastOne<Omit<RoundScore, "currentPhase">>;
 }

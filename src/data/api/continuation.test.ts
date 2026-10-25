@@ -116,6 +116,74 @@ it("remembers Continuation, freezes Finished Players and skips their dealer turn
   ]);
 });
 
+it("preserves original Points Card Breakdowns when corrections exclude and restore a finisher's later entry", async () => {
+  const {
+    game,
+    players: [amy, bob, cam, dan],
+  } = await createGame();
+  const failedCards = { p5: 10, p10: 0, skipCard: 0, wild: 0 };
+  await roundsApi.add({
+    gameId: game.id,
+    roundWinnerId: bob.id,
+    scores: [
+      {
+        playerId: amy.id,
+        phaseStatus: "failed",
+        score: 50,
+        pointsCardBreakdown: failedCards,
+      },
+      { playerId: bob.id, phaseStatus: "completed", score: 0 },
+      { playerId: cam.id, phaseStatus: "failed", score: 50 },
+      { playerId: dan.id, phaseStatus: "failed", score: 50 },
+    ],
+  });
+  const choice = (await gamesApi.getView(game.id))?.pendingFinishChoice;
+  if (!choice) throw new Error("Missing first-finisher choice");
+  await gamesApi.resolveFinishChoice(game.id, "continue", choice.token);
+  const later = await roundsApi.add({
+    gameId: game.id,
+    roundWinnerId: null,
+    scores: [
+      {
+        playerId: amy.id,
+        phaseStatus: "completed",
+        score: 15,
+        pointsCardBreakdown: { p5: 0, p10: 0, skipCard: 1, wild: 0 },
+      },
+      { playerId: cam.id, phaseStatus: "failed", score: 50 },
+      { playerId: dan.id, phaseStatus: "failed", score: 50 },
+    ],
+  });
+  await roundsApi.edit(game.id, 1, amy.id, {
+    phaseStatus: "completed",
+    score: 5,
+    pointsCardBreakdown: { p5: 1, p10: 0, skipCard: 0, wild: 0 },
+  });
+  closeDB();
+  const excluded = await gamesApi.getView(game.id);
+  expect(excluded?.players[0]).toMatchObject({ finishingRound: 1, tiebreakerTotal: 5 });
+  expect(excluded?.rounds[1].scores[0]).toMatchObject({
+    source: later.round.scores[0],
+    counted: false,
+    tiebreakerValue: 0,
+  });
+  expect((await roundsApi.getByGameId(game.id))[1].scores[0]).toEqual(later.round.scores[0]);
+
+  await roundsApi.edit(game.id, 1, amy.id, {
+    phaseStatus: "failed",
+    score: 50,
+    pointsCardBreakdown: failedCards,
+  });
+  closeDB();
+  const restored = await gamesApi.getView(game.id);
+  expect(restored?.players[0]).toMatchObject({ finishingRound: 2, tiebreakerTotal: 65 });
+  expect(restored?.rounds[1].scores[0]).toMatchObject({
+    source: later.round.scores[0],
+    counted: true,
+    tiebreakerValue: 15,
+  });
+});
+
 it("keeps corrected entries and genuine gaps, restores counted results and remembers Continuation when the winner changes", async () => {
   const {
     game,

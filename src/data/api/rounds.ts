@@ -2,12 +2,19 @@ import type {
   ArrayAtLeastOne,
   CompletedGame,
   GameId,
+  GameTiebreaker,
   PlayerId,
   PlayerIdentity,
   Round,
   RoundScore,
 } from "../../types";
-import { getRoundWinnerRequirement } from "../../utils";
+import {
+  getPointsCardCount,
+  getPointsCardCountRule,
+  getPointsCardScore,
+  getRoundWinnerRequirement,
+  isPointsTiebreaker,
+} from "../../utils";
 import { getDB } from "../db";
 import { finalizeGame, requirePlayers, withGameTransaction } from "./gameLifecycle";
 import { deriveGameReadModel } from "./gameReadModel";
@@ -29,6 +36,37 @@ export interface AddRoundCompletedResult {
 }
 
 export type AddRoundResult = AddRoundAddedResult | AddRoundCompletedResult;
+
+function assertPointsCardBreakdown(
+  score: AddRoundScoreInput,
+  tiebreaker: GameTiebreaker,
+  roundWinnerId: PlayerId | null,
+): void {
+  const cards = score.pointsCardBreakdown;
+  if (cards === undefined) return;
+  if (
+    !isPointsTiebreaker(tiebreaker) ||
+    (score.phaseStatus !== "failed" && score.phaseStatus !== "completed")
+  ) {
+    throw new Error("Points Card Breakdown is only valid for Passed or Failed Points entries");
+  }
+  if (
+    !cards ||
+    [cards.p5, cards.p10, cards.skipCard, cards.wild].some(
+      (count) => !Number.isSafeInteger(count) || count < 0,
+    )
+  ) {
+    throw new Error("Points Card Breakdown needs non-negative whole card counts");
+  }
+  const rule = getPointsCardCountRule(score.phaseStatus, score.playerId === roundWinnerId);
+  const cardCount = getPointsCardCount(cards);
+  if (rule && (cardCount < rule.minCards || cardCount > rule.maxCards)) {
+    throw new Error(rule.reason);
+  }
+  if (score.score !== getPointsCardScore(cards)) {
+    throw new Error("Points must match cards.");
+  }
+}
 
 export const roundsApi = {
   /**
@@ -68,9 +106,9 @@ export const roundsApi = {
    */
   add(data: {
     gameId: GameId;
+    expectedRoundNumber?: number;
     scores: ArrayAtLeastOne<AddRoundScoreInput>;
     roundWinnerId: PlayerId | null;
-    expectedRoundNumber?: number;
     expectedVersion?: string;
   }): Promise<AddRoundResult> {
     return withGameTransaction(async (tx) => {
@@ -87,6 +125,9 @@ export const roundsApi = {
           winnerScores[0].phaseStatus !== "completed")
       ) {
         throw new Error("Round Winner must be a Passed Active Player in the Round");
+      }
+      for (const score of data.scores) {
+        assertPointsCardBreakdown(score, game.settings.tiebreaker, data.roundWinnerId);
       }
       const players = await requirePlayers(tx, game.players);
       const existingRounds = await roundsStore.index("by-game").getAll(data.gameId);
@@ -134,7 +175,7 @@ export const roundsApi = {
       }
       const nextRoundNumber = view.nextRoundNumber;
       if (data.expectedRoundNumber !== undefined && data.expectedRoundNumber !== nextRoundNumber) {
-        throw new Error("Round history changed. Reload the Game before saving this draft.");
+        throw new Error("Round history changed. Reload before saving.");
       }
 
       const scores = data.scores.map((input) => {
@@ -228,6 +269,11 @@ export const roundsApi = {
       const updatedScores = [...round.scores] as ArrayAtLeastOne<RoundScore>;
       updatedScores[scoreIndex] = { ...updatedScores[scoreIndex], ...updates };
       validateScore(updatedScores[scoreIndex]);
+      assertPointsCardBreakdown(
+        updatedScores[scoreIndex],
+        game.settings.tiebreaker,
+        round.roundWinnerId,
+      );
 
       const updatedRound: Round = { ...round, scores: updatedScores };
       let savedRound = updatedRound;

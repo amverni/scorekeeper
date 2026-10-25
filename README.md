@@ -28,8 +28,18 @@ and graph endpoint order. Completion uses that same interpretation. The raw
 Game/Round APIs remain available.
 
 The read model keeps source Rounds and score entries separate from derived
-values. Existing records contain aggregate scores, not Points Card Breakdowns;
-the read model does not reconstruct unavailable card counters. `counted` flags
+values. New Passed/Failed Points entries retain the original `pointsCardBreakdown`
+(`p5`, `p10`, `skipCard`, `wild`) from the Add Round controls, including all-zero
+Round Winner entries. Both `roundsApi.getByGameId()` and `gamesApi.getView()`
+return those exact counters after reload. Round Skip/Sit Out penalties and Count
+Tiebreaker events have no remaining-card breakdown. Legacy entries without
+counters remain readable, but their unavailable breakdowns are never reconstructed.
+The optional record field requires no IndexedDB store/index migration or reset.
+
+Card-bearing writes validate whole non-negative counters, Points Card Count,
+and matching point totals using the same rules as Add Round. The existing
+single-entry edit API also rejects inconsistent score/breakdown updates.
+`counted` flags
 distinguish retained source history from contributing Rounds and entries.
 `playingPlayers`, Finishing Rounds/Places, and the Game Ending Round come from
 the same interpretation rather than independent per-screen calculations.
@@ -68,7 +78,8 @@ remain visible but muted and do not contribute to results or graphs. Another
 correction can restore their contribution while the Game remains Active.
 Ordinary post-finish cells and genuine Participation Gaps remain blank.
 Recalculation never deletes retained history; next-Round numbering follows the
-last stored Round, not just counted Rounds.
+last stored Round, not just counted Rounds. Pending saves block duplicate
+actions; failures retain the draft, and successful saves alone clear it.
 
 ## Navigation and presentation
 

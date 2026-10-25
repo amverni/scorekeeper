@@ -230,7 +230,7 @@ The total number of remaining cards represented by the point-entry counters for 
 _Avoid_: Score, points total
 
 **Points Card Breakdown**:
-The recorded counts of remaining cards in the 5-point, 10-point, Skip Card, and Wild categories for a Points Tiebreaker. These counts distinguish card combinations that produce the same point total.
+The recorded counts of remaining cards in the 5-point, 10-point, Skip Card, and Wild categories for a Points Tiebreaker. These counts distinguish card combinations that produce the same point total and are preserved exactly when saved, including all-zero Round Winner entries. Round Skip/Sit Out penalties and Count Tiebreaker event values do not have a remaining-card breakdown. Missing historical counters are not reconstructed from a point total.
 
 **Points Tiebreaker**:
 A tiebreaker that compares players by a recorded point total, where the selected rule determines whether higher or lower points win.

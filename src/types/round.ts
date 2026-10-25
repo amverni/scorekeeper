@@ -14,9 +14,18 @@ export interface PhaseRound extends RoundMetadata {
 
 export type PhaseStatus = "failed" | "completed" | "skipped" | "satOut";
 
+export interface PointsCardBreakdown {
+  p5: number;
+  p10: number;
+  skipCard: number;
+  wild: number;
+}
+
 export interface RoundScore {
   playerId: PlayerId;
   score: number;
   phaseStatus: PhaseStatus;
   currentPhase: number;
+  /** Remaining cards for a Points entry; absent for penalties, Count Tiebreakers and legacy data. */
+  pointsCardBreakdown?: PointsCardBreakdown;
 }
