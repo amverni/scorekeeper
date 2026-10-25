@@ -1,6 +1,6 @@
 import { DialogTitle, Tab, TabGroup, TabPanel } from "@headlessui/react";
 import { Check, Loader2, Minus, Redo, Trophy, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useAddRound } from "../../data/hooks/useRounds";
 import type { ArrayAtLeastOne, Game, PlayerIdentity, RoundScore } from "../../types";
 import { PlayerAvatar } from "../PlayerAvatar/PlayerAvatar";
@@ -56,7 +56,11 @@ export function AddRoundDialog({
   afterLeave,
   expectedVersion,
 }: AddRoundDialogProps) {
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const selectedIndex = Math.max(
+    0,
+    players.findIndex((player) => player.id === draft.selectedPlayerId),
+  );
+  const setSelectedIndex = (index: number) => draft.selectPlayer(players[index]?.id ?? null);
   const addRound = useAddRound(game.id);
   const toastRef = useRef<ToastHandle>(null);
   const tabListRef = useRef<HTMLDivElement>(null);
@@ -73,7 +77,10 @@ export function AddRoundDialog({
   }, [selectedIndex]);
 
   const progress = getDraftProgress(draft.draft, game.settings.tiebreaker);
-  const canSave = progress.ready && !addRound.isPending;
+  const winnerEligible =
+    draft.draft.roundWinnerId === null ||
+    players.some((player) => player.id === draft.draft.roundWinnerId);
+  const canSave = progress.ready && winnerEligible && !addRound.isPending;
   const showTiebreakerEntry = game.settings.tiebreaker !== "roundsWon";
   const playerTabColumnCount = Math.max(players.length, 1);
 
@@ -167,6 +174,11 @@ export function AddRoundDialog({
         aria-busy={addRound.isPending}
         className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 pb-4 text-text-primary"
       >
+        {!winnerEligible && (
+          <p role="alert" className="text-sm text-pt-red-500">
+            The selected Round Winner is no longer playing. Choose another Round Winner.
+          </p>
+        )}
         <TabGroup
           selectedIndex={selectedIndex}
           onChange={(index) => {

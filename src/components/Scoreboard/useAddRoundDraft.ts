@@ -1,9 +1,12 @@
 import { useRef, useState } from "react";
-import type { GameSettings, PhaseStatus, PlayerId, PlayerIdentity } from "../../types";
+import type { GameId, GameSettings, PhaseStatus, PlayerId, PlayerIdentity } from "../../types";
+import { useSessionRoundDrafts } from "../GameEditor/SessionRoundDrafts";
 import * as draftHelpers from "./addRoundDraft";
 
 export interface UseAddRoundDraft {
   draft: draftHelpers.AddRoundDraft;
+  selectedPlayerId: PlayerId | null;
+  selectPlayer: (playerId: PlayerId | null) => void;
   setResult: (playerId: PlayerId, result: PhaseStatus) => void;
   setScore: (playerId: PlayerId, score: number) => void;
   incrementQuick: (playerId: PlayerId, button: draftHelpers.PointsQuickButtonId) => void;
@@ -18,35 +21,48 @@ export interface UseAddRoundDraft {
 const POINTS_MAX = 250;
 
 export function useAddRoundDraft(
+  gameId: GameId,
   players: PlayerIdentity[],
   settings: GameSettings,
 ): UseAddRoundDraft {
-  const [draft, setDraft] = useState(() => draftHelpers.createInitialDraft(players));
+  const drafts = useSessionRoundDrafts();
+  const [draft, setDraft] = useState(
+    () => drafts.phase.get(gameId)?.draft ?? draftHelpers.createInitialDraft(players),
+  );
+  const [selectedPlayerId, setSelectedPlayerId] = useState<PlayerId | null>(
+    () => drafts.phase.get(gameId)?.selectedPlayerId ?? players[0]?.id ?? null,
+  );
   const draftRef = useRef(draft);
-  if (
-    players.length !== draft.players.length ||
-    players.some((player, index) => player.id !== draft.players[index]?.playerId)
-  ) {
-    const initial = draftHelpers.createInitialDraft(players);
-    const nextDraft = {
-      players: initial.players.map(
-        (player) => draft.players.find((entry) => entry.playerId === player.playerId) ?? player,
+  const initial = draftHelpers.createInitialDraft(players);
+  const retainedDraft = {
+    ...draft,
+    players: [
+      ...draft.players,
+      ...initial.players.filter(
+        (player) => !draft.players.some((entry) => entry.playerId === player.playerId),
       ),
-      roundWinnerId: players.some((player) => player.id === draft.roundWinnerId)
-        ? draft.roundWinnerId
-        : null,
-    };
-    draftRef.current = nextDraft;
-    setDraft(nextDraft);
-  }
+    ],
+  };
+  draftRef.current = retainedDraft;
 
   const setNextDraft = (nextDraft: draftHelpers.AddRoundDraft) => {
     draftRef.current = nextDraft;
+    drafts.phase.set(gameId, { draft: nextDraft, selectedPlayerId });
     setDraft(nextDraft);
   };
 
   return {
-    draft,
+    draft: {
+      ...retainedDraft,
+      players: players.flatMap((player) =>
+        retainedDraft.players.filter((entry) => entry.playerId === player.id),
+      ),
+    },
+    selectedPlayerId,
+    selectPlayer: (playerId) => {
+      setSelectedPlayerId(playerId);
+      drafts.phase.set(gameId, { draft: draftRef.current, selectedPlayerId: playerId });
+    },
     setResult: (playerId, result) => {
       setNextDraft(draftHelpers.applyResult(draftRef.current, playerId, result, settings));
     },
@@ -75,6 +91,8 @@ export function useAddRoundDraft(
     },
     reset: () => {
       setNextDraft(draftHelpers.createInitialDraft(players));
+      setSelectedPlayerId(players[0]?.id ?? null);
+      drafts.phase.delete(gameId);
     },
   };
 }

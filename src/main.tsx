@@ -4,6 +4,7 @@ import "./index.css";
 import { RouterProvider } from "@tanstack/react-router";
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { SessionRoundDraftsProvider } from "./components/GameEditor/SessionRoundDrafts";
 import { LogoThemeProvider } from "./components/Logo/LogoThemeProvider";
 import { useKeyboardFreeze } from "./components/PageShell/useKeyboardFreeze";
 import { QueryProvider } from "./components/QueryProvider/QueryProvider";
@@ -15,7 +16,9 @@ function App() {
   return (
     <QueryProvider>
       <LogoThemeProvider>
-        <RouterProvider router={router} />
+        <SessionRoundDraftsProvider>
+          <RouterProvider router={router} />
+        </SessionRoundDraftsProvider>
       </LogoThemeProvider>
     </QueryProvider>
   );

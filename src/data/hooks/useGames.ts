@@ -13,8 +13,19 @@ export const gameKeys = {
   details: () => [...gameKeys.all, "phase10", "detail"] as const,
   detail: (id: GameId) => [...gameKeys.details(), id] as const,
   view: (id: GameId) => [...gameKeys.detail(id), "view"] as const,
+  editor: (id: GameId) => [...gameKeys.detail(id), "editor"] as const,
   phasePlayers: (id: GameId) => [...gameKeys.detail(id), "phasePlayers"] as const,
 };
+
+export function gameEditorOptions(id: GameId) {
+  return queryOptions({
+    queryKey: gameKeys.editor(id),
+    queryFn: () => gamesApi.getEditor(id),
+    // Editors reread on entry so an unmounted editor cannot retain stale saved configuration.
+    staleTime: 0,
+    gcTime: 0,
+  });
+}
 
 export function gameDetailOptions(id: GameId) {
   return queryOptions({

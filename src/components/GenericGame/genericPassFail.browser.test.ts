@@ -439,7 +439,7 @@ it("allows solo all-fail completion only after a saved Round", async () => {
   }
 }, 60_000);
 
-it("retains a draft on close, clears it after save, and discards it on navigation or reload", async () => {
+it("retains a session draft on close and navigation, clearing it after save or reload", async () => {
   const page = await newPage();
   try {
     const game = await openGame(page, ["Maya", "Rowan"]);
@@ -463,8 +463,6 @@ it("retains a draft on close, clears it after save, and discards it on navigatio
     await returnToDashboard(page);
     await page.getByRole("link", { name: "Continue game with Maya, Rowan", exact: true }).click();
     await openRound(page);
-    await expectOutcome(maya, false);
-    await maya.click();
     await expectOutcome(maya, true);
     await page.reload();
     await openRound(page);

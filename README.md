@@ -163,10 +163,36 @@ sharing first place in Standings. Every completion requires at least one saved R
 retains the latest 20 Completed Games for its own Scorekeeper, removing evicted
 Games and their owned records atomically. Active Games never expire.
 
-Add Round drafts live only while their scoreboard is mounted. Closing the dialog
-retains a draft; saving clears it, and leaving (including Pause) discards it.
+Add Round drafts live in memory for the current app session, keyed by Game and
+Scorekeeper. Closing the dialog or navigating away (including Edit game and
+Pause) retains entered values, selected Players and explicit winners. Saving
+clears the saved draft; reloading starts a fresh draft. No draft is stored in
+IndexedDB or browser storage. Ineligible Phase entries remain in the session
+draft for later revalidation rather than being erased when the roster changes.
 Completed scoreboards, Standings, graphs, and Games lists use snapshots even after
 saved Players are edited or deleted.
+
+### Game inspection
+
+The bottom **Edit game** action in an Active Game's menu opens
+`/phaseCompan10n/game/$gameId/edit` or `/scorekeeper/game/$gameId/edit` through
+hash navigation. These full-page routes reuse creation's `GameSetupTabs` and
+load saved configuration through `gamesApi.getEditor()` or
+`genericGamesApi.getEditor()`, not app defaults. Settings and ordered Phase
+references are static; current Phase Games use Sequential Phase Order.
+Unlike long-lived local view caches, editor queries reread on every entry and
+are released on unmount so reopening never reuses stale editor configuration.
+Completed, missing, wrong-Scorekeeper and unavailable-reference Games cannot
+be edited or implicitly reopened. Loading failures are explicit and retryable.
+
+This slice only inspects configuration: Players and rules cannot yet be changed,
+and the Save icon stays visible and disabled. `StagedGameEditor` separates the
+Game-editor presentation from membership controls and accepts an explicit Save
+state (`unsupported`, `unchanged`, `invalid`, `pending`, or `ready`). Later
+membership features supply their staged form and a ready Save action only for
+net supported valid changes; there is no placeholder mutation. X returns to the
+same Game, while Back or navigation away discards the Game-editor draft without
+prompting. That lifecycle is independent of the retained next-Round draft.
 
 Active Generic Games support editing a saved Round from its expanded scorecard
 details in all three Scoring Modes. Edit opens the full prefilled entry form and

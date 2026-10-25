@@ -5,6 +5,7 @@ import { deriveGameReadModel } from "../../data/api/gameReadModel";
 import { deriveStandings } from "../../data/api/standings";
 import type { CompletedGame, Player, PlayerIdentity } from "../../types";
 import { PlayerRow } from "../Create/Players/PlayerRow";
+import { SessionRoundDraftsProvider } from "../GameEditor/SessionRoundDrafts";
 import { PlayerAvatarStack } from "../PlayerAvatarStack/PlayerAvatarStack";
 import { Scoreboard } from "../Scoreboard/Scoreboard";
 import { PhaseGraph } from "../Standings/PhaseGraph";
@@ -33,7 +34,9 @@ function renderPresentation(players: PlayerIdentity[]) {
         <PlayerRow key={player.id} player={player} />
       ))}
       <PlayerAvatarStack players={players} />
-      <Scoreboard view={deriveGameReadModel({ game, players, rounds: [] })} />
+      <SessionRoundDraftsProvider>
+        <Scoreboard view={deriveGameReadModel({ game, players, rounds: [] })} />
+      </SessionRoundDraftsProvider>
       {getStandingsDisplayRows(standings).map((row) => (
         <StandingsRow key={row.player.id} row={row} />
       ))}

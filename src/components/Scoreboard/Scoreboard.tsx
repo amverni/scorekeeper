@@ -43,7 +43,7 @@ export function Scoreboard({ view, onGameCompleted }: ScoreboardProps) {
   const isActive = game.status === "active";
 
   const showGhost = isActive && !view.pendingFinishChoice && !view.automaticCompletion;
-  const draft = useAddRoundDraft(playingPlayers, game.settings);
+  const draft = useAddRoundDraft(game.id, playingPlayers, game.settings);
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">

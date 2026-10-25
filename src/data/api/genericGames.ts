@@ -5,6 +5,7 @@ import type {
   GameId,
   GameListItem,
   GenericGame,
+  GenericGameEditor,
   GenericGameView,
   GenericScoreboardView,
   Player,
@@ -26,6 +27,17 @@ import {
 } from "./genericScoring";
 
 export const genericGamesApi = {
+  async getEditor(id: GameId): Promise<GenericGameEditor | null> {
+    const view = await this.getDetail(id);
+    if (!view) return null;
+    const { game, players } = view;
+    if (game.status !== "active") {
+      throw new Error("Reopen this Completed Game for correction before editing.");
+    }
+    assertGenericGame(game);
+    return { game, players };
+  },
+
   async getList({ activeOnly = false }: { activeOnly?: boolean } = {}): Promise<GameListItem[]> {
     const db = await getDB();
     const tx = db.transaction(["games", "players"]);

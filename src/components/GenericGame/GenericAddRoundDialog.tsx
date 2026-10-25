@@ -3,6 +3,7 @@ import { useForm } from "@tanstack/react-form";
 import { useEffect, useRef, useState } from "react";
 import type { GameId, GenericRoundEditor, PlayerId, PlayerIdentity } from "../../types";
 import { parseGenericPoints } from "../../utils/genericPoints";
+import { type GenericEntryValues, useSessionRoundDrafts } from "../GameEditor/SessionRoundDrafts";
 import { PlayerAvatar } from "../PlayerAvatar/PlayerAvatar";
 import {
   DeleteRoundDialog,
@@ -63,16 +64,23 @@ export function GenericAddRoundDialog({
   editor,
   focusPlayerId,
 }: GenericAddRoundDialogProps) {
-  const [selectedIndex, setSelectedIndex] = useState(() =>
-    Math.max(
-      0,
-      players.findIndex((player) => player.id === focusPlayerId),
-    ),
+  const drafts = useSessionRoundDrafts();
+  const savedDraft = editor ? undefined : drafts.generic.get(gameId);
+  const [selectedPlayerId, setSelectedPlayerId] = useState(
+    focusPlayerId ?? savedDraft?.selectedPlayerId ?? players[0]?.id ?? null,
   );
+  const selectedIndex = Math.max(
+    0,
+    players.findIndex((player) => player.id === selectedPlayerId),
+  );
+  const emptyValues: GenericEntryValues = {
+    scores: players.map((player) => ({ playerId: player.id, points: "0", tiebreaker: "0" })),
+    winnerId: null,
+  };
   const tabListRef = useRef<HTMLDivElement>(null);
   const roundDialog = useGenericRoundDialog(onClose, editor);
   const form = useForm({
-    defaultValues: {
+    defaultValues: savedDraft?.values ?? {
       scores:
         editor?.round.mode === "points"
           ? editor.round.scores.map(({ playerId, points, tiebreaker }) => ({
@@ -82,6 +90,13 @@ export function GenericAddRoundDialog({
             }))
           : players.map((player) => ({ playerId: player.id, points: "0", tiebreaker: "0" })),
       winnerId: editor && "winnerId" in editor ? editor.winnerId : (null as PlayerId | null),
+    },
+    listeners: {
+      onChange: ({ formApi }) => {
+        if (!editor) {
+          drafts.generic.set(gameId, { values: formApi.state.values, selectedPlayerId });
+        }
+      },
     },
     onSubmit: async ({ value }) => {
       await roundDialog.saveRound(
@@ -104,12 +119,21 @@ export function GenericAddRoundDialog({
               })),
             },
         () => {
-          form.reset();
-          setSelectedIndex(0);
+          form.reset(emptyValues);
+          setSelectedPlayerId(players[0]?.id ?? null);
+          if (!editor) drafts.generic.delete(gameId);
         },
       );
     },
   });
+
+  function setSelectedIndex(index: number) {
+    const playerId = players[index]?.id ?? null;
+    setSelectedPlayerId(playerId);
+    if (!editor) {
+      drafts.generic.set(gameId, { values: form.state.values, selectedPlayerId: playerId });
+    }
+  }
 
   useEffect(() => {
     if (!open) return;
