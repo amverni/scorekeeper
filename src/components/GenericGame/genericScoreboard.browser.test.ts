@@ -301,7 +301,7 @@ it.each(
       await cell.tap();
       expect(await box(value)).toEqual(before);
       expect((await box(cell)).height).toBe(
-        settings.mode === "points"
+        settings.mode !== "passFail"
           ? settings.tiebreaker
             ? playerCount === 1
               ? 151
