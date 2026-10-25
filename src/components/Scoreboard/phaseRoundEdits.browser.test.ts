@@ -427,3 +427,145 @@ function readView(page: Page, gameId: string) {
     )
   `);
 }
+
+it("confirms middle-Round deletion once, preserves canceled and failed editor drafts, and reloads only the surviving history", async () => {
+  const page = await browser.newPage({ viewport: { width: 320, height: 844 } });
+  page.setDefaultTimeout(5_000);
+  try {
+    const { game, players } = await seedGame(page);
+    await addFailedRound(page, game.id, players);
+    await addFailedRound(page, game.id, players);
+    const before = await readView(page, game.id);
+    await page.goto(`${appUrl}#/phaseCompan10n/game/${game.id}`);
+    await page.getByRole("button", { name: "Round 2", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 2 for Amy", exact: true }).click();
+    const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
+    await editor.getByRole("button", { name: "Passed", exact: true }).click();
+    const remove = editor.getByRole("button", { name: "Delete Round", exact: true });
+    const removeBox = await remove.boundingBox();
+    const closeBox = await editor.getByRole("button", { name: "Close", exact: true }).boundingBox();
+    expect(removeBox?.y).toBe(closeBox?.y);
+    expect(removeBox?.x).toBeLessThan(closeBox?.x ?? 0);
+    const confirmation = page.getByRole("dialog", { name: "Delete round", exact: true });
+    for (const dismissal of ["Cancel", "Escape", "outside"] as const) {
+      await remove.click();
+      await confirmation
+        .getByText("Delete Round 2? This cannot be undone.", { exact: true })
+        .waitFor();
+      expect(await confirmation.getByRole("button").allTextContents()).toEqual([
+        "Cancel",
+        "Delete",
+      ]);
+      await expect
+        .poll(() =>
+          confirmation
+            .getByRole("button", { name: "Cancel", exact: true })
+            .evaluate((button) => button === document.activeElement),
+        )
+        .toBe(true);
+      if (dismissal === "Cancel") {
+        await confirmation.getByRole("button", { name: "Cancel", exact: true }).click();
+      } else if (dismissal === "Escape") {
+        await page.keyboard.press("Escape");
+      } else {
+        await page.mouse.click(1, 1);
+      }
+      await confirmation.waitFor({ state: "detached" });
+      expect(
+        await editor
+          .getByRole("button", { name: "Passed", exact: true })
+          .getAttribute("aria-pressed"),
+      ).toBe("true");
+      expect(await readView(page, game.id)).toEqual(before);
+    }
+    await remove.click();
+    await confirmation.getByRole("button", { name: "Delete", exact: true }).waitFor();
+    await page.evaluate(() => {
+      const put = IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put = function (value, key) {
+        if (this.name === "games") {
+          IDBObjectStore.prototype.put = put;
+          throw new DOMException("Deletion write failed", "QuotaExceededError");
+        }
+        return put.call(this, value, key);
+      };
+    });
+    await holdRoundStorage(page);
+    await confirmation.getByRole("button", { name: "Delete", exact: true }).evaluate((button) => {
+      (button as HTMLButtonElement).click();
+      (button as HTMLButtonElement).click();
+    });
+    await expect
+      .poll(() => confirmation.getByRole("button", { name: "Delete", exact: true }).isDisabled())
+      .toBe(true);
+    await page.keyboard.press("Escape");
+    expect(await confirmation.locator(".dialog-panel").isVisible()).toBe(true);
+    await releaseRoundStorage(page);
+    await confirmation.waitFor({ state: "detached" });
+    await editor.getByRole("alert").waitFor();
+    expect(await editor.getByRole("alert").innerText()).toContain("Deletion write failed");
+    expect(
+      await editor
+        .getByRole("button", { name: "Passed", exact: true })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(await readView(page, game.id)).toEqual(before);
+    await remove.click();
+    await confirmation.getByRole("button", { name: "Delete", exact: true }).click();
+    await confirmation.waitFor({ state: "detached" });
+    await editor.waitFor({ state: "detached" });
+    expect(await page.getByRole("dialog").count()).toBe(0);
+    await page.reload();
+    await page.getByRole("button", { name: "Add round 3", exact: true }).waitFor();
+    const after = await readView(page, game.id);
+    expect(after.rounds.map((round) => round.source)).toEqual([
+      before.rounds[0].source,
+      { ...before.rounds[2].source, roundNumber: 2 },
+    ]);
+    await page.getByRole("button", { name: "Add round 3", exact: true }).click();
+    expect(
+      await page
+        .getByRole("dialog", { name: "Add Round", exact: true })
+        .getByRole("button", { name: "Delete Round", exact: true })
+        .count(),
+    ).toBe(0);
+  } finally {
+    await page.close();
+  }
+}, 60_000);
+
+it("deletes the only saved Round without deleting its Game and reloads an empty Round 1", async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  page.setDefaultTimeout(5_000);
+  try {
+    const { game } = await seedGame(page);
+    await page.goto(`${appUrl}#/phaseCompan10n/game/${game.id}`);
+    await page.getByRole("button", { name: "Round 1", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 1 for Amy", exact: true }).click();
+    await page
+      .getByRole("dialog", { name: "Edit Round", exact: true })
+      .getByRole("button", { name: "Delete Round", exact: true })
+      .click();
+    await page
+      .getByRole("dialog", { name: "Delete round", exact: true })
+      .getByRole("button", { name: "Delete", exact: true })
+      .click();
+    await page
+      .getByRole("dialog", { name: "Edit Round", exact: true })
+      .waitFor({ state: "detached" });
+    await page.reload();
+    await page.getByRole("button", { name: "Add round 1", exact: true }).waitFor();
+    expect(await readView(page, game.id)).toMatchObject({
+      game: { id: game.id, status: "active", players: game.players, settings: game.settings },
+      rounds: [],
+      nextRoundNumber: 1,
+      players: [
+        { progress: { currentPhase: 1 }, tiebreakerTotal: 0 },
+        { progress: { currentPhase: 1 }, tiebreakerTotal: 0 },
+        { progress: { currentPhase: 1 }, tiebreakerTotal: 0 },
+      ],
+    });
+  } finally {
+    await page.close();
+  }
+}, 30_000);

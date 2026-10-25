@@ -1,8 +1,9 @@
 import { DialogTitle, Tab, TabGroup, TabPanel } from "@headlessui/react";
-import { Check, Loader2, Minus, Redo, Trophy, X } from "lucide-react";
+import { Check, Loader2, Minus, Redo, Trash2, Trophy, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   useAddRound,
+  useDeletePhaseRound,
   useEditPhaseRound,
   usePreviewPhaseRoundEdit,
 } from "../../data/hooks/useRounds";
@@ -10,6 +11,7 @@ import type { EditPhaseRoundInput, Game, PhaseRoundEditor, PlayerIdentity } from
 import { PlayerAvatar } from "../PlayerAvatar/PlayerAvatar";
 import {
   Button,
+  DeleteRoundDialog,
   Dialog,
   EditImpactDialog,
   InlineError,
@@ -70,16 +72,19 @@ export function AddRoundDialog({
   );
   const setSelectedIndex = (index: number) => draft.selectPlayer(players[index]?.id ?? null);
   const [confirmation, setConfirmation] = useState<EditPhaseRoundInput | null>(null);
+  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const addRound = useAddRound(game.id);
   const previewEdit = usePreviewPhaseRoundEdit();
   const editRound = useEditPhaseRound();
+  const deleteRound = useDeletePhaseRound();
   const toastRef = useRef<ToastHandle>(null);
   const tabListRef = useRef<HTMLDivElement>(null);
   const saving = useRef(false);
   const completedAfterLeave = useRef(false);
-  const isPending = addRound.isPending || previewEdit.isPending || editRound.isPending;
-  const locked = isPending || confirmation !== null;
+  const isPending =
+    addRound.isPending || previewEdit.isPending || editRound.isPending || deleteRound.isPending;
+  const locked = isPending || confirmation !== null || deleteConfirmationOpen;
 
   // Keep the selected player visible in the horizontal tab strip.
   useEffect(() => {
@@ -101,7 +106,7 @@ export function AddRoundDialog({
   const showTiebreakerEntry = game.settings.tiebreaker !== "roundsWon";
   const playerTabColumnCount = Math.max(players.length, 1);
 
-  const runSave = async (operation: () => Promise<void>) => {
+  const runSave = async (operation: () => Promise<void>, action = "save") => {
     if (saving.current) return;
     saving.current = true;
     setSubmitError(null);
@@ -109,7 +114,8 @@ export function AddRoundDialog({
       await operation();
     } catch (error) {
       setConfirmation(null);
-      const message = `Couldn't save round: ${error instanceof Error ? error.message : "Unable to save Round."} Try again.`;
+      setDeleteConfirmationOpen(false);
+      const message = `Couldn't ${action} round: ${error instanceof Error ? error.message : `Unable to ${action} Round.`} Try again.`;
       if (editor) setSubmitError(message);
       else toastRef.current?.show(message);
     } finally {
@@ -162,6 +168,20 @@ export function AddRoundDialog({
     return runSave(() => commitEdit({ ...confirmation, confirmImpact: true }));
   };
 
+  const confirmDelete = () => {
+    if (!editor || !deleteConfirmationOpen) return;
+    return runSave(async () => {
+      const result = await deleteRound.mutateAsync({
+        gameId: game.id,
+        roundId: editor.round.id,
+        version: editor.version,
+      });
+      completedAfterLeave.current = result.outcome === "gameCompleted";
+      setDeleteConfirmationOpen(false);
+      onClose(false);
+    }, "delete");
+  };
+
   const handleWinnerSelect = (next: WinnerSelectValue) => {
     if (next === NO_WINNER_VALUE) {
       draft.clearRoundWinner();
@@ -177,7 +197,7 @@ export function AddRoundDialog({
       <Dialog
         open={open}
         onClose={(next) => {
-          if (!saving.current && !confirmation) onClose(next);
+          if (!saving.current && !confirmation && !deleteConfirmationOpen) onClose(next);
         }}
         afterLeave={() => {
           afterLeave?.();
@@ -192,6 +212,23 @@ export function AddRoundDialog({
         minBodyHeight={240}
         header={
           <DialogTitle className="sr-only">{editor ? "Edit Round" : "Add Round"}</DialogTitle>
+        }
+        headerAction={
+          editor && (
+            <Button
+              type="button"
+              aria-label="Delete Round"
+              disabled={locked}
+              onClick={() => {
+                if (saving.current) return;
+                setSubmitError(null);
+                setDeleteConfirmationOpen(true);
+              }}
+              className="size-11 shrink-0 p-0 text-pt-red-500 data-focus:outline-solid data-focus:outline-text-primary!"
+            >
+              <Trash2 className="size-5" aria-hidden />
+            </Button>
+          )
         }
         actions={
           <>
@@ -417,6 +454,17 @@ export function AddRoundDialog({
         }}
         onSave={confirmSave}
       />
+      {editor && (
+        <DeleteRoundDialog
+          open={deleteConfirmationOpen}
+          roundNumber={editor.round.roundNumber}
+          isPending={isPending}
+          onCancel={() => {
+            if (!saving.current) setDeleteConfirmationOpen(false);
+          }}
+          onDelete={confirmDelete}
+        />
+      )}
     </>
   );
 }

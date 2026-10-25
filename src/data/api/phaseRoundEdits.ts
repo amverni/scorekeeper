@@ -1,4 +1,5 @@
 import type {
+  DeletePhaseRoundInput,
   EditPhaseRoundInput,
   GameId,
   GameReadModel,
@@ -19,6 +20,43 @@ import { resolveGameCompletion } from "./roundCompletion";
 import { assertPointsCardBreakdown, validateScore } from "./rounds";
 
 export const phaseRoundEdits = {
+  delete(input: DeletePhaseRoundInput) {
+    return withGameTransaction(async (tx) => {
+      const { game, players, rounds, view } = await loadHistory(tx, input.gameId);
+      if (input.version !== view.version) {
+        throw new Error(
+          "Game history changed. Close and reopen Edit Round to load the saved values.",
+        );
+      }
+      if (typeof input.roundId !== "string" || input.roundId.length === 0) {
+        throw new Error("Round not found.");
+      }
+      const selected = rounds.find((round) => round.id === input.roundId);
+      if (!selected) throw new Error("Round not found.");
+      const remaining = rounds
+        .filter((round) => round.id !== selected.id)
+        .sort((a, b) => a.roundNumber - b.roundNumber)
+        .map((round, index) => ({ ...round, roundNumber: index + 1 }));
+      const now = Date.now();
+      const activeGame = { ...game, lastActivityAt: now };
+      const completion = resolveGameCompletion({
+        game: activeGame,
+        players,
+        rounds: remaining,
+        completedAt: now,
+      });
+      const store = tx.objectStore("rounds");
+      for (const round of rounds) await store.delete([game.id, round.roundNumber]);
+      for (const round of remaining) await store.add(round);
+      if (completion) {
+        await finalizeGame(tx, completion.completedGame);
+        return { outcome: "gameCompleted" as const, ...completion };
+      }
+      await tx.objectStore("games").put(activeGame);
+      return { outcome: "roundDeleted" as const };
+    });
+  },
+
   getEditor(gameId: GameId, roundNumber: number): Promise<PhaseRoundEditor> {
     return withGameTransaction(async (tx) => {
       const { game, round, players, view, roundView } = await loadEditor(tx, gameId, roundNumber);
@@ -68,15 +106,23 @@ export const phaseRoundEdits = {
   },
 };
 
-async function loadEditor(tx: GameLifecycleTransaction, gameId: GameId, roundNumber: number) {
+async function loadHistory(tx: GameLifecycleTransaction, gameId: GameId) {
   const game = await tx.objectStore("games").get(gameId);
   assertActivePhaseGame(game);
   const players = await requirePlayers(tx, game.players);
   const rounds = await tx.objectStore("rounds").index("by-game").getAll(gameId);
   assertPhaseRounds(rounds);
+  const view = deriveGameReadModel({ game, players, rounds });
+  return { game, players, rounds, view };
+}
+
+async function loadEditor(tx: GameLifecycleTransaction, gameId: GameId, roundNumber: number) {
+  const { game, players, rounds, view } = await loadHistory(tx, gameId);
   const round = rounds.find((saved) => saved.roundNumber === roundNumber);
   if (!round) throw new Error("Round not found.");
   if (
+    typeof round.id !== "string" ||
+    round.id.length === 0 ||
     round.roundWinnerId === undefined ||
     (isPointsTiebreaker(game.settings.tiebreaker) &&
       round.scores.some(
@@ -87,10 +133,9 @@ async function loadEditor(tx: GameLifecycleTransaction, gameId: GameId, roundNum
   ) {
     throw new Error("Legacy Round is read-only: original Round values are unavailable.");
   }
-  const view = deriveGameReadModel({ game, players, rounds });
   const roundView = view.rounds.find((entry) => entry.source.roundNumber === roundNumber);
   if (!roundView) throw new Error("Round interpretation is unavailable.");
-  return { game, players, rounds, round, view, roundView };
+  return { game, players, rounds, round: { ...round, id: round.id }, view, roundView };
 }
 
 async function evaluateEdit(tx: GameLifecycleTransaction, input: EditPhaseRoundInput) {

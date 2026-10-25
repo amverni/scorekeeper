@@ -192,6 +192,8 @@ export const roundsApi = {
 
       const round: Round = {
         scorekeeper: "phase10",
+        id: crypto.randomUUID(),
+        revision: 0,
         gameId: data.gameId,
         roundNumber: nextRoundNumber,
         scores,

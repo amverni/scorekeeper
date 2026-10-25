@@ -97,9 +97,11 @@ export type {
 } from "./phasesCard";
 export type { Player, PlayerId, PlayerIdentity } from "./player";
 export type {
+  DeletePhaseRoundInput,
   EditPhaseRoundInput,
   PhaseRound,
   PhaseRoundEditor,
+  PhaseRoundId,
   PhaseStatus,
   PointsCardBreakdown,
   Round,

@@ -78,7 +78,7 @@ export function Scoreboard({ view, onGameCompleted }: ScoreboardProps) {
             const isLastRow = idx === rounds.length - 1;
             return (
               <RoundRow
-                key={round.source.roundNumber}
+                key={round.source.id ?? round.source.roundNumber}
                 round={round}
                 players={players}
                 tiebreaker={tiebreaker}

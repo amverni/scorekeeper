@@ -1,6 +1,8 @@
 import { queryOptions, useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
   ArrayAtLeastOne,
+  CompletedGame,
+  DeletePhaseRoundInput,
   EditPhaseRoundInput,
   GameId,
   PlayerId,
@@ -39,15 +41,34 @@ export function usePreviewPhaseRoundEdit() {
 }
 
 export function useEditPhaseRound() {
+  const callbacks = usePhaseRoundMutationCallbacks();
+  return useMutation({
+    mutationFn: (input: EditPhaseRoundInput) => gamesApi.editRound(input),
+    ...callbacks,
+  });
+}
+
+export function useDeletePhaseRound() {
+  const callbacks = usePhaseRoundMutationCallbacks();
+  return useMutation({
+    mutationFn: (input: DeletePhaseRoundInput) => gamesApi.deleteRound(input),
+    ...callbacks,
+  });
+}
+
+function usePhaseRoundMutationCallbacks() {
   const queryClient = useQueryClient();
   const refresh = () =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: roundKeys.all }),
       queryClient.invalidateQueries({ queryKey: gameKeys.all }),
     ]);
-  return useMutation({
-    mutationFn: (input: EditPhaseRoundInput) => gamesApi.editRound(input),
-    onSuccess: async (result) => {
+  return {
+    onSuccess: async (
+      result:
+        | { outcome: "gameCompleted"; completedGame: CompletedGame }
+        | { outcome: "roundEdited" | "roundDeleted" },
+    ) => {
       if (result.outcome === "gameCompleted") {
         queryClient.setQueryData(gameKeys.detail(result.completedGame.id), result.completedGame);
         await Promise.all([
@@ -58,7 +79,7 @@ export function useEditPhaseRound() {
       await refresh();
     },
     onError: refresh,
-  });
+  };
 }
 
 export function roundsListOptions(gameId: GameId) {

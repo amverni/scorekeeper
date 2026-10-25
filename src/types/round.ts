@@ -6,9 +6,11 @@ import type { ArrayAtLeastOne } from "./utils";
 
 export type Round = PhaseRound;
 export type StoredRound = PhaseRound | GenericRound;
+export type PhaseRoundId = string;
 
 export interface PhaseRound extends RoundMetadata {
   scorekeeper: "phase10";
+  id?: PhaseRoundId;
   revision?: number;
   scores: ArrayAtLeastOne<RoundScore>;
   roundWinnerId: PlayerId | null;
@@ -16,9 +18,15 @@ export interface PhaseRound extends RoundMetadata {
 
 export interface PhaseRoundEditor {
   game: Game;
-  round: Round;
+  round: Round & { id: PhaseRoundId };
   players: PlayerIdentity[];
   countedPlayerIds: PlayerId[];
+  version: string;
+}
+
+export interface DeletePhaseRoundInput {
+  gameId: GameId;
+  roundId: PhaseRoundId;
   version: string;
 }
 

@@ -34,6 +34,7 @@ export const gamesApi = {
   getRoundEditor: phaseRoundEdits.getEditor,
   previewRoundEdit: phaseRoundEdits.preview,
   editRound: phaseRoundEdits.edit,
+  deleteRound: phaseRoundEdits.delete,
 
   async getEditor(id: GameId): Promise<PhaseGameEditor | null> {
     const db = await getDB();
