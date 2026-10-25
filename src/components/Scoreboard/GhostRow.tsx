@@ -34,12 +34,14 @@ export function GhostRow({ nextRoundNumber, dealerId, players, onOpenAddRound }:
               isLast ? "scoreboard-cell--last-col" : ""
             }`}
           >
-            <PlayerResultCell
-              phaseNumber={player.progress.currentPhase}
-              isDealer={dealerId === player.id}
-              isRoundWinner={false}
-              variant="ghost"
-            />
+            {!player.progress.isFinished && (
+              <PlayerResultCell
+                phaseNumber={player.progress.currentPhase}
+                isDealer={dealerId === player.id}
+                isRoundWinner={false}
+                variant="ghost"
+              />
+            )}
           </div>
         );
       })}

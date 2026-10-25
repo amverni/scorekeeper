@@ -27,6 +27,8 @@ export function useAddRound(gameId: GameId) {
     mutationFn: (data: {
       scores: ArrayAtLeastOne<AddRoundScoreInput>;
       roundWinnerId: PlayerId | null;
+      expectedRoundNumber?: number;
+      expectedVersion: string;
     }) => roundsApi.add({ gameId, ...data }),
     onSuccess: async (result) => {
       queryClient.setQueryData(roundKeys.list(gameId), (current: Round[] | undefined) => {
@@ -47,5 +49,10 @@ export function useAddRound(gameId: GameId) {
         queryClient.invalidateQueries({ queryKey: gameKeys.all }),
       ]);
     },
+    onError: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: roundKeys.lists() }),
+        queryClient.invalidateQueries({ queryKey: gameKeys.all }),
+      ]),
   });
 }

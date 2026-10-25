@@ -32,6 +32,7 @@ interface PhaseGameFields {
   scorekeeper: "phase10";
   phaseSet: TemporaryPhaseSet;
   settings: GameSettings;
+  continuation?: boolean;
 }
 
 export type CreateGameInput = Pick<ActiveGame, "players" | "phaseSet" | "settings">;

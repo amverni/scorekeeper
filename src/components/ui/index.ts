@@ -3,6 +3,7 @@ export { PlainButton } from "./Button/PlainButton";
 export type { ColorPickerProps } from "./ColorPicker/ColorPicker";
 export { ColorPicker } from "./ColorPicker/ColorPicker";
 export { DealerMarker } from "./DealerMarker/DealerMarker";
+export { ConfirmationDialog } from "./Dialog/ConfirmationDialog";
 export { Dialog } from "./Dialog/Dialog";
 export { DialogScrollArea } from "./Dialog/DialogScrollArea";
 export { EditImpactDialog } from "./Dialog/EditImpactDialog";

@@ -24,7 +24,7 @@ import {
 } from "./gameLifecycle";
 import { deriveGameReadModel } from "./gameReadModel";
 import { getGamePlayers } from "./gameResults";
-import { resolveEarlyGameCompletion } from "./roundCompletion";
+import { resolveEarlyGameCompletion, resolveGameCompletion } from "./roundCompletion";
 import { deriveStandings } from "./standings";
 
 export const gamesApi = {
@@ -185,6 +185,45 @@ export const gamesApi = {
       const players = await requirePlayers(tx, game.players);
       const rounds = await tx.objectStore("rounds").index("by-game").getAll(id);
       assertPhaseRounds(rounds);
+      const completed = resolveEarlyGameCompletion({
+        game,
+        players,
+        rounds,
+        completedAt: Date.now(),
+      });
+      await finalizeGame(tx, completed);
+      return completed;
+    });
+  },
+
+  resolveFinishChoice(id: GameId, choice: "continue" | "finish", token: string): Promise<Game> {
+    return withGameTransaction(async (tx) => {
+      const game = await tx.objectStore("games").get(id);
+      assertActivePhaseGame(game);
+      const players = await requirePlayers(tx, game.players);
+      const rounds = await tx.objectStore("rounds").index("by-game").getAll(id);
+      assertPhaseRounds(rounds);
+      const view = deriveGameReadModel({ game, players, rounds });
+      if (!view.pendingFinishChoice || view.pendingFinishChoice.token !== token) {
+        throw new Error("Finish Game choice changed. Reload the Game and try again.");
+      }
+      if (choice !== "continue" && choice !== "finish")
+        throw new Error("Invalid Finish Game choice");
+      if (choice === "continue") {
+        const continued: ActiveGame = { ...game, continuation: true, lastActivityAt: Date.now() };
+        const completion = resolveGameCompletion({
+          game: continued,
+          players,
+          rounds,
+          completedAt: continued.lastActivityAt,
+        });
+        if (completion) {
+          await finalizeGame(tx, completion.completedGame);
+          return completion.completedGame;
+        }
+        await saveActiveGame(tx, continued);
+        return continued;
+      }
       const completed = resolveEarlyGameCompletion({
         game,
         players,

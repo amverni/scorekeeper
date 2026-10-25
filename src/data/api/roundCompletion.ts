@@ -1,4 +1,5 @@
 import type { ActiveGame, CompletedGame, PlayerIdentity, Round } from "../../types";
+import { deriveGameReadModel } from "./gameReadModel";
 import { capturePlayerSnapshots } from "./gameResults";
 import { deriveStandings } from "./standings";
 
@@ -17,13 +18,13 @@ export interface GameCompletionResolution {
 export function resolveGameCompletion(
   input: ResolveGameCompletionInput,
 ): GameCompletionResolution | null {
-  const standings = deriveStandings({
+  const { standings, automaticCompletion } = deriveGameReadModel({
     game: input.game,
     players: input.players,
     rounds: input.rounds,
   });
 
-  if (!standings.hasFinishedPlayers || !standings.gameWinner) {
+  if (!automaticCompletion || !standings.gameWinner) {
     return null;
   }
 
@@ -36,6 +37,11 @@ export function resolveGameCompletion(
 
 export function resolveEarlyGameCompletion(input: ResolveGameCompletionInput): CompletedGame {
   const standings = deriveStandings(input);
+  if (!input.game.continuation && standings.hasFinishedPlayers && standings.gameWinner) {
+    return createCompletedGame(input, standings.includedPlayers, "normal", [
+      standings.gameWinner.player.id,
+    ]);
+  }
   const [first, ...tied] = standings.rows.filter((row) => row.place === 1);
   if (!first) throw new Error("Cannot finish a Game without Players in Standings");
   return createCompletedGame(input, standings.includedPlayers, "manual", [
@@ -58,6 +64,7 @@ function createCompletedGame(
     phaseSet: input.game.phaseSet,
     players: playerIds,
     settings: input.game.settings,
+    ...(input.game.continuation !== undefined ? { continuation: input.game.continuation } : {}),
     createdAt: input.game.createdAt,
     lastActivityAt: input.completedAt,
     completedAt: input.completedAt,

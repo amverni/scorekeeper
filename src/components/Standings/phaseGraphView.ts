@@ -140,7 +140,7 @@ function getLatestEndpointGroups(
     const latestPoint = graphSeries.linePoints.at(-1);
     if (!latestPoint) continue;
 
-    const key = String(latestPoint.standingValue);
+    const key = `${latestPoint.roundNumber}:${latestPoint.standingValue}`;
     const group = groups.get(key);
     if (group) {
       group.players.push(graphSeries.player);

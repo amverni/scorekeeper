@@ -87,6 +87,11 @@ describe("resolveGameCompletion", () => {
       game,
       players: [players.amy, players.bob, players.cam],
       rounds: [
+        makeRound(1, roundWinnerId, [
+          { playerId: players.amy.id, currentPhase: 1, phaseStatus: "completed", score: 0 },
+          { playerId: players.bob.id, currentPhase: 1, phaseStatus: "completed", score: 0 },
+          { playerId: players.cam.id, currentPhase: 1, phaseStatus: "failed", score: 0 },
+        ]),
         makeRound(2, roundWinnerId, [
           { playerId: players.amy.id, currentPhase: 2, phaseStatus: "completed", score: 0 },
           { playerId: players.bob.id, currentPhase: 2, phaseStatus: "completed", score: 0 },

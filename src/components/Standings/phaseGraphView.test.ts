@@ -58,7 +58,9 @@ describe("getPhaseGraphView", () => {
     ]);
     expect(view.width).toBe(360);
     expect(view.height).toBe(224);
-    expect(view.latestEndpointGroups.find((group) => group.key === "4")).toMatchObject({
+    expect(
+      view.latestEndpointGroups.find((group) => group.label === "finished phase 3"),
+    ).toMatchObject({
       label: "finished phase 3",
       players: [phaseGraphPlayers.amy],
     });
@@ -87,7 +89,7 @@ describe("getPhaseGraphView", () => {
 
     expect(view.latestEndpointGroups).toEqual([
       {
-        key: "2",
+        key: "1:2",
         label: "phase 2",
         x: 296,
         y: 128,
