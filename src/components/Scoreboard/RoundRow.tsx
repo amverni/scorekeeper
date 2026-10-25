@@ -1,5 +1,7 @@
-import type { GameRoundView, GameTiebreaker, PlayerIdentity } from "../../types";
+import { Pencil } from "lucide-react";
+import type { GameRoundView, GameTiebreaker, PlayerId, PlayerIdentity } from "../../types";
 import { formatTiebreakerValue } from "../../utils";
+import { Button } from "../ui";
 import { PlayerResultCell } from "./PlayerResultCell";
 
 interface RoundRowProps {
@@ -9,6 +11,7 @@ interface RoundRowProps {
   isExpanded: boolean;
   isLastRow: boolean;
   onToggle: () => void;
+  onEdit?: (playerId?: PlayerId) => void;
 }
 
 export function RoundRow({
@@ -18,6 +21,7 @@ export function RoundRow({
   isExpanded,
   isLastRow,
   onToggle,
+  onEdit,
 }: RoundRowProps) {
   const { source: round, dealerId } = view;
 
@@ -27,21 +31,37 @@ export function RoundRow({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={isExpanded}
-        aria-label={`Round ${round.roundNumber}${!view.counted ? ", not counted" : ""}${isExpanded ? ", expanded" : ""}`}
+      <div
         className={[
-          "scoreboard-cell scoreboard-cell--sticky-left scoreboard-cell--anchor-top cursor-pointer text-left",
+          "scoreboard-cell scoreboard-cell--sticky-left scoreboard-cell--anchor-top",
           lastRowClass,
-          !view.counted ? "opacity-45" : "",
         ].join(" ")}
       >
-        <span className="text-base font-medium leading-none tabular-nums text-text-secondary">
-          {round.roundNumber}
-        </span>
-      </button>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={isExpanded}
+          aria-label={`Round ${round.roundNumber}${!view.counted ? ", not counted" : ""}${isExpanded ? ", expanded" : ""}`}
+          className={[
+            "-mx-0.5 -mt-3.5 -mb-[calc(0.625rem+1px)] flex min-h-11 self-stretch cursor-pointer items-start justify-center pt-3.5 pb-2.5",
+            !view.counted ? "opacity-45" : "",
+          ].join(" ")}
+        >
+          <span className="text-base font-medium leading-none tabular-nums text-text-secondary">
+            {round.roundNumber}
+          </span>
+        </button>
+        {isExpanded && onEdit && (
+          <Button
+            type="button"
+            aria-label={`Edit Round ${round.roundNumber}`}
+            className="mt-2 min-h-11 w-8"
+            onClick={() => onEdit()}
+          >
+            <Pencil className="size-4" aria-hidden />
+          </Button>
+        )}
+      </div>
 
       {players.map((player, idx) => {
         const entry = view.scores[idx];
@@ -85,6 +105,19 @@ export function RoundRow({
                         <span className="text-[12px] leading-none text-text-secondary/70 tabular-nums">
                           {formatTiebreakerValue(entry.runningTiebreakerTotal, tiebreaker)}
                         </span>
+                        {isExpanded && onEdit && (
+                          <Button
+                            type="button"
+                            aria-label={`Edit Round ${round.roundNumber} for ${player.name}`}
+                            className="mt-1 min-h-11 min-w-11"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onEdit(player.id);
+                            }}
+                          >
+                            <Pencil className="size-4" aria-hidden />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   }

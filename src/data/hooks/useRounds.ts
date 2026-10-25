@@ -1,5 +1,13 @@
 import { queryOptions, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { ArrayAtLeastOne, GameId, PlayerId, Round, RoundScore } from "../../types";
+import type {
+  ArrayAtLeastOne,
+  EditPhaseRoundInput,
+  GameId,
+  PlayerId,
+  Round,
+  RoundScore,
+} from "../../types";
+import { gamesApi } from "../api/games";
 import { roundsApi } from "../api/rounds";
 import { gameKeys } from "./useGames";
 import { phaseSetKeys } from "./usePhaseSets";
@@ -11,7 +19,47 @@ export const roundKeys = {
   all: ["rounds"] as const,
   lists: () => [...roundKeys.all, "phase10", "list"] as const,
   list: (gameId: GameId) => [...roundKeys.lists(), gameId] as const,
+  editor: (gameId: GameId, roundNumber: number) =>
+    [...roundKeys.list(gameId), "editor", roundNumber] as const,
 };
+
+export function phaseRoundEditorOptions(gameId: GameId, roundNumber: number) {
+  return queryOptions({
+    queryKey: roundKeys.editor(gameId, roundNumber),
+    queryFn: () => gamesApi.getRoundEditor(gameId, roundNumber),
+    staleTime: 0,
+    gcTime: 0,
+  });
+}
+
+export function usePreviewPhaseRoundEdit() {
+  return useMutation({
+    mutationFn: (input: EditPhaseRoundInput) => gamesApi.previewRoundEdit(input),
+  });
+}
+
+export function useEditPhaseRound() {
+  const queryClient = useQueryClient();
+  const refresh = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: roundKeys.all }),
+      queryClient.invalidateQueries({ queryKey: gameKeys.all }),
+    ]);
+  return useMutation({
+    mutationFn: (input: EditPhaseRoundInput) => gamesApi.editRound(input),
+    onSuccess: async (result) => {
+      if (result.outcome === "gameCompleted") {
+        queryClient.setQueryData(gameKeys.detail(result.completedGame.id), result.completedGame);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: phaseKeys.all }),
+          queryClient.invalidateQueries({ queryKey: phaseSetKeys.all }),
+        ]);
+      }
+      await refresh();
+    },
+    onError: refresh,
+  });
+}
 
 export function roundsListOptions(gameId: GameId) {
   return queryOptions({

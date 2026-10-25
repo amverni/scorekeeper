@@ -1,5 +1,5 @@
 import { Check, Minus, Redo, Trophy, X } from "lucide-react";
-import type { GameTiebreaker, PlayerIdentity } from "../../types";
+import type { GameTiebreaker, PlayerId, PlayerIdentity } from "../../types";
 import { PlayerAvatar } from "../PlayerAvatar/PlayerAvatar";
 import { Popover, PopoverButton, PopoverPanel } from "../ui/Popover/Popover";
 import { type AddRoundDraft, getDraftProgress, getScoreEntryCompletion } from "./addRoundDraft";
@@ -8,14 +8,16 @@ interface AddRoundProgressPopoverProps {
   players: PlayerIdentity[];
   draft: AddRoundDraft;
   tiebreaker: GameTiebreaker;
+  countedPlayerIds?: readonly PlayerId[];
 }
 
 export function AddRoundProgressPopover({
   players,
   draft,
   tiebreaker,
+  countedPlayerIds,
 }: AddRoundProgressPopoverProps) {
-  const progress = getDraftProgress(draft, tiebreaker);
+  const progress = getDraftProgress(draft, tiebreaker, countedPlayerIds);
   const { completed, total, winnerComplete, winnerRequirement, ready } = progress;
   const { players: playerDrafts, roundWinnerId } = draft;
   const fraction = total === 0 ? 0 : completed / total;

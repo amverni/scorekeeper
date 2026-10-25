@@ -168,6 +168,34 @@ retains a draft; saving clears it, and leaving (including Pause) discards it.
 Completed scoreboards, Standings, graphs, and Games lists use snapshots even after
 saved Players are edited or deleted.
 
+Active Phase 10 Games support full Round corrections from **Edit** actions in
+expanded Round details. A Player's action selects and focuses their tab; the
+Round-number action opens the whole editor. The familiar Add Round controls
+restore the recorded outcomes, explicit Round Winner, event values, and exact
+original Points Card Breakdown. Sequential Phase Numbers remain derived.
+Winner requirements use the edited Round's counted Players, not excluded entries;
+an unchanged retained historical winner does not require a replacement.
+Closing an unsaved editor discards only that correction.
+
+`gamesApi.getRoundEditor()`, `previewRoundEdit()`, and `editRound()` form the
+public correction boundary. Preview does not write. Save validates the loaded
+history version, recorded roster, winner, counters, and penalties atomically;
+Round revisions reject repeated submissions even when values are unchanged.
+Changes to phase progress/assignments, finishes, winners/places, completion, or
+counted history require **Edit round** / **This edit will change game results.**
+**Edit**, Escape, and outside dismissal return to the intact draft; **Save**
+commits the correction before the normal completion flow. Totals or dealers
+alone do not require this confirmation. Failed saves retain the correction and
+display the error. Completed Games remain read-only; legacy Points Rounds
+without original counters are readable but cannot be edited.
+
+The independent next-Round draft retains entered values through corrections,
+including temporarily ineligible Players' values. An unavailable selected Round
+Winner is preserved, clearly flagged, and blocks saving until explicitly
+changed or eligible again; no replacement winner is chosen automatically.
+Applicable retained history returns after reversal, while genuine missing
+entries contribute no scores, penalties, phase progress, or invented winners.
+
 Active Generic Games support editing a saved Round from its expanded scorecard
 details in all three Scoring Modes. Edit opens the full prefilled entry form and
 selects the chosen Player's tab for Points, or focuses their existing outcome

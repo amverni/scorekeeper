@@ -24,10 +24,15 @@ import {
 } from "./gameLifecycle";
 import { deriveGameReadModel } from "./gameReadModel";
 import { getGamePlayers } from "./gameResults";
+import { phaseRoundEdits } from "./phaseRoundEdits";
 import { resolveEarlyGameCompletion, resolveGameCompletion } from "./roundCompletion";
 import { deriveStandings } from "./standings";
 
 export const gamesApi = {
+  getRoundEditor: phaseRoundEdits.getEditor,
+  previewRoundEdit: phaseRoundEdits.preview,
+  editRound: phaseRoundEdits.edit,
+
   async getList({ activeOnly = false }: { activeOnly?: boolean } = {}): Promise<GameListItem[]> {
     const db = await getDB();
     const tx = db.transaction(["games", "players"]);

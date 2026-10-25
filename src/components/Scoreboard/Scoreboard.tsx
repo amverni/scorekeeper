@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import type { GameReadModel } from "../../types";
+import type { GameReadModel, PlayerId } from "../../types";
 import { FirstFinisherDialog } from "../Game/FirstFinisherDialog";
 import { AddRoundDialog } from "./AddRoundDialog";
+import { EditRoundDialog } from "./EditRoundDialog";
 import { GhostRow } from "./GhostRow";
 import { RoundRow } from "./RoundRow";
 import { ScoreboardHeader } from "./ScoreboardHeader";
@@ -23,6 +24,10 @@ export function Scoreboard({ view, onGameCompleted }: ScoreboardProps) {
     version: view.version,
   });
   const [namesExpanded, setNamesExpanded] = useState(false);
+  const [editing, setEditing] = useState<{ roundNumber: number; focusPlayerId?: PlayerId } | null>(
+    null,
+  );
+  const [editOpen, setEditOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Outside-click collapses any expanded row. Use mousedown so it fires
@@ -84,6 +89,14 @@ export function Scoreboard({ view, onGameCompleted }: ScoreboardProps) {
                     prev === round.source.roundNumber ? null : round.source.roundNumber,
                   )
                 }
+                onEdit={
+                  isActive
+                    ? (focusPlayerId) => {
+                        setEditing({ roundNumber: round.source.roundNumber, focusPlayerId });
+                        setEditOpen(true);
+                      }
+                    : undefined
+                }
               />
             );
           })}
@@ -114,7 +127,21 @@ export function Scoreboard({ view, onGameCompleted }: ScoreboardProps) {
         onGameCompleted={onGameCompleted}
         afterLeave={() => setEntryVisible(false)}
       />
-      <FirstFinisherDialog view={view} ready={!entryVisible} onGameCompleted={onGameCompleted} />
+      {editing && (
+        <EditRoundDialog
+          gameId={game.id}
+          {...editing}
+          open={editOpen}
+          onClose={setEditOpen}
+          afterLeave={() => setEditing(null)}
+          onGameCompleted={onGameCompleted}
+        />
+      )}
+      <FirstFinisherDialog
+        view={view}
+        ready={!entryVisible && editing === null}
+        onGameCompleted={onGameCompleted}
+      />
     </div>
   );
 }

@@ -1,6 +1,5 @@
-import { Description, DialogTitle } from "@headlessui/react";
 import { Button } from "../Button/Button";
-import { Dialog } from "./Dialog";
+import { ConfirmationDialog } from "./ConfirmationDialog";
 
 interface EditImpactDialogProps {
   open: boolean;
@@ -18,14 +17,12 @@ export function EditImpactDialog({
   onSave,
 }: EditImpactDialogProps) {
   return (
-    <Dialog
+    <ConfirmationDialog
       open={open}
       onClose={onEdit}
       dismissible={!isPending}
-      showCloseButton={false}
-      draggable={false}
-      readyToOpen={!isPending}
-      header={<DialogTitle className="text-lg font-semibold">{title}</DialogTitle>}
+      title={title}
+      message="This edit will change game results."
       actions={
         <div className="flex justify-end gap-3">
           <Button
@@ -48,10 +45,6 @@ export function EditImpactDialog({
           </Button>
         </div>
       }
-    >
-      <Description className="text-center text-text-secondary">
-        This edit will change game results.
-      </Description>
-    </Dialog>
+    />
   );
 }

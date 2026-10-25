@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useForm, useStore } from "@tanstack/react-form";
 import type { GameSettings, PhaseStatus, PlayerId, PlayerIdentity } from "../../types";
 import * as draftHelpers from "./addRoundDraft";
 
@@ -20,61 +20,66 @@ const POINTS_MAX = 250;
 export function useAddRoundDraft(
   players: PlayerIdentity[],
   settings: GameSettings,
+  initialDraft?: draftHelpers.AddRoundDraft,
 ): UseAddRoundDraft {
-  const [draft, setDraft] = useState(() => draftHelpers.createInitialDraft(players));
-  const draftRef = useRef(draft);
-  if (
-    players.length !== draft.players.length ||
-    players.some((player, index) => player.id !== draft.players[index]?.playerId)
-  ) {
-    const initial = draftHelpers.createInitialDraft(players);
-    const nextDraft = {
-      players: initial.players.map(
-        (player) => draft.players.find((entry) => entry.playerId === player.playerId) ?? player,
-      ),
-      roundWinnerId: players.some((player) => player.id === draft.roundWinnerId)
-        ? draft.roundWinnerId
-        : null,
+  const form = useForm({
+    defaultValues: { draft: initialDraft ?? draftHelpers.createInitialDraft(players) },
+  });
+  const stored = useStore(form.store, (state) => state.values.draft);
+  const currentDraft = (): draftHelpers.AddRoundDraft => {
+    const saved = form.state.values.draft;
+    return {
+      players: [
+        ...saved.players,
+        ...draftHelpers
+          .createInitialDraft(players)
+          .players.filter(
+            (player) => !saved.players.some((entry) => entry.playerId === player.playerId),
+          ),
+      ],
+      roundWinnerId: saved.roundWinnerId,
     };
-    draftRef.current = nextDraft;
-    setDraft(nextDraft);
-  }
+  };
 
   const setNextDraft = (nextDraft: draftHelpers.AddRoundDraft) => {
-    draftRef.current = nextDraft;
-    setDraft(nextDraft);
+    form.setFieldValue("draft", nextDraft);
   };
 
   return {
-    draft,
+    draft: {
+      players: draftHelpers
+        .createInitialDraft(players)
+        .players.map(
+          (player) => stored.players.find((entry) => entry.playerId === player.playerId) ?? player,
+        ),
+      roundWinnerId: stored.roundWinnerId,
+    },
     setResult: (playerId, result) => {
-      setNextDraft(draftHelpers.applyResult(draftRef.current, playerId, result, settings));
+      setNextDraft(draftHelpers.applyResult(currentDraft(), playerId, result, settings));
     },
     setScore: (playerId, score) => {
-      setNextDraft(draftHelpers.applyScore(draftRef.current, playerId, score, settings));
+      setNextDraft(draftHelpers.applyScore(currentDraft(), playerId, score, settings));
     },
     incrementQuick: (playerId, button) => {
-      setNextDraft(
-        draftHelpers.applyQuickIncrement(draftRef.current, playerId, button, POINTS_MAX),
-      );
+      setNextDraft(draftHelpers.applyQuickIncrement(currentDraft(), playerId, button, POINTS_MAX));
     },
     decrementQuick: (playerId, button) => {
-      setNextDraft(draftHelpers.applyQuickDecrement(draftRef.current, playerId, button));
+      setNextDraft(draftHelpers.applyQuickDecrement(currentDraft(), playerId, button));
     },
     resetQuick: (playerId) => {
-      setNextDraft(draftHelpers.applyQuickReset(draftRef.current, playerId));
+      setNextDraft(draftHelpers.applyQuickReset(currentDraft(), playerId));
     },
     setExpandedSecondary: (playerId, expanded) => {
-      setNextDraft(draftHelpers.applyExpandedSecondary(draftRef.current, playerId, expanded));
+      setNextDraft(draftHelpers.applyExpandedSecondary(currentDraft(), playerId, expanded));
     },
     setRoundWinner: (playerId) => {
-      setNextDraft(draftHelpers.applyRoundWinner(draftRef.current, playerId, settings));
+      setNextDraft(draftHelpers.applyRoundWinner(currentDraft(), playerId, settings));
     },
     clearRoundWinner: () => {
-      setNextDraft(draftHelpers.applyClearRoundWinner(draftRef.current, settings));
+      setNextDraft(draftHelpers.applyClearRoundWinner(currentDraft(), settings));
     },
     reset: () => {
-      setNextDraft(draftHelpers.createInitialDraft(players));
+      form.reset({ draft: draftHelpers.createInitialDraft(players) });
     },
   };
 }
