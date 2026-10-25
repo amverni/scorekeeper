@@ -119,12 +119,13 @@ retains a draft; saving clears it, and leaving (including Pause) discards it.
 Completed scoreboards, Standings, graphs, and Games lists use snapshots even after
 saved Players are edited or deleted.
 
-Active Generic Points and Single Round Winner Games support editing a saved Round
-from its expanded scorecard details. Edit opens the full prefilled entry form and
-selects the chosen Player's tab for Points, or focuses their existing winner
-control without changing the saved selection for Single Round Winner. Closing an
-unsaved editor discards only that correction; the separate Add Round draft is
-retained. Changed totals and graph points save directly when places do not change.
+Active Generic Games support editing a saved Round from its expanded scorecard
+details in all three Scoring Modes. Edit opens the full prefilled entry form and
+selects the chosen Player's tab for Points, or focuses their existing outcome
+control without changing the saved selection. Pass/Fail allows any number of
+passes, including none or all Players. Closing an unsaved editor discards only that
+correction; the separate Add Round draft is retained. Changed totals and graph
+points save directly when places do not change.
 Changed Round winners or places (including shared places) require the compact
 **Edit round** confirmation; **Edit**, Escape, and outside dismissal return to the
 unchanged draft, while **Save** commits it. Generic completion remains an explicit
@@ -140,5 +141,5 @@ this metadata remain readable but cannot be edited; no backfill or reset is
 performed.
 Single Round Winner corrections require exactly one winner among the Game's
 eligible Players; impact approval cannot override invalid entries.
-Completed Games, Pass/Fail editing, Round deletion, cross-reload draft persistence,
-and production debug controls are not exposed.
+Completed Games, Round deletion, cross-reload draft persistence, and production
+debug controls are not exposed.

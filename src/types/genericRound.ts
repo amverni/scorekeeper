@@ -77,17 +77,27 @@ interface GenericRoundEditorMetadata {
 }
 
 export interface GenericPointsRoundEditor extends GenericRoundEditorMetadata {
+  mode: "points";
   round: GenericPointsRound & { id: GenericRoundId; revision: number };
   tiebreakerEnabled: boolean;
 }
 
 export interface GenericWinnerRoundEditor extends GenericRoundEditorMetadata {
+  mode: "singleRoundWinner";
   round: GenericSingleRoundWinnerRound & { id: GenericRoundId; revision: number };
   tiebreakerEnabled: false;
   winnerId: PlayerId;
 }
 
-export type GenericRoundEditor = GenericPointsRoundEditor | GenericWinnerRoundEditor;
+export interface GenericPassFailRoundEditor extends GenericRoundEditorMetadata {
+  mode: "passFail";
+  round: GenericPassFailRound & { id: GenericRoundId; revision: number };
+}
+
+export type GenericRoundEditor =
+  | GenericPointsRoundEditor
+  | GenericWinnerRoundEditor
+  | GenericPassFailRoundEditor;
 
 export interface EditGenericPointsRoundInput extends AddGenericPointsRoundInput {
   roundId: GenericRoundId;
@@ -101,4 +111,13 @@ export interface EditGenericWinnerRoundInput extends AddGenericWinnerRoundInput 
   confirmImpact?: boolean;
 }
 
-export type EditGenericRoundInput = EditGenericPointsRoundInput | EditGenericWinnerRoundInput;
+export interface EditGenericPassFailRoundInput extends AddGenericPassFailRoundInput {
+  roundId: GenericRoundId;
+  version: string;
+  confirmImpact?: boolean;
+}
+
+export type EditGenericRoundInput =
+  | EditGenericPointsRoundInput
+  | EditGenericWinnerRoundInput
+  | EditGenericPassFailRoundInput;

@@ -321,7 +321,7 @@ it("keeps legacy Rounds readable but rejects editing instead of inventing missin
   expect(await genericRoundsApi.getByGameId(game.id)).toEqual([legacy]);
 });
 
-it("rejects unsupported Pass/Fail editing without reopening or changing saved history", async () => {
+it("rejects a mismatched Scoring Mode without reopening or changing saved history", async () => {
   const maya = await playersApi.create({ name: "Maya", color: "Jam", isFavorite: 0 });
   const game = await genericGamesApi.create({
     players: [maya.id],
@@ -333,17 +333,17 @@ it("rejects unsupported Pass/Fail editing without reopening or changing saved hi
     scores: [{ playerId: maya.id, passed: true }],
   });
   if (!round.id) throw new Error("Missing Round identity.");
-  await expect(genericRoundsApi.getEditor(game.id, round.id)).rejects.toThrow("Only Points");
+  const editor = await genericRoundsApi.getEditor(game.id, round.id);
   await expect(
     genericRoundsApi.edit({
       gameId: game.id,
       roundId: round.id,
-      version: "",
+      version: editor.version,
       mode: "points",
       scores: [{ playerId: maya.id, points: "4" }],
       confirmImpact: true,
     }),
-  ).rejects.toThrow("Only Points");
+  ).rejects.toThrow("mode");
   closeDB();
   expect(await genericRoundsApi.getByGameId(game.id)).toEqual([round]);
   expect((await genericGamesApi.getById(game.id))?.status).toBe("active");

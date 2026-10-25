@@ -26,7 +26,6 @@ export function useGenericRoundDialog(
 
   async function saveRound(input: AddGenericRoundInput, resetDraft: () => void) {
     if (editor) {
-      if (input.mode === "passFail") throw new Error("Pass/Fail Rounds cannot be edited.");
       const edit = { ...input, roundId: editor.round.id, version: editor.version };
       const impact = await previewEdit.mutateAsync(edit);
       if (impact.requiresConfirmation) {

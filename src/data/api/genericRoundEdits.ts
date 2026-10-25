@@ -21,11 +21,17 @@ export const genericRoundEdits = {
         players: players.map(({ id, name, color }) => ({ id, name, color })),
       };
       if (round.mode === "points") {
-        return { ...metadata, round, tiebreakerEnabled: game.settings.tiebreaker !== null };
+        return {
+          ...metadata,
+          mode: round.mode,
+          round,
+          tiebreakerEnabled: game.settings.tiebreaker !== null,
+        };
       }
+      if (round.mode === "passFail") return { ...metadata, mode: round.mode, round };
       const winnerId = round.scores.find((score) => score.won)?.playerId;
       if (!winnerId) throw new Error("A Single Round Winner Round requires exactly one winner.");
-      return { ...metadata, round, tiebreakerEnabled: false, winnerId };
+      return { ...metadata, mode: round.mode, round, tiebreakerEnabled: false, winnerId };
     });
   },
 
@@ -55,8 +61,8 @@ export const genericRoundEdits = {
 };
 
 function parseEdit(input: EditGenericRoundInput) {
-  if (input.mode !== "points" && input.mode !== "singleRoundWinner") {
-    throw new Error("Only Points and Single Round Winner Rounds can be edited.");
+  if (input.mode !== "points" && input.mode !== "singleRoundWinner" && input.mode !== "passFail") {
+    throw new Error("Unsupported Round Scoring Mode.");
   }
   if (!Array.isArray(input.scores)) {
     throw new Error("A Round must include every Player exactly once.");
@@ -67,6 +73,18 @@ function parseEdit(input: EditGenericRoundInput) {
     version: input.version,
     confirmImpact: input.confirmImpact,
   };
+  if (input.mode === "passFail") {
+    return {
+      ...metadata,
+      mode: input.mode,
+      scores: input.scores.map((score) => {
+        if (!score || typeof score.passed !== "boolean") {
+          throw new Error("Round contains an invalid Pass/Fail outcome.");
+        }
+        return { playerId: score.playerId, passed: score.passed };
+      }),
+    };
+  }
   return input.mode === "singleRoundWinner"
     ? {
         ...metadata,
@@ -89,15 +107,11 @@ async function loadEditor(tx: GameLifecycleTransaction, gameId: GameId, roundId:
   if (!game || game.scorekeeper !== "generic") throw new Error("Generic Game not found.");
   if (game.status !== "active") throw new Error("Cannot edit a Completed Game.");
   assertGenericGame(game);
-  if (game.settings.mode !== "points" && game.settings.mode !== "singleRoundWinner") {
-    throw new Error("Only Points and Single Round Winner Rounds can be edited.");
-  }
   const rounds = await tx.objectStore("rounds").index("by-game").getAll(gameId);
   const round = rounds.find((saved) => saved.scorekeeper === "generic" && saved.id === roundId);
   if (
     !round ||
     round.scorekeeper !== "generic" ||
-    (round.mode !== "points" && round.mode !== "singleRoundWinner") ||
     typeof round.id !== "string" ||
     round.id.length === 0 ||
     !Number.isSafeInteger(round.revision) ||
@@ -135,31 +149,39 @@ async function evaluateEdit(tx: GameLifecycleTransaction, draft: ReturnType<type
   if (draft.version !== version) {
     throw new Error("Game history changed. Close and reopen Edit Round to load the saved values.");
   }
-  if (draft.mode !== saved.mode) throw new Error("Round mode must match the Game settings.");
+  if (draft.mode !== game.settings.mode || draft.mode !== saved.mode) {
+    throw new Error("Round mode must match the Game settings.");
+  }
   const metadata = { ...saved, revision: saved.revision + 1 };
   const round: GenericRoundEditor["round"] =
-    draft.mode === "singleRoundWinner"
+    draft.mode === "passFail"
       ? {
           ...metadata,
-          mode: draft.mode,
+          mode: "passFail",
           scores: orderGenericScores(game.players, draft.scores),
         }
-      : {
-          ...metadata,
-          mode: draft.mode,
-          scores: orderGenericScores(
-            game.players,
-            draft.scores.map(({ playerId, points, tiebreaker }) =>
-              game.settings.tiebreaker
-                ? {
-                    playerId,
-                    points,
-                    tiebreaker: parseGenericPoints(tiebreaker ?? "", "Tiebreaker"),
-                  }
-                : { playerId, points },
+      : draft.mode === "singleRoundWinner"
+        ? {
+            ...metadata,
+            mode: draft.mode,
+            scores: orderGenericScores(game.players, draft.scores),
+          }
+        : {
+            ...metadata,
+            mode: "points",
+            scores: orderGenericScores(
+              game.players,
+              draft.scores.map(({ playerId, points, tiebreaker }) =>
+                game.settings.tiebreaker
+                  ? {
+                      playerId,
+                      points,
+                      tiebreaker: parseGenericPoints(tiebreaker ?? "", "Tiebreaker"),
+                    }
+                  : { playerId, points },
+              ),
             ),
-          ),
-        };
+          };
   const after = deriveGenericScoreboard(
     game,
     players,

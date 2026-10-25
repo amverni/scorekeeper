@@ -301,18 +301,9 @@ it.each(
       await cell.tap();
       expect(await box(value)).toEqual(before);
       expect((await box(cell)).height).toBe(
-        settings.mode !== "passFail"
-          ? settings.tiebreaker
-            ? playerCount === 1
-              ? 151
-              : 152
-            : playerCount === 1
-              ? 119
-              : 120
-          : playerCount === 1
-            ? 65
-            : 66,
+        settings.tiebreaker ? (playerCount === 1 ? 151 : 152) : playerCount === 1 ? 119 : 120,
       );
+      expect(await cell.getByRole("button", { name: /^Edit Round/ }).count()).toBe(1);
       for (const detail of await cell.locator(".scoreboard-extras span:has(> .sr-only)").all()) {
         const bounds = await box(detail);
         expect(bounds.x + bounds.width / 2).toBeCloseTo(before.x + before.width / 2, 1);

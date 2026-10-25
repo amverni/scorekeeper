@@ -5,6 +5,7 @@ import { genericRoundEditorOptions } from "../../data/hooks/useGenericGames";
 import type { GameId, GenericRoundEditor, GenericRoundId, PlayerId } from "../../types";
 import { Dialog, InlineError } from "../ui";
 import { GenericAddRoundDialog } from "./GenericAddRoundDialog";
+import { GenericPassFailRoundDialog } from "./GenericPassFailRoundDialog";
 
 interface GenericEditRoundDialogProps {
   gameId: GameId;
@@ -53,6 +54,18 @@ function LoadedRoundEditor({
 }: GenericEditRoundDialogProps & { initialEditor: GenericRoundEditor }) {
   // Keep the history version paired with the draft even if another query refreshes.
   const [editor] = useState(initialEditor);
+  if (editor.mode === "passFail") {
+    return (
+      <GenericPassFailRoundDialog
+        open
+        onClose={onClose}
+        gameId={gameId}
+        players={editor.players}
+        editor={editor}
+        focusPlayerId={focusPlayerId}
+      />
+    );
+  }
   return (
     <GenericAddRoundDialog
       open

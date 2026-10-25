@@ -315,7 +315,7 @@ it.each([
   "points",
   "singleRoundWinner",
   "passFail",
-] as const)("does not expose editing for completed or unsupported %s Games", async (mode) => {
+] as const)("does not expose editing for completed %s Games", async (mode) => {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   page.setDefaultTimeout(5_000);
   page.setDefaultNavigationTimeout(30_000);
@@ -326,16 +326,14 @@ it.each([
         ? { mode, pointsDirection: "high", tiebreaker: null, dealer: false }
         : { mode, tiebreaker: null, dealer: false },
     );
-    if (mode !== "passFail") {
-      await page.evaluate(`(async () => {
+    await page.evaluate(`(async () => {
           const { genericGamesApi } = await import("/scorekeeper/src/data/api/genericGames.ts");
           await genericGamesApi.finish(${JSON.stringify(gameId)});
         })()`);
-      await page.reload();
-      const standings = page.getByRole("dialog", { name: "Standings", exact: true });
-      await standings.getByRole("button", { name: "Close", exact: true }).click();
-      await standings.waitFor({ state: "detached" });
-    }
+    await page.reload();
+    const standings = page.getByRole("dialog", { name: "Standings", exact: true });
+    await standings.getByRole("button", { name: "Close", exact: true }).click();
+    await standings.waitFor({ state: "detached" });
     await page.getByRole("button", { name: "Expand Round 1", exact: true }).click();
     expect(await page.getByRole("button", { name: /^Edit Round/ }).count()).toBe(0);
   } finally {
