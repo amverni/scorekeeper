@@ -35,13 +35,13 @@ const players: Player[] = [
 async function seedGame(
   page: Page,
   game: Game | GenericGame,
-  round: Round | GenericRound,
+  round: Round | GenericRound | Round[],
   identities = players,
 ) {
   await page.goto(`${appUrl}#/scorekeeper`);
   await page.getByText("No active games yet", { exact: true }).waitFor();
   await page.evaluate(
-    async ({ game, round, players }) => {
+    async ({ game, rounds, players }) => {
       const request = indexedDB.open("phase10-db");
       await new Promise<void>((resolve, reject) => {
         request.onerror = () => reject(request.error);
@@ -57,7 +57,7 @@ async function seedGame(
             reject(tx.error);
           };
           tx.objectStore("games").put(game);
-          tx.objectStore("rounds").put(round);
+          for (const round of rounds) tx.objectStore("rounds").put(round);
           for (const player of players) {
             tx.objectStore("players").put(
               game.status === "completed" ? { ...player, name: `Renamed ${player.id}` } : player,
@@ -66,7 +66,7 @@ async function seedGame(
         };
       });
     },
-    { game, round, players: identities },
+    { game, rounds: Array.isArray(round) ? round : [round], players: identities },
   );
   const prefix = game.scorekeeper === "phase10" ? "phaseCompan10n/" : "scorekeeper/";
   await page.goto(`${appUrl}#/${prefix}game/${game.id}`);
@@ -304,17 +304,35 @@ describe.each(["light", "dark"] as const)("Standings name space in %s mode", (co
           playerSnapshots: players,
           winnerIds: ["amy"],
         },
-        {
-          gameId: game.id,
-          scorekeeper: "phase10",
-          roundNumber: 1,
-          roundWinnerId: "amy",
-          scores: [
-            { playerId: "amy", currentPhase: 10, phaseStatus: "completed", score: 1234 },
-            { playerId: "bob", currentPhase: 10, phaseStatus: "failed", score: 5 },
-            { playerId: "cam", currentPhase: 3, phaseStatus: "failed", score: 99 },
-          ],
-        },
+        Array.from(
+          { length: 10 },
+          (_, index): Round => ({
+            gameId: game.id,
+            scorekeeper: "phase10",
+            roundNumber: index + 1,
+            roundWinnerId: index === 9 ? "amy" : null,
+            scores: [
+              {
+                playerId: "amy",
+                currentPhase: index + 1,
+                phaseStatus: "completed",
+                score: index === 9 ? 1234 : 0,
+              },
+              {
+                playerId: "bob",
+                currentPhase: index + 1,
+                phaseStatus: index === 9 ? "failed" : "completed",
+                score: index === 9 ? 5 : 0,
+              },
+              {
+                playerId: "cam",
+                currentPhase: Math.min(index + 1, 3),
+                phaseStatus: index < 2 ? "completed" : "failed",
+                score: index === 9 ? 99 : 0,
+              },
+            ],
+          }),
+        ),
       );
       const dialog = page.getByRole("dialog");
       const panel = dialog.getByRole("tabpanel", { name: "Standings", exact: true });

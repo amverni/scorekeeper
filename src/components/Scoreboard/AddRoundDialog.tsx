@@ -33,6 +33,8 @@ interface AddRoundDialogProps {
   players: PlayerIdentity[];
   draft: UseAddRoundDraft;
   onGameCompleted?: () => void;
+  afterLeave?: () => void;
+  expectedVersion: string;
 }
 
 const NO_WINNER_VALUE = "__none__";
@@ -51,12 +53,15 @@ export function AddRoundDialog({
   players,
   draft,
   onGameCompleted,
+  afterLeave,
+  expectedVersion,
 }: AddRoundDialogProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const addRound = useAddRound(game.id);
   const toastRef = useRef<ToastHandle>(null);
   const tabListRef = useRef<HTMLDivElement>(null);
-  const savingRef = useRef(false);
+  const saving = useRef(false);
+  const completedAfterLeave = useRef(false);
 
   // Keep the selected player visible in the horizontal tab strip.
   useEffect(() => {
@@ -73,7 +78,7 @@ export function AddRoundDialog({
   const playerTabColumnCount = Math.max(players.length, 1);
 
   const handleSave = () => {
-    if (!canSave || savingRef.current) return;
+    if (!canSave || saving.current) return;
     let scores: ArrayAtLeastOne<Omit<RoundScore, "currentPhase">>;
     try {
       scores = toRoundScores(draft.draft, game.settings.tiebreaker);
@@ -82,22 +87,21 @@ export function AddRoundDialog({
       return;
     }
     const winnerId = draft.draft.roundWinnerId;
-    savingRef.current = true;
+    saving.current = true;
     addRound.mutate(
-      { scores, roundWinnerId: winnerId, expectedRoundNumber: nextRoundNumber },
+      { scores, roundWinnerId: winnerId, expectedRoundNumber: nextRoundNumber, expectedVersion },
       {
         onSuccess: (result) => {
           draft.reset();
+          setSelectedIndex(0);
+          completedAfterLeave.current = result.outcome === "gameCompleted";
           onClose(false);
-          if (result.outcome === "gameCompleted") {
-            onGameCompleted?.();
-          }
         },
-        onError: () => {
-          toastRef.current?.show("Couldn't save round — try again.");
+        onError: (error) => {
+          toastRef.current?.show(`Couldn't save round: ${error.message} Try again.`);
         },
         onSettled: () => {
-          savingRef.current = false;
+          saving.current = false;
         },
       },
     );
@@ -118,6 +122,13 @@ export function AddRoundDialog({
     <Dialog
       open={open}
       onClose={onClose}
+      afterLeave={() => {
+        afterLeave?.();
+        if (completedAfterLeave.current) {
+          completedAfterLeave.current = false;
+          onGameCompleted?.();
+        }
+      }}
       dismissible={!addRound.isPending}
       sizing="workspace"
       bodyScroll="custom"

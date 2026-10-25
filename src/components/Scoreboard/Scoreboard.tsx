@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { GameReadModel } from "../../types";
+import { FirstFinisherDialog } from "../Game/FirstFinisherDialog";
 import { AddRoundDialog } from "./AddRoundDialog";
 import { GhostRow } from "./GhostRow";
 import { RoundRow } from "./RoundRow";
@@ -13,9 +14,14 @@ interface ScoreboardProps {
 }
 
 export function Scoreboard({ view, onGameCompleted }: ScoreboardProps) {
-  const { game, rounds, players } = view;
+  const { game, rounds, players, playingPlayers } = view;
   const [expandedRound, setExpandedRound] = useState<number | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [entryVisible, setEntryVisible] = useState(false);
+  const [entryHistory, setEntryHistory] = useState({
+    roundNumber: view.nextRoundNumber,
+    version: view.version,
+  });
   const [namesExpanded, setNamesExpanded] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -36,8 +42,8 @@ export function Scoreboard({ view, onGameCompleted }: ScoreboardProps) {
   const tiebreaker = game.settings.tiebreaker;
   const isActive = game.status === "active";
 
-  const showGhost = isActive;
-  const draft = useAddRoundDraft(players, game.settings);
+  const showGhost = isActive && !view.pendingFinishChoice && !view.automaticCompletion;
+  const draft = useAddRoundDraft(playingPlayers, game.settings);
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
@@ -60,6 +66,7 @@ export function Scoreboard({ view, onGameCompleted }: ScoreboardProps) {
             namesExpanded={namesExpanded}
             onToggleNames={() => setNamesExpanded((previous) => !previous)}
             upcomingDealerId={view.upcomingDealerId}
+            completed={!isActive}
           />
 
           {rounds.map((round, idx) => {
@@ -86,23 +93,28 @@ export function Scoreboard({ view, onGameCompleted }: ScoreboardProps) {
               nextRoundNumber={view.nextRoundNumber}
               dealerId={view.upcomingDealerId}
               players={players}
-              onOpenAddRound={() => setDialogOpen(true)}
+              onOpenAddRound={() => {
+                setEntryHistory({ roundNumber: view.nextRoundNumber, version: view.version });
+                setEntryVisible(true);
+                setDialogOpen(true);
+              }}
             />
           )}
         </div>
       </section>
 
-      {isActive && (
-        <AddRoundDialog
-          open={dialogOpen}
-          onClose={setDialogOpen}
-          game={game}
-          nextRoundNumber={view.nextRoundNumber}
-          players={players}
-          draft={draft}
-          onGameCompleted={onGameCompleted}
-        />
-      )}
+      <AddRoundDialog
+        open={dialogOpen}
+        onClose={setDialogOpen}
+        game={game}
+        players={playingPlayers}
+        draft={draft}
+        nextRoundNumber={entryHistory.roundNumber}
+        expectedVersion={entryHistory.version}
+        onGameCompleted={onGameCompleted}
+        afterLeave={() => setEntryVisible(false)}
+      />
+      <FirstFinisherDialog view={view} ready={!entryVisible} onGameCompleted={onGameCompleted} />
     </div>
   );
 }

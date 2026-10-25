@@ -87,8 +87,15 @@ it.each([
     genericGamesApi.finish(generic.id),
   ]);
   expect(normalResult).toMatchObject({
-    outcome: "gameCompleted",
-    completedGame: { completionType: "normal", winnerIds: [players[winner].id] },
+    outcome: "roundAdded",
+  });
+  const firstFinisher = (await gamesApi.getView(normal.id))?.pendingFinishChoice;
+  if (!firstFinisher) throw new Error("Missing first-finisher choice");
+  expect(
+    await gamesApi.resolveFinishChoice(normal.id, "finish", firstFinisher.token),
+  ).toMatchObject({
+    completionType: "normal",
+    winnerIds: [players[winner].id],
   });
   expect(earlyResult).toMatchObject({
     completionType: "manual",

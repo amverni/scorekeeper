@@ -6,6 +6,7 @@ interface ScoreboardHeaderProps {
   namesExpanded: boolean;
   onToggleNames: () => void;
   upcomingDealerId: PlayerId | null;
+  completed: boolean;
 }
 
 export function ScoreboardHeader({
@@ -13,6 +14,7 @@ export function ScoreboardHeader({
   upcomingDealerId,
   namesExpanded,
   onToggleNames,
+  completed,
 }: ScoreboardHeaderProps) {
   return (
     <>
@@ -40,7 +42,16 @@ export function ScoreboardHeader({
                 onToggle={onToggleNames}
               />
               <span className="text-2xl font-medium leading-none tabular-nums text-text-primary">
-                {player.progress.currentPhase}
+                <span className="sr-only">
+                  {completed || player.finishingPlace !== null
+                    ? `Place ${player.place}`
+                    : `Current Phase ${player.progress.currentPhase}`}
+                </span>
+                <span aria-hidden>
+                  {completed || player.finishingPlace !== null
+                    ? formatPlace(player.place)
+                    : player.progress.currentPhase}
+                </span>
               </span>
               <span className="text-sm leading-none text-text-secondary tabular-nums">
                 {player.formattedTiebreaker}
@@ -51,4 +62,11 @@ export function ScoreboardHeader({
       })}
     </>
   );
+}
+
+function formatPlace(place: number): string {
+  const lastTwo = place % 100;
+  const suffix =
+    lastTwo >= 11 && lastTwo <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" }[place % 10] ?? "th");
+  return `${place}${suffix}`;
 }

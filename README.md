@@ -3,8 +3,8 @@
 Two local-first scorekeeping experiences share saved Players and UI primitives,
 without sharing scoring rules. Scorekeeper supports Points, Single Round Winner,
 and Pass/Fail. Points optionally uses an independently directed numeric Tiebreaker.
-Phase Compan10n retains Phase 10 scoring and automatic completion, and also supports
-Early Finish.
+Phase Compan10n supports Phase 10 scoring, Continuation for further Finishing
+Places, automatic completion, and Manual Finish.
 
 ## Development
 
@@ -24,8 +24,8 @@ Phase 10 views share `gamesApi.getView()` through `gameViewOptions()`. A single
 readonly transaction loads the Game, its live Players (or completed snapshots),
 and Rounds. One interpretation supplies ordered scorecard columns, dealer
 indicators, per-Round/running values, phase progress, Standings, graph series,
-and graph endpoint order. Completion uses that same interpretation through the
-existing Standings adapter. The raw Game/Round APIs remain available.
+and graph endpoint order. Completion uses that same interpretation. The raw
+Game/Round APIs remain available.
 
 The read model keeps source Rounds and score entries separate from derived
 values. New Passed/Failed Points entries retain the original `pointsCardBreakdown`
@@ -39,10 +39,47 @@ The optional record field requires no IndexedDB store/index migration or reset.
 Card-bearing writes validate whole non-negative counters, Points Card Count,
 and matching point totals using the same rules as Add Round. The existing
 single-entry edit API also rejects inconsistent score/breakdown updates.
-The Add Round UI submits its `expectedRoundNumber`; the API checks it inside
-the write transaction to reject stale or repeated submissions. Pending saves
-block duplicate actions, failures retain the draft and show the existing retry
-feedback, and successful saves alone clear it.
+`counted` flags
+distinguish retained source history from contributing Rounds and entries.
+`playingPlayers`, Finishing Rounds/Places, and the Game Ending Round come from
+the same interpretation rather than independent per-screen calculations.
+
+## Phase 10 continuation
+
+The first Finishing Round is committed before **Finish Game** asks
+**{name} wins. Do others want to keep playing?** Only **Keep playing** or
+**Finish** can dismiss this choice; neither rolls back the saved Round. An
+unanswered choice is derived from saved history and restored on return.
+`gamesApi.resolveFinishChoice()` validates the loaded choice token and writes
+Continuation or finalizes the result in one transaction. Failed choices remain
+retryable. New Round entry supplies its loaded Game/history version and expected
+Round number to reject duplicate or stale submissions, including corrections
+that leave the next Round number unchanged. A stale draft remains recoverable;
+close and reopen Add Round to review it against the corrected history.
+
+**Keep playing** persists for the rest of the Game, even if a Round Edit changes
+the first-place Player. Finished Players keep their columns and distinct places
+but leave score entry and dealer rotation. Their totals and counted wins stop at
+their Finishing Round. Earlier finishes rank first; same-Round finishes compare
+the configured Tiebreaker, most recent counted Round Winner through that Round,
+then Seating Order.
+
+When at least one Player has finished and all but one eligible Players have
+finished, the Game automatically finalizes and opens Standings. This takes
+precedence over the choice in a two-Player Game. Manual Finish remains available
+during Continuation, retaining shared places among tied unfinished Players
+without granting phase progress. Active Finished Player headers show their
+Finishing Places; Completed Phase 10 headers show every Player's final place.
+Generic scorekeeper totals are unchanged.
+
+Round corrections recalculate this same completion policy atomically. Existing
+entries after a corrected finish, and whole Rounds after an earlier Game ending,
+remain visible but muted and do not contribute to results or graphs. Another
+correction can restore their contribution while the Game remains Active.
+Ordinary post-finish cells and genuine Participation Gaps remain blank.
+Recalculation never deletes retained history; next-Round numbering follows the
+last stored Round, not just counted Rounds. Pending saves block duplicate
+actions; failures retain the draft, and successful saves alone clear it.
 
 ## Navigation and presentation
 
@@ -111,7 +148,7 @@ Normal Phase 10 completion still awards exactly one winner under its existing ru
 Use `withGameTransaction`, `finalizeGame`, and `deleteGameRecords` in
 `src/data/api/gameLifecycle.ts` for completion and Game-owned cleanup. Resolve
 winners and capture identities inside that transaction, including the finishing
-Round write, Early Finish, and per-Scorekeeper retention.
+Round write, Manual Finish, and per-Scorekeeper retention.
 Whole-Game cleanup preserves shared Players, saved catalog data, and temporary
 Phases still referenced by another Game or Phase Set.
 
@@ -119,9 +156,10 @@ Active Game writes must validate shared Player references inside the same
 transaction as the write (`requirePlayers`/`saveActiveGame`). Player deletion
 checks all Active Game references, regardless of Scorekeeper, in a transaction
 that also locks Players. There is no archived/hidden Player state.
-Normal Phase completion happens through `roundsApi.add`; manual completion uses
-`gamesApi.finish` or `genericGamesApi.finish`. Manual completion awards all tied
-first-place Players. Every completion requires at least one saved Round and
+Automatic Phase completion is checked after Round saves/corrections and the
+Continuation choice; explicit completion uses `gamesApi.resolveFinishChoice`,
+`gamesApi.finish`, or `genericGamesApi.finish`. Manual Finish awards all Players
+sharing first place in Standings. Every completion requires at least one saved Round and
 retains the latest 20 Completed Games for its own Scorekeeper, removing evicted
 Games and their owned records atomically. Active Games never expire.
 
@@ -142,15 +180,26 @@ Changed Round winners or places (including shared places) require the compact
 unchanged draft, while **Save** commits it. Generic completion remains an explicit
 Finish Game action.
 
-The public `genericRoundsApi.getEditor`, `previewEdit`, and `edit` commands
+Every saved Generic Round editor also offers **Delete Round**. The compact
+**Delete round** confirmation identifies its Round number and permanence.
+**Cancel** receives initial focus; Cancel, Escape, and outside dismissal preserve
+the editor draft. Confirming **Delete** removes only that Round, consecutively
+renumbers stored history, and recalculates totals, Standings, graphs, and dealers
+without another impact confirmation. Deleting the sole Round retains the same
+empty Active Game, roster, and settings; the next saved Round is Round 1.
+
+The public `genericRoundsApi.getEditor`, `previewEdit`, `edit`, and `delete` commands
 validate Active Game ownership, matching supported Scoring Mode, Player entries,
 and the loaded history version. Preview never writes. Save revalidates the version
 and impact inside the same transaction as the Round/activity writes, then
-invalidates related Generic Game queries. New Generic Rounds carry stable IDs and
+invalidates related Generic Game queries. Delete likewise checks the captured
+history version and commits deletion, renumbering, and activity atomically.
+Failed or stale mutations leave saved history unchanged and retain the draft.
+New Generic Rounds carry stable IDs and
 revisions without changing IndexedDB stores or indexes. Existing Rounds lacking
-this metadata remain readable but cannot be edited; no backfill or reset is
+this metadata remain readable but cannot be edited or deleted; no backfill or reset is
 performed.
 Single Round Winner corrections require exactly one winner among the Game's
 eligible Players; impact approval cannot override invalid entries.
-Completed Games, Round deletion, cross-reload draft persistence, and production
+Completed Game editing, cross-reload draft persistence, and production
 debug controls are not exposed.

@@ -57,7 +57,7 @@ async function seedGame(page: Page, playerCount = 6, variedResults = false) {
   const rounds: Round[] = Array.from({ length: 10 }, (_, index) => {
     const scores: RoundScore[] = players.map((player, playerIndex) => ({
       playerId: player.id,
-      currentPhase: index + 1,
+      currentPhase: variedResults ? Math.ceil(index / 2) + 1 : index + 1,
       phaseStatus: variedResults
         ? (["completed", "failed", "skipped", "satOut"] as const)[index % 4]
         : "completed",
@@ -185,14 +185,19 @@ it.each([
         expect(positions[1].separation).toBeLessThan(positions[2].separation);
         expect(positions[2].separation).toBeCloseTo(positions[3].separation, 1);
       }
-      for (const roundNumber of [2, 3, 4, 10]) {
+      for (const [roundNumber, phaseNumber] of [
+        [2, 2],
+        [3, 2],
+        [4, 3],
+        [10, 6],
+      ]) {
         const control = scoreboard.getByRole("button", {
           name: `Round ${roundNumber}`,
           exact: true,
         });
         const resultCell = control.locator("xpath=following-sibling::div[1]");
         const bounds = await box(resultCell);
-        const value = await box(resultCell.getByText(String(roundNumber), { exact: true }));
+        const value = await box(resultCell.getByText(String(phaseNumber), { exact: true }));
         expect(
           Math.abs(value.x + value.width / 2 - (bounds.x + bounds.width / 2)),
         ).toBeLessThanOrEqual(0.6);
@@ -205,7 +210,7 @@ it.each([
         .getByRole("button", { name: /^Add round/ })
         .locator("xpath=following-sibling::div[1]");
       const upcomingBounds = await box(upcoming);
-      const upcomingValue = await box(upcoming.getByText("10", { exact: true }));
+      const upcomingValue = await box(upcoming.getByText("6", { exact: true }));
       expect(upcomingValue.x + upcomingValue.width / 2).toBeCloseTo(
         upcomingBounds.x + upcomingBounds.width / 2 - (playerCount === 1 ? 0 : 0.5),
         1,

@@ -98,7 +98,7 @@ describe("getTiebreakerGraphView", () => {
 
     expect(view.latestEndpointGroups).toEqual([
       {
-        key: "-10",
+        key: "2:-10",
         label: "10 pts",
         x: 296,
         y: 180,

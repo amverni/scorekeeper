@@ -9,7 +9,6 @@ import type {
   RoundScore,
 } from "../../types";
 import {
-  getNextCurrentPhase,
   getPointsCardCount,
   getPointsCardCountRule,
   getPointsCardScore,
@@ -18,6 +17,7 @@ import {
 } from "../../utils";
 import { getDB } from "../db";
 import { finalizeGame, requirePlayers, withGameTransaction } from "./gameLifecycle";
+import { deriveGameReadModel } from "./gameReadModel";
 import { assertActivePhaseGame, assertPhaseRounds } from "./games";
 import { resolveGameCompletion } from "./roundCompletion";
 
@@ -109,6 +109,7 @@ export const roundsApi = {
     expectedRoundNumber?: number;
     scores: ArrayAtLeastOne<AddRoundScoreInput>;
     roundWinnerId: PlayerId | null;
+    expectedVersion?: string;
   }): Promise<AddRoundResult> {
     return withGameTransaction(async (tx) => {
       const gamesStore = tx.objectStore("games");
@@ -116,21 +117,10 @@ export const roundsApi = {
 
       const game = await gamesStore.get(data.gameId);
       assertActivePhaseGame(game);
-      const winnerRequirement = getRoundWinnerRequirement(
-        game.settings.tiebreaker,
-        game.activePlayers.map(
-          (playerId) =>
-            data.scores.find((score) => score.playerId === playerId)?.phaseStatus ?? null,
-        ),
-      );
-      if (data.roundWinnerId === null && winnerRequirement === "required") {
-        throw new Error("A Round Winner is required");
-      }
       const winnerScores = data.scores.filter((score) => score.playerId === data.roundWinnerId);
       if (
         data.roundWinnerId !== null &&
         (!game.activePlayers.includes(data.roundWinnerId) ||
-          winnerRequirement === "disabled" ||
           winnerScores.length !== 1 ||
           winnerScores[0].phaseStatus !== "completed")
       ) {
@@ -140,28 +130,62 @@ export const roundsApi = {
         assertPointsCardBreakdown(score, game.settings.tiebreaker, data.roundWinnerId);
       }
       const players = await requirePlayers(tx, game.players);
-      const totalPhases = game.phaseSet.phases.length;
-      const now = Date.now();
-
       const existingRounds = await roundsStore.index("by-game").getAll(data.gameId);
       assertPhaseRounds(existingRounds);
-      const nextRoundNumber =
-        existingRounds.length > 0 ? Math.max(...existingRounds.map((r) => r.roundNumber)) + 1 : 1;
+      const view = deriveGameReadModel({ game, players, rounds: existingRounds });
+      if (data.expectedVersion !== undefined && data.expectedVersion !== view.version) {
+        throw new Error(
+          "Game history changed. Close and reopen Add Round to review the saved history and your draft.",
+        );
+      }
+      if (view.pendingFinishChoice) {
+        throw new Error("Choose Keep playing or Finish in Finish Game before adding a Round");
+      }
+      const winnerRequirement = getRoundWinnerRequirement(
+        game.settings.tiebreaker,
+        view.playingPlayers.map(
+          (player) =>
+            data.scores.find((score) => score.playerId === player.id)?.phaseStatus ?? null,
+        ),
+      );
+      if (data.roundWinnerId === null && winnerRequirement === "required") {
+        throw new Error("A Round Winner is required");
+      }
+      if (
+        data.roundWinnerId !== null &&
+        (!view.playingPlayers.some((player) => player.id === data.roundWinnerId) ||
+          winnerRequirement === "disabled")
+      ) {
+        throw new Error("Round Winner must be a Passed Active Player in the Round");
+      }
+      const now = Date.now();
+
+      if (
+        data.scores.length === 0 ||
+        data.scores.length !== view.playingPlayers.length ||
+        new Set(data.scores.map((score) => score.playerId)).size !== data.scores.length ||
+        view.playingPlayers.some(
+          (player) => !data.scores.some((score) => score.playerId === player.id),
+        )
+      ) {
+        throw new Error("Provide exactly one Round entry for every Player still playing");
+      }
+      for (const score of data.scores) {
+        validateScore(score);
+      }
+      const nextRoundNumber = view.nextRoundNumber;
       if (data.expectedRoundNumber !== undefined && data.expectedRoundNumber !== nextRoundNumber) {
         throw new Error("Round history changed. Reload before saving.");
       }
 
-      // Find the most recent round to derive each player's currentPhase
-      const previousRound =
-        existingRounds.length > 0
-          ? existingRounds.reduce((latest, r) => (r.roundNumber > latest.roundNumber ? r : latest))
-          : undefined;
-
       const scores = data.scores.map((input) => {
-        const prevScore = previousRound?.scores.find((s) => s.playerId === input.playerId);
+        const player = view.players.find((player) => player.id === input.playerId);
+        if (!player || player.progress.isFinished) {
+          throw new Error("Round entries must belong to Players still playing");
+        }
         return {
           ...input,
-          currentPhase: getNextCurrentPhase(prevScore, totalPhases),
+          currentPhase: player.progress.currentPhase,
         };
         // Input guarantees at least one score; .map() preserves length but TS can't infer tuple minimum
       }) as ArrayAtLeastOne<RoundScore>;
@@ -244,6 +268,7 @@ export const roundsApi = {
       // Spread preserves minimum length of original; TS can't infer tuple minimum from spread
       const updatedScores = [...round.scores] as ArrayAtLeastOne<RoundScore>;
       updatedScores[scoreIndex] = { ...updatedScores[scoreIndex], ...updates };
+      validateScore(updatedScores[scoreIndex]);
       assertPointsCardBreakdown(
         updatedScores[scoreIndex],
         game.settings.tiebreaker,
@@ -251,47 +276,34 @@ export const roundsApi = {
       );
 
       const updatedRound: Round = { ...round, scores: updatedScores };
-      await roundsStore.put(updatedRound);
-
-      // If phaseStatus changed, cascade-update currentPhase in subsequent rounds
-      if (updates.phaseStatus !== undefined && game) {
-        const totalPhases = game.phaseSet.phases.length;
-        const allRounds = await roundsStore.index("by-game").getAll(gameId);
-        assertPhaseRounds(allRounds);
-        const sorted = allRounds
-          .map((r) => (r.roundNumber === roundNumber ? updatedRound : r))
-          .sort((a, b) => a.roundNumber - b.roundNumber);
-
-        const laterRounds = sorted.filter((r) => r.roundNumber > roundNumber);
-
-        let prevRound = updatedRound;
-        for (const laterRound of laterRounds) {
-          const laterScoreIndex = laterRound.scores.findIndex((s) => s.playerId === playerId);
-          if (laterScoreIndex === -1) {
-            prevRound = laterRound;
-            continue;
-          }
-
-          const prevScore = prevRound.scores.find((s) => s.playerId === playerId);
-          const newCurrentPhase = getNextCurrentPhase(prevScore, totalPhases);
-
-          if (laterRound.scores[laterScoreIndex].currentPhase !== newCurrentPhase) {
-            // Spread preserves minimum length of original; TS can't infer tuple minimum from spread
-            const newScores = [...laterRound.scores] as ArrayAtLeastOne<RoundScore>;
-            newScores[laterScoreIndex] = {
-              ...newScores[laterScoreIndex],
-              currentPhase: newCurrentPhase,
-            };
-            const fixedRound: Round = { ...laterRound, scores: newScores };
-            await roundsStore.put(fixedRound);
-            prevRound = fixedRound;
-          } else {
-            prevRound = laterRound;
-          }
+      let savedRound = updatedRound;
+      const players = await requirePlayers(tx, game.players);
+      const allRounds = await roundsStore.index("by-game").getAll(gameId);
+      assertPhaseRounds(allRounds);
+      const rounds = allRounds.map((r) => (r.roundNumber === roundNumber ? updatedRound : r));
+      const view = deriveGameReadModel({ game, players, rounds });
+      for (const interpreted of view.rounds) {
+        const source = interpreted.source;
+        const scores = source.scores.map((score) => {
+          const entry = interpreted.scores.find((entry) => entry.playerId === score.playerId);
+          return entry?.counted && entry.phaseNumber !== null
+            ? { ...score, currentPhase: entry.phaseNumber }
+            : score;
+        }) as ArrayAtLeastOne<RoundScore>;
+        if (
+          source.roundNumber === roundNumber ||
+          scores.some((score, index) => score.currentPhase !== source.scores[index].currentPhase)
+        ) {
+          const normalized = { ...source, scores };
+          await roundsStore.put(normalized);
+          if (source.roundNumber === roundNumber) savedRound = normalized;
         }
       }
-
-      return updatedRound;
+      const now = Date.now();
+      const completion = resolveGameCompletion({ game, players, rounds, completedAt: now });
+      if (completion) await finalizeGame(tx, completion.completedGame);
+      else await tx.objectStore("games").put({ ...game, lastActivityAt: now });
+      return savedRound;
     });
   },
 
@@ -338,3 +350,12 @@ export const roundsApi = {
     });
   },
 };
+
+function validateScore(score: AddRoundScoreInput) {
+  if (!["completed", "failed", "skipped", "satOut"].includes(score.phaseStatus)) {
+    throw new Error("Invalid Round Result");
+  }
+  if (!Number.isSafeInteger(score.score) || score.score < 0) {
+    throw new Error("Round score must be a nonnegative whole number");
+  }
+}

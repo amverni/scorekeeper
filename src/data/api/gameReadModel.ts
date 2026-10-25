@@ -1,18 +1,13 @@
 import type {
   GameReadModel,
-  GameRoundScoreView,
   GameRoundView,
   GameTiebreaker,
   PlayerId,
-  PlayerIdentity,
-  Round,
   StandingsDerivation,
   StandingsInput,
-  StandingsRow,
 } from "../../types";
 import {
   formatTiebreakerValue,
-  getDealerId,
   getInitialPlayerProgress,
   getProgressAfterScore,
   getRoundTiebreakerValue,
@@ -27,6 +22,7 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
   }
   const includedPlayers = getGamePlayers(game, players);
   const sortedRounds = rounds.slice().sort((a, b) => a.roundNumber - b.roundNumber);
+  const version = JSON.stringify([game, sortedRounds]);
   const totalPhases = game.phaseSet.phases.length;
   const gameOrder = new Map(game.players.map((playerId, index) => [playerId, index]));
   const columnIds = game.status === "active" ? game.activePlayers : game.players;
@@ -36,13 +32,14 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
     if (!player) throw new Error(`Player identity not found: ${id}`);
     return player;
   });
-  const roundViews: GameRoundView[] = [];
   const stateByPlayerId = new Map(
     includedPlayers.map((player) => [
       player.id,
       {
         progress: getInitialPlayerProgress(),
         tiebreakerTotal: 0,
+        finishingRound: null as number | null,
+        mostRecentWin: -1,
         phasePoints: [{ roundNumber: 0, ...getInitialPlayerProgress() }],
         tiebreakerPoints: [
           {
@@ -54,83 +51,119 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
       },
     ]),
   );
+  const stateFor = (id: PlayerId) => {
+    const state = stateByPlayerId.get(id);
+    if (!state) throw new Error(`Player interpretation not found: ${id}`);
+    return state;
+  };
+  let nextSeat = 0;
+  const nextDealer = (participatingIds: readonly PlayerId[]) => {
+    for (let offset = 0; offset < game.players.length; offset++) {
+      const index = (nextSeat + offset) % game.players.length;
+      const id = game.players[index];
+      if (participatingIds.includes(id)) return id;
+    }
+    return null;
+  };
+  let gameEndingRound: number | null = null;
+  let automaticCompletion = false;
+  const roundViews: GameRoundView[] = [];
 
   for (const round of sortedRounds) {
-    const roundScores = new Map<PlayerId, GameRoundScoreView>();
-    for (const player of includedPlayers) {
-      const state = stateByPlayerId.get(player.id);
-      if (!state) continue;
-
-      const score = round.scores.find((entry) => entry.playerId === player.id);
-      if (score) {
-        state.progress = getProgressAfterScore(score, state.progress, totalPhases);
-      }
-      const tiebreakerValue = getRoundTiebreakerValue(
+    const counted = gameEndingRound === null;
+    const participatingIds = columnIds.filter(
+      (id) =>
+        !stateFor(id).progress.isFinished && round.scores.some((score) => score.playerId === id),
+    );
+    const dealerId = counted ? nextDealer(participatingIds) : null;
+    if (dealerId !== null) nextSeat = (gameOrder.get(dealerId) ?? 0) + 1;
+    const scores = orderedPlayers.map((player) => {
+      const state = stateFor(player.id);
+      const recorded = round.scores.find((entry) => entry.playerId === player.id);
+      const entryCounts = counted && !state.progress.isFinished && recorded !== undefined;
+      // Phase assignment is derived from counted history, never from an excluded entry.
+      const effectiveScore = entryCounts
+        ? { ...recorded, currentPhase: state.progress.currentPhase }
+        : recorded;
+      const sourceTiebreakerValue = getRoundTiebreakerValue(
         round,
         player.id,
         game.settings.tiebreaker,
-        score,
+        recorded,
       );
-      state.tiebreakerTotal += tiebreakerValue;
-      roundScores.set(player.id, {
+      const tiebreakerValue = entryCounts ? sourceTiebreakerValue : 0;
+      const wasFinished = state.progress.isFinished;
+      if (entryCounts && effectiveScore) {
+        state.progress = getProgressAfterScore(effectiveScore, state.progress, totalPhases);
+        state.tiebreakerTotal += tiebreakerValue;
+        if (round.roundWinnerId === player.id) state.mostRecentWin = round.roundNumber;
+        if (state.progress.isFinished) state.finishingRound = round.roundNumber;
+      }
+      if (counted && !wasFinished) {
+        state.phasePoints.push({ roundNumber: round.roundNumber, ...state.progress });
+        state.tiebreakerPoints.push({
+          roundNumber: round.roundNumber,
+          value: state.tiebreakerTotal,
+          standingValue: toTiebreakerStandingValue(state.tiebreakerTotal, game.settings.tiebreaker),
+        });
+      }
+      return {
         playerId: player.id,
-        source: score,
+        source: recorded,
+        phaseNumber: effectiveScore?.currentPhase ?? null,
+        counted: entryCounts,
+        sourceTiebreakerValue,
         tiebreakerValue,
         runningTiebreakerTotal: state.tiebreakerTotal,
-      });
-      state.phasePoints.push({
-        roundNumber: round.roundNumber,
-        ...state.progress,
-      });
-      state.tiebreakerPoints.push({
-        roundNumber: round.roundNumber,
-        value: state.tiebreakerTotal,
-        standingValue: toTiebreakerStandingValue(state.tiebreakerTotal, game.settings.tiebreaker),
-      });
-    }
-    roundViews.push({
-      source: round,
-      dealerId: getDealerId(round.roundNumber, columnIds),
-      scores: orderedPlayers.map((player) => {
-        const score = roundScores.get(player.id);
-        if (!score) throw new Error(`Player Round interpretation not found: ${player.id}`);
-        return score;
-      }),
+      };
     });
+    roundViews.push({ source: round, dealerId, scores, counted });
+    if (counted) {
+      const finishedCount = includedPlayers.filter(
+        (player) => stateFor(player.id).progress.isFinished,
+      ).length;
+      automaticCompletion = finishedCount > 0 && finishedCount >= includedPlayers.length - 1;
+      if (automaticCompletion || (finishedCount > 0 && !game.continuation)) {
+        gameEndingRound = round.roundNumber;
+      }
+    }
   }
 
-  const standingsRows = includedPlayers.map((player) => {
-    const state = stateByPlayerId.get(player.id);
-    const progress = state?.progress ?? getInitialPlayerProgress();
-    const tiebreakerTotal = state?.tiebreakerTotal ?? 0;
-    return {
-      player,
-      place: 1,
-      showPlace: true,
-      progress,
-      tiebreakerTotal,
-      formattedTiebreaker: formatTiebreakerValue(tiebreakerTotal, game.settings.tiebreaker),
-    };
+  const sortedRows = includedPlayers
+    .map((player) => {
+      const state = stateFor(player.id);
+      return {
+        player,
+        place: 1,
+        showPlace: true,
+        progress: state.progress,
+        finishingRound: state.finishingRound,
+        tiebreakerTotal: state.tiebreakerTotal,
+        formattedTiebreaker: formatTiebreakerValue(state.tiebreakerTotal, game.settings.tiebreaker),
+      };
+    })
+    .sort((a, b) => {
+      const finishComparison = (a.finishingRound ?? Infinity) - (b.finishingRound ?? Infinity);
+      if (a.finishingRound !== b.finishingRound) return finishComparison;
+      return (
+        b.progress.standingValue - a.progress.standingValue ||
+        compareTiebreakerTotals(a.tiebreakerTotal, b.tiebreakerTotal, game.settings.tiebreaker) ||
+        stateFor(b.player.id).mostRecentWin - stateFor(a.player.id).mostRecentWin ||
+        (gameOrder.get(a.player.id) ?? 0) - (gameOrder.get(b.player.id) ?? 0)
+      );
+    });
+  let place = 1;
+  const rows = sortedRows.map((row, index) => {
+    const previous = sortedRows[index - 1];
+    const sharedPlace =
+      previous !== undefined &&
+      !previous.progress.isFinished &&
+      !row.progress.isFinished &&
+      previous.progress.standingValue === row.progress.standingValue &&
+      previous.tiebreakerTotal === row.tiebreakerTotal;
+    if (!sharedPlace) place = index + 1;
+    return { ...row, place, showPlace: !sharedPlace };
   });
-  const sortedRows = standingsRows.sort((a, b) => {
-    const progressComparison = b.progress.standingValue - a.progress.standingValue;
-    if (progressComparison !== 0) return progressComparison;
-
-    const tiebreakerComparison = compareTiebreakerTotals(
-      a.tiebreakerTotal,
-      b.tiebreakerTotal,
-      game.settings.tiebreaker,
-    );
-    if (tiebreakerComparison !== 0) return tiebreakerComparison;
-
-    const roundWinnerComparison =
-      getMostRecentRoundWin(b.player.id, sortedRounds) -
-      getMostRecentRoundWin(a.player.id, sortedRounds);
-    if (roundWinnerComparison !== 0) return roundWinnerComparison;
-
-    return (gameOrder.get(a.player.id) ?? 0) - (gameOrder.get(b.player.id) ?? 0);
-  });
-  const rows = applyCompetitionPlaces(sortedRows);
   const hasFinishedPlayers = rows.some((row) => row.progress.isFinished);
   const gameWinner =
     game.status === "completed"
@@ -138,44 +171,62 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
       : hasFinishedPlayers
         ? (rows[0] ?? null)
         : null;
-
   const standings: StandingsDerivation = {
     includedPlayers,
     rows,
     phaseGraphSeries: includedPlayers.map((player) => ({
       player,
-      points: stateByPlayerId.get(player.id)?.phasePoints ?? [],
+      points: stateFor(player.id).phasePoints,
     })),
     tiebreakerGraphSeries: includedPlayers.map((player) => ({
       player,
-      points: stateByPlayerId.get(player.id)?.tiebreakerPoints ?? [],
+      points: stateFor(player.id).tiebreakerPoints,
     })),
     hasFinishedPlayers,
     gameWinner,
   };
+  const pendingFinishChoice =
+    game.status === "active" && !game.continuation && gameWinner && !automaticCompletion
+      ? { winner: gameWinner.player, token: version }
+      : null;
+  const playingPlayerIds = columnIds.filter((id) => !stateFor(id).progress.isFinished);
+  const playerViews = orderedPlayers.map((player) => {
+    const state = stateFor(player.id);
+    const row = rows.find((row) => row.player.id === player.id);
+    if (!row) throw new Error(`Player Standings not found: ${player.id}`);
+    return {
+      ...player,
+      progress: state.progress,
+      tiebreakerTotal: state.tiebreakerTotal,
+      formattedTiebreaker: row.formattedTiebreaker,
+      finishingRound: state.finishingRound,
+      finishingPlace: state.progress.isFinished ? row.place : null,
+      place: row.place,
+    };
+  });
 
   return {
     game,
-    players: orderedPlayers.map((player) => {
-      const state = stateByPlayerId.get(player.id);
-      if (!state) throw new Error(`Player interpretation not found: ${player.id}`);
-      return {
-        ...player,
-        progress: state.progress,
-        tiebreakerTotal: state.tiebreakerTotal,
-        formattedTiebreaker: formatTiebreakerValue(state.tiebreakerTotal, game.settings.tiebreaker),
-      };
-    }),
+    version,
+    players: playerViews,
     rounds: roundViews,
-    nextRoundNumber: sortedRounds.length + 1,
+    nextRoundNumber: (sortedRounds.at(-1)?.roundNumber ?? 0) + 1,
     upcomingDealerId:
-      game.status === "active" ? getDealerId(sortedRounds.length + 1, columnIds) : null,
+      game.status === "active" && !pendingFinishChoice && !automaticCompletion
+        ? nextDealer(playingPlayerIds)
+        : null,
+    pendingFinishChoice,
+    gameEndingRound:
+      gameEndingRound ??
+      (game.status === "completed" ? (sortedRounds.at(-1)?.roundNumber ?? null) : null),
+    automaticCompletion,
+    playingPlayers: playerViews.filter((player) => !player.progress.isFinished),
     standings,
     tiebreakerGraphPlayerOrder: includedPlayers
       .slice()
       .sort(
         (a, b) =>
-          getMostRecentRoundWin(b.id, sortedRounds) - getMostRecentRoundWin(a.id, sortedRounds) ||
+          stateFor(b.id).mostRecentWin - stateFor(a.id).mostRecentWin ||
           (gameOrder.get(a.id) ?? 0) - (gameOrder.get(b.id) ?? 0),
       )
       .map((player) => player.id),
@@ -187,48 +238,5 @@ function compareTiebreakerTotals(
   second: number,
   tiebreaker: GameTiebreaker,
 ): number {
-  if (isLowerBetterTiebreaker(tiebreaker)) {
-    return first - second;
-  }
-
-  return second - first;
-}
-
-function getMostRecentRoundWin(playerId: PlayerId, rounds: readonly Round[]): number {
-  let mostRecent = -1;
-  for (const round of rounds) {
-    if (round.roundWinnerId === playerId) {
-      mostRecent = round.roundNumber;
-    }
-  }
-
-  return mostRecent;
-}
-
-function applyCompetitionPlaces<TPlayer extends PlayerIdentity>(
-  rows: StandingsRow<TPlayer>[],
-): StandingsRow<TPlayer>[] {
-  let place = 1;
-  return rows.map((row, index) => {
-    const previous = rows[index - 1];
-    if (
-      previous &&
-      previous.progress.isFinished === row.progress.isFinished &&
-      previous.progress.currentPhase === row.progress.currentPhase &&
-      previous.tiebreakerTotal === row.tiebreakerTotal
-    ) {
-      return {
-        ...row,
-        place,
-        showPlace: false,
-      };
-    }
-
-    place = index + 1;
-    return {
-      ...row,
-      place,
-      showPlace: true,
-    };
-  });
+  return isLowerBetterTiebreaker(tiebreaker) ? first - second : second - first;
 }

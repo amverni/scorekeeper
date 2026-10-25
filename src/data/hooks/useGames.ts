@@ -1,5 +1,5 @@
-import { queryOptions, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { CreateGameInput, GameId } from "../../types";
+import { type QueryClient, queryOptions, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { CreateGameInput, Game, GameId } from "../../types";
 import { gamesApi } from "../api/games";
 import { phaseSetKeys } from "./usePhaseSets";
 import { phaseKeys } from "./usePhases";
@@ -98,14 +98,26 @@ export function useFinishGame() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: GameId) => gamesApi.finish(id),
-    onSuccess: async (game) => {
-      queryClient.setQueryData(gameKeys.detail(game.id), game);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: gameKeys.all }),
-        queryClient.invalidateQueries({ queryKey: roundKeys.all }),
-        queryClient.invalidateQueries({ queryKey: phaseKeys.all }),
-        queryClient.invalidateQueries({ queryKey: phaseSetKeys.all }),
-      ]);
-    },
+    onSuccess: (game) => refreshGameCache(queryClient, game),
   });
+}
+
+export function useFinishChoice(id: GameId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ choice, token }: { choice: "continue" | "finish"; token: string }) =>
+      gamesApi.resolveFinishChoice(id, choice, token),
+    onSuccess: (game) => refreshGameCache(queryClient, game),
+    onError: () => queryClient.invalidateQueries({ queryKey: gameKeys.all }),
+  });
+}
+
+async function refreshGameCache(queryClient: QueryClient, game: Game) {
+  queryClient.setQueryData(gameKeys.detail(game.id), game);
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: gameKeys.all }),
+    queryClient.invalidateQueries({ queryKey: roundKeys.all }),
+    queryClient.invalidateQueries({ queryKey: phaseKeys.all }),
+    queryClient.invalidateQueries({ queryKey: phaseSetKeys.all }),
+  ]);
 }

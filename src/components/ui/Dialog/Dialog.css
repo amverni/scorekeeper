@@ -102,6 +102,10 @@
   height: 100%;
 }
 
+.dialog-panel-confirmation {
+  max-width: 24rem;
+}
+
 .dialog-panel-floating[data-dialog-dragging] {
   transition: none;
   user-select: none;

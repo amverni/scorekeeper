@@ -33,6 +33,355 @@ afterAll(async () => {
   await server?.close();
 });
 
+it("restores the durable first-finisher choice, continues without finished entries and automatically shows final places", async () => {
+  const page = await browser.newPage({ viewport: { width: 320, height: 844 } });
+  page.setDefaultTimeout(5_000);
+  try {
+    await page.goto(`${appUrl}#/phaseCompan10n/players`);
+    await page.getByText("No players yet", { exact: true }).waitFor();
+    const { game, players } = await seedCompletionGame(page, 1, "roundsWon", 3);
+    await page.goto(`${appUrl}#/phaseCompan10n/game/${game.id}`);
+    await page.getByRole("button", { name: "Add round 1", exact: true }).click();
+    let entry = page.getByRole("dialog", { name: "Add Round", exact: true });
+    await entry.getByRole("button", { name: /Round Winner/ }).click();
+    await page.getByRole("option", { name: players[0].name, exact: true }).click();
+    for (const player of players.slice(1)) {
+      await entry.getByRole("tab", { name: player.name, exact: true }).click();
+      await entry.getByRole("button", { name: "Failed", exact: true }).click();
+    }
+    await entry.getByRole("button", { name: "Save round", exact: true }).click();
+    const choice = page.getByRole("dialog", { name: "Finish Game", exact: true });
+    await choice.getByRole("button", { name: "Keep playing", exact: true }).waitFor();
+    expect(await page.getByRole("dialog").count()).toBe(1);
+    expect(await choice.innerText()).toContain(
+      `${players[0].name} wins. Do others want to keep playing?`,
+    );
+    expect(await choice.getByRole("button").allTextContents()).toEqual(["Keep playing", "Finish"]);
+    expect((await readRounds(page, game.id)).length).toBe(1);
+    await page.keyboard.press("Escape");
+    await page.mouse.click(2, 2);
+    await touchGesture(choice.locator(".dialog-panel"), [
+      { y: 0, time: 0 },
+      { y: 250, time: 100 },
+      { y: 250, time: 110 },
+    ]);
+    expect(await choice.locator(".dialog-panel").isVisible()).toBe(true);
+    await page.reload();
+    await choice.getByRole("button", { name: "Keep playing", exact: true }).waitFor();
+    expect((await readRounds(page, game.id)).length).toBe(1);
+    await choice.getByRole("button", { name: "Keep playing", exact: true }).click();
+    await choice.waitFor({ state: "detached" });
+    await page.reload();
+    await page.getByRole("button", { name: "Add round 2", exact: true }).waitFor();
+    expect(await page.getByRole("dialog").count()).toBe(0);
+    expect(await page.locator(".scoreboard-cell--sticky-top").first().innerText()).toContain("1st");
+    await page.getByRole("button", { name: "Add round 2", exact: true }).click();
+    entry = page.getByRole("dialog", { name: "Add Round", exact: true });
+    expect(
+      await entry
+        .getByRole("tab")
+        .evaluateAll((tabs) => tabs.map((tab) => tab.getAttribute("aria-label"))),
+    ).toEqual([players[1].name, players[2].name]);
+    await entry.getByRole("button", { name: /Round Winner/ }).click();
+    expect(await page.getByRole("option", { name: players[0].name, exact: true }).count()).toBe(0);
+    await page.getByRole("option", { name: players[1].name, exact: true }).click();
+    await entry.getByRole("tab", { name: players[2].name, exact: true }).click();
+    await entry.getByRole("button", { name: "Failed", exact: true }).click();
+    await entry.getByRole("button", { name: "Save round", exact: true }).click();
+    await page.getByRole("tabpanel", { name: "Standings", exact: true }).waitFor();
+    const standings = await openStandings(page);
+    expect(await page.getByRole("dialog").count()).toBe(1);
+    expect((await readGameView(page, game.id))?.game).toMatchObject({
+      status: "completed",
+      completionType: "normal",
+      winnerIds: [players[0].id],
+    });
+    expect(await standings.getByRole("list", { name: "Standings places" }).innerText()).toContain(
+      "Place 3",
+    );
+    expect(await page.getByRole("dialog", { name: "Finish Game", exact: true }).count()).toBe(0);
+    await standings.getByRole("tab", { name: "Phases", exact: true }).click();
+    for (const player of players.slice(0, 2)) {
+      expect(
+        await standings
+          .getByRole("img", { name: `Latest finished phase 1: ${player.name}`, exact: true })
+          .count(),
+      ).toBe(1);
+    }
+    await standings.getByRole("tab", { name: "Tiebreaker", exact: true }).click();
+    for (const player of players.slice(0, 2)) {
+      expect(
+        await standings
+          .getByRole("img", { name: `Latest 1 win: ${player.name}`, exact: true })
+          .count(),
+      ).toBe(1);
+    }
+    await standings.getByRole("button", { name: "Close", exact: true }).click();
+    await standings.waitFor({ state: "detached" });
+    const headers = await page.locator(".scoreboard-cell--sticky-top").allTextContents();
+    expect(headers.map((text) => text.match(/[123](st|nd|rd)/)?.[0])).toEqual([
+      "1st",
+      "2nd",
+      "3rd",
+    ]);
+    expect((await readRounds(page, game.id))[1].scores.map((score) => score.playerId)).toEqual([
+      players[1].id,
+      players[2].id,
+    ]);
+    const blank = page.locator(".scoreboard > .scoreboard-cell").nth(9);
+    expect((await blank.innerText()).trim()).toBe("");
+    await page.reload();
+    await page.getByRole("tabpanel", { name: "Standings", exact: true }).waitFor();
+    expect((await readGameView(page, game.id))?.game.status).toBe("completed");
+    expect(
+      await (await openStandings(page)).getByRole("list", { name: "Standings places" }).innerText(),
+    ).toContain("Place 3");
+  } finally {
+    await page.close();
+  }
+}, 60_000);
+
+it.each([
+  "Keep playing",
+  "Finish",
+] as const)("keeps a failed first-finisher %s choice explicit and retryable without resaving the Round", async (action) => {
+  const page = await browser.newPage({ viewport: { width: 320, height: 844 } });
+  page.setDefaultTimeout(5_000);
+  try {
+    await page.goto(`${appUrl}#/phaseCompan10n/players`);
+    await page.getByText("No players yet", { exact: true }).waitFor();
+    const { game, players } = await seedCompletionGame(page, 1, "roundsWon", 3);
+    await page.evaluate(`
+      import("/scorekeeper/src/data/api/rounds.ts").then(({ roundsApi }) => roundsApi.add({
+        gameId: ${JSON.stringify(game.id)},
+        roundWinnerId: ${JSON.stringify(players[0].id)},
+        scores: ${JSON.stringify(
+          players.map((player, index) => ({
+            playerId: player.id,
+            phaseStatus: index === 0 ? "completed" : "failed",
+            score: 0,
+          })),
+        )}
+      }))
+    `);
+    await page.goto(`${appUrl}#/phaseCompan10n/game/${game.id}`);
+    const choice = page.getByRole("dialog", { name: "Finish Game", exact: true });
+    const keep = choice.getByRole("button", { name: "Keep playing", exact: true });
+    const finish = choice.getByRole("button", { name: "Finish", exact: true });
+    await keep.waitFor();
+    await expect
+      .poll(() => keep.evaluate((button) => button === document.activeElement))
+      .toBe(true);
+    const tab = process.platform === "darwin" ? "Alt+Tab" : "Tab";
+    await page.keyboard.press(tab);
+    expect(await finish.evaluate((button) => button === document.activeElement)).toBe(true);
+    await page.keyboard.press(tab);
+    await expect
+      .poll(() => choice.evaluate((dialog) => dialog.contains(document.activeElement)))
+      .toBe(true);
+    for (const width of [320, 390, 768]) {
+      await page.setViewportSize({ width, height: 844 });
+      const panel = await choice.locator(".dialog-panel").boundingBox();
+      if (!panel) throw new Error("Missing compact choice panel");
+      expect(panel.width).toBeLessThanOrEqual(384);
+      for (const button of [keep, finish]) {
+        const box = await button.boundingBox();
+        if (!box) throw new Error("Missing choice action");
+        expect(Math.round(box.height)).toBeGreaterThanOrEqual(44);
+        expect(box.x).toBeGreaterThanOrEqual(panel.x);
+        expect(box.x + box.width).toBeLessThanOrEqual(panel.x + panel.width);
+      }
+    }
+    await page.evaluate(() => {
+      const put = IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put = function (value, key) {
+        if (this.name === "games") {
+          IDBObjectStore.prototype.put = put;
+          throw new DOMException("Choice write failed", "QuotaExceededError");
+        }
+        return put.call(this, value, key);
+      };
+    });
+    await holdRoundStorage(page);
+    await choice.getByRole("button", { name: action, exact: true }).evaluate((button) => {
+      (button as HTMLButtonElement).click();
+      (button as HTMLButtonElement).click();
+    });
+    await expect.poll(() => keep.isDisabled()).toBe(true);
+    expect(await finish.isDisabled()).toBe(true);
+    await page.keyboard.press("Escape");
+    await page.mouse.click(2, 2);
+    expect(await choice.locator(".dialog-panel").isVisible()).toBe(true);
+    await releaseRoundStorage(page);
+    await choice.getByRole("alert").waitFor();
+    expect(await choice.getByRole("alert").innerText()).toContain("Choice write failed");
+    expect((await readGameView(page, game.id))?.game.status).toBe("active");
+    expect((await readRounds(page, game.id)).length).toBe(1);
+    await page.keyboard.press("Escape");
+    expect(await keep.isVisible()).toBe(true);
+    await choice.getByRole("button", { name: action, exact: true }).click();
+    await choice.waitFor({ state: "detached" });
+    if (action === "Finish") {
+      await page.getByRole("tabpanel", { name: "Standings", exact: true }).waitFor();
+    } else {
+      await page.getByRole("button", { name: "Add round 2", exact: true }).waitFor();
+    }
+    await page.reload();
+    if (action === "Finish") {
+      await page.getByRole("tabpanel", { name: "Standings", exact: true }).waitFor();
+    } else {
+      await page.getByRole("button", { name: "Add round 2", exact: true }).waitFor();
+    }
+    const restored = await readGameView(page, game.id);
+    expect(restored?.game.status).toBe(action === "Finish" ? "completed" : "active");
+    expect(restored?.pendingFinishChoice).toBeNull();
+    expect(restored?.rounds.length).toBe(1);
+  } finally {
+    await releaseRoundStorage(page);
+    await page.close();
+  }
+}, 60_000);
+
+it("shows retained entries and whole excluded Rounds muted while ordinary post-finish cells stay blank", async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  page.setDefaultTimeout(5_000);
+  try {
+    await page.goto(`${appUrl}#/phaseCompan10n/players`);
+    await page.getByText("No players yet", { exact: true }).waitFor();
+    const { game, players } = await seedCompletionGame(page, 2, "lowestPoints", 4);
+    await page.evaluate(`
+      Promise.all([
+        import("/scorekeeper/src/data/api/rounds.ts"),
+        import("/scorekeeper/src/data/api/games.ts")
+      ]).then(async ([{ roundsApi }, { gamesApi }]) => {
+        const players = ${JSON.stringify(players)};
+        for (let index = 0; index < 3; index++) {
+          await roundsApi.add({
+            gameId: ${JSON.stringify(game.id)},
+            roundWinnerId: index === 2 ? players[0].id : null,
+            scores: players.map((player, playerIndex) => ({
+              playerId: player.id,
+              phaseStatus: playerIndex < 2 && index > 0 ? "completed" : "failed",
+              score: 10
+            }))
+          });
+        }
+        const view = await gamesApi.getView(${JSON.stringify(game.id)});
+        await gamesApi.resolveFinishChoice(view.game.id, "continue", view.pendingFinishChoice.token);
+        await roundsApi.add({
+          gameId: view.game.id, roundWinnerId: null,
+          scores: players.slice(2).map((player) => ({ playerId: player.id, phaseStatus: "failed", score: 10 }))
+        });
+        await roundsApi.edit(view.game.id, 1, players[0].id, { phaseStatus: "completed" });
+      })
+    `);
+    await page.goto(`${appUrl}#/phaseCompan10n/game/${game.id}`);
+    await page.getByRole("button", { name: "Round 3", exact: true }).click();
+    const cells = page.locator(".scoreboard > .scoreboard-cell");
+    const retained = cells.nth(16);
+    expect(await retained.innerText()).toContain("Retained entry, not counted.");
+    expect(Number(await retained.evaluate((cell) => getComputedStyle(cell).opacity))).toBeLessThan(
+      1,
+    );
+    expect(
+      await cells.nth(17).getByText("Retained entry, not counted.", { exact: true }).count(),
+    ).toBe(0);
+    expect((await cells.nth(21).innerText()).trim()).toBe("");
+    expect(await page.getByRole("dialog").count()).toBe(0);
+    await page.evaluate(`
+      import("/scorekeeper/src/data/api/rounds.ts").then(async ({ roundsApi }) => {
+        const gameId = ${JSON.stringify(game.id)};
+        const players = ${JSON.stringify(players)};
+        await roundsApi.edit(gameId, 1, players[1].id, { phaseStatus: "completed" });
+        await roundsApi.edit(gameId, 1, players[2].id, { phaseStatus: "completed" });
+        await roundsApi.edit(gameId, 2, players[2].id, { phaseStatus: "completed" });
+      })
+    `);
+    await page.reload();
+    await page.getByRole("tabpanel", { name: "Standings", exact: true }).waitFor();
+    await page.keyboard.press("Escape");
+    await page.getByRole("dialog").waitFor({ state: "detached" });
+    const excluded = page.getByRole("button", { name: "Round 3, not counted", exact: true });
+    expect(Number(await excluded.evaluate((cell) => getComputedStyle(cell).opacity))).toBeLessThan(
+      1,
+    );
+    expect(
+      await page.getByRole("button", { name: "Round 4, not counted", exact: true }).count(),
+    ).toBe(1);
+    const view = await readGameView(page, game.id);
+    expect(view?.gameEndingRound).toBe(2);
+    expect(view?.rounds.length).toBe(4);
+    expect(view?.rounds[2].source.roundWinnerId).toBe(players[0].id);
+    expect(view?.rounds[2].scores.every((entry) => !entry.counted)).toBe(true);
+  } finally {
+    await page.close();
+  }
+}, 60_000);
+
+it("rejects a stale Add Round after a same-number history correction and preserves its draft for review", async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  page.setDefaultTimeout(5_000);
+  try {
+    await page.goto(`${appUrl}#/phaseCompan10n/players`);
+    await page.getByText("No players yet", { exact: true }).waitFor();
+    const { game, players } = await seedCompletionGame(page, 3, "lowestPoints", 3);
+    await page.evaluate(`
+      import("/scorekeeper/src/data/api/rounds.ts").then(({ roundsApi }) => roundsApi.add({
+        gameId: ${JSON.stringify(game.id)}, roundWinnerId: null,
+        scores: ${JSON.stringify(
+          players.map((player) => ({
+            playerId: player.id,
+            phaseStatus: "failed",
+            score: 50,
+          })),
+        )}
+      }))
+    `);
+    await page.goto(`${appUrl}#/phaseCompan10n/game/${game.id}`);
+    await page.getByRole("button", { name: "Add round 2", exact: true }).click();
+    const entry = page.getByRole("dialog", { name: "Add Round", exact: true });
+    await entry.getByRole("button", { name: /Round Winner/ }).click();
+    await page.getByRole("option", { name: players[0].name, exact: true }).click();
+    for (const player of players.slice(1)) {
+      await entry.getByRole("tab", { name: player.name, exact: true }).click();
+      await entry.getByRole("button", { name: "Failed", exact: true }).click();
+    }
+    await entry.getByRole("tab", { name: players[0].name, exact: true }).click();
+    await page.evaluate(`
+      import("/scorekeeper/src/data/api/rounds.ts").then(({ roundsApi }) =>
+        roundsApi.edit(${JSON.stringify(game.id)}, 1, ${JSON.stringify(players[0].id)}, { phaseStatus: "completed" })
+      )
+    `);
+    await entry.getByRole("button", { name: "Save round", exact: true }).click();
+    await entry.getByText(/Couldn't save round: Game history changed/).waitFor();
+    expect(
+      await entry.getByRole("button", { name: "Passed", exact: true }).getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect((await readRounds(page, game.id)).length).toBe(1);
+    await entry.getByRole("button", { name: "Save round", exact: true }).click();
+    await expect.poll(async () => (await readRounds(page, game.id)).length).toBe(1);
+    await entry.getByRole("button", { name: "Close", exact: true }).click();
+    await entry.waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Add round 2", exact: true }).click();
+    expect(
+      await entry.getByRole("button", { name: "Passed", exact: true }).getAttribute("aria-pressed"),
+    ).toBe("true");
+    await entry.getByRole("button", { name: "Failed", exact: true }).click();
+    await entry.getByRole("button", { name: "Save round", exact: true }).click();
+    await entry.waitFor({ state: "detached" });
+    await page.reload();
+    await page.getByRole("button", { name: "Add round 3", exact: true }).waitFor();
+    const restored = await readGameView(page, game.id);
+    expect(restored?.players[0].progress).toMatchObject({ currentPhase: 2, isFinished: false });
+    expect(restored?.rounds[1].scores[0].source).toMatchObject({
+      currentPhase: 2,
+      phaseStatus: "failed",
+    });
+  } finally {
+    await page.close();
+  }
+}, 60_000);
+
 it.each<GameTiebreaker>([
   "roundsWon",
   "lowestPoints",
@@ -411,7 +760,9 @@ it("preserves the actual Points Card Breakdown from Add Round controls through p
     await save.click();
     await expect.poll(() => save.isDisabled()).toBe(true);
     await releaseRoundStorage(page);
-    await entry.getByText("Couldn't save round — try again.", { exact: true }).waitFor();
+    await entry
+      .getByText("Couldn't save round: Round storage unavailable Try again.", { exact: true })
+      .waitFor();
     await entry.getByRole("tabpanel").getByText("Used 8 times", { exact: true }).waitFor();
     expect(
       await page.evaluate(`
@@ -920,7 +1271,9 @@ it.each([
     await page.mouse.click(4, 4);
     expect(await cancel.isVisible()).toBe(true);
     await releaseRoundStorage(page);
-    const feedback = dialog.getByText("Couldn't save round — try again.", { exact: true });
+    const feedback = dialog.getByText("Couldn't save round: Round storage unavailable Try again.", {
+      exact: true,
+    });
     await feedback.waitFor();
     const feedbackBounds = await feedback.boundingBox();
     const visiblePanel = await dialog.locator(".dialog-panel").boundingBox();
@@ -1357,7 +1710,7 @@ function seedCompletionGame(
   phaseCount = 1,
   tiebreaker: GameTiebreaker = "roundsWon",
   playerCount = 2,
-  playerNames = ["Amy Jones", "Bob Stone", "Cam Lee"],
+  playerNames = ["Amy Jones", "Bob Stone", "Cam Lee", "Dan Gray"],
 ) {
   return page.evaluate<{ game: Game; players: Player[] }>(`
     Promise.all([
@@ -1375,8 +1728,11 @@ function seedCompletionGame(
         isFavorite: 0
       });
       const players = [amy, bob];
-      if (${playerCount} === 3) {
+      if (${playerCount} >= 3) {
         players.push(await playersApi.create({ name: ${JSON.stringify(playerNames[2])}, color: "#456789", isFavorite: 0 }));
+      }
+      if (${playerCount} >= 4) {
+        players.push(await playersApi.create({ name: ${JSON.stringify(playerNames[3])}, color: "#765432", isFavorite: 0 }));
       }
       const game = await gamesApi.create({
         scorekeeper: "phase10",
@@ -1413,6 +1769,14 @@ function readRounds(page: Page, gameId: string) {
   return page.evaluate<Round[]>(`
     import("/scorekeeper/src/data/api/rounds.ts").then(({ roundsApi }) =>
       roundsApi.getByGameId(${JSON.stringify(gameId)})
+    )
+  `);
+}
+
+function readGameView(page: Page, gameId: string) {
+  return page.evaluate<GameReadModel | null>(`
+    import("/scorekeeper/src/data/api/games.ts").then(({ gamesApi }) =>
+      gamesApi.getView(${JSON.stringify(gameId)})
     )
   `);
 }

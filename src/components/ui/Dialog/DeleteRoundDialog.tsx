@@ -1,7 +1,6 @@
-import { Description, DialogTitle } from "@headlessui/react";
 import { useEffect, useRef } from "react";
 import { Button } from "../Button/Button";
-import { Dialog } from "./Dialog";
+import { ConfirmationDialog } from "./ConfirmationDialog";
 
 interface DeleteRoundDialogProps {
   open: boolean;
@@ -27,13 +26,12 @@ export function DeleteRoundDialog({
   }, [open]);
 
   return (
-    <Dialog
+    <ConfirmationDialog
       open={open}
+      title="Delete round"
+      message={`Delete Round ${roundNumber}? This cannot be undone.`}
       onClose={onCancel}
       dismissible={!isPending}
-      showCloseButton={false}
-      draggable={false}
-      header={<DialogTitle className="text-lg font-semibold">Delete round</DialogTitle>}
       actions={
         <div className="flex justify-end gap-3">
           <Button
@@ -56,10 +54,6 @@ export function DeleteRoundDialog({
           </Button>
         </div>
       }
-    >
-      <Description className="text-center text-text-secondary">
-        Delete Round {roundNumber}? This cannot be undone.
-      </Description>
-    </Dialog>
+    />
   );
 }

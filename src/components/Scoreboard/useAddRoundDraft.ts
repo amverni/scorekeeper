@@ -23,6 +23,22 @@ export function useAddRoundDraft(
 ): UseAddRoundDraft {
   const [draft, setDraft] = useState(() => draftHelpers.createInitialDraft(players));
   const draftRef = useRef(draft);
+  if (
+    players.length !== draft.players.length ||
+    players.some((player, index) => player.id !== draft.players[index]?.playerId)
+  ) {
+    const initial = draftHelpers.createInitialDraft(players);
+    const nextDraft = {
+      players: initial.players.map(
+        (player) => draft.players.find((entry) => entry.playerId === player.playerId) ?? player,
+      ),
+      roundWinnerId: players.some((player) => player.id === draft.roundWinnerId)
+        ? draft.roundWinnerId
+        : null,
+    };
+    draftRef.current = nextDraft;
+    setDraft(nextDraft);
+  }
 
   const setNextDraft = (nextDraft: draftHelpers.AddRoundDraft) => {
     draftRef.current = nextDraft;
