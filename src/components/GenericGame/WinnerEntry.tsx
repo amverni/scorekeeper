@@ -1,5 +1,6 @@
 import { Radio, RadioGroup } from "@headlessui/react";
 import { Check } from "lucide-react";
+import { useEffect, useRef } from "react";
 import type { PlayerId, PlayerIdentity } from "../../types";
 import { PlayerAvatar } from "../PlayerAvatar/PlayerAvatar";
 import { Button, DialogScrollArea } from "../ui";
@@ -9,9 +10,24 @@ interface WinnerEntryProps {
   value: PlayerId | null;
   onChange: (value: PlayerId | null) => void;
   disabled: boolean;
+  focusPlayerId?: PlayerId;
 }
 
-export function WinnerEntry({ players, value, onChange, disabled }: WinnerEntryProps) {
+export function WinnerEntry({
+  players,
+  value,
+  onChange,
+  disabled,
+  focusPlayerId,
+}: WinnerEntryProps) {
+  const focusRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!focusPlayerId) return;
+    // Headless UI skips dialog autofocus on touch; cell edits still target their control.
+    const frame = requestAnimationFrame(() => focusRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [focusPlayerId]);
+
   return (
     <DialogScrollArea aria-label="Choose Round Winner" className="px-6! pt-4! pb-6!">
       <RadioGroup
@@ -27,6 +43,7 @@ export function WinnerEntry({ players, value, onChange, disabled }: WinnerEntryP
             type="button"
             key={player.id}
             value={player.id}
+            ref={player.id === focusPlayerId ? focusRef : undefined}
             aria-label={player.name}
             className={[
               "min-h-12 w-full gap-3 rounded-full border-2 border-transparent px-4 py-3",

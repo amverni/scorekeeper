@@ -2,9 +2,10 @@ import { DialogTitle } from "@headlessui/react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { genericRoundEditorOptions } from "../../data/hooks/useGenericGames";
-import type { GameId, GenericPointsRoundEditor, GenericRoundId, PlayerId } from "../../types";
+import type { GameId, GenericRoundEditor, GenericRoundId, PlayerId } from "../../types";
 import { Dialog, InlineError } from "../ui";
 import { GenericAddRoundDialog } from "./GenericAddRoundDialog";
+import { GenericPassFailRoundDialog } from "./GenericPassFailRoundDialog";
 
 interface GenericEditRoundDialogProps {
   gameId: GameId;
@@ -50,16 +51,28 @@ function LoadedRoundEditor({
   focusPlayerId,
   onClose,
   initialEditor,
-}: GenericEditRoundDialogProps & { initialEditor: GenericPointsRoundEditor }) {
+}: GenericEditRoundDialogProps & { initialEditor: GenericRoundEditor }) {
   // Keep the history version paired with the draft even if another query refreshes.
   const [editor] = useState(initialEditor);
+  if (editor.mode === "passFail") {
+    return (
+      <GenericPassFailRoundDialog
+        open
+        onClose={onClose}
+        gameId={gameId}
+        players={editor.players}
+        editor={editor}
+        focusPlayerId={focusPlayerId}
+      />
+    );
+  }
   return (
     <GenericAddRoundDialog
       open
       onClose={onClose}
       gameId={gameId}
       players={editor.players}
-      mode="points"
+      mode={editor.round.mode}
       tiebreakerEnabled={editor.tiebreakerEnabled}
       editor={editor}
       focusPlayerId={focusPlayerId}

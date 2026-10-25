@@ -6,20 +6,16 @@ import {
   useEditGenericRound,
   usePreviewGenericRoundEdit,
 } from "../../data/hooks/useGenericGames";
-import type {
-  AddGenericRoundInput,
-  EditGenericPointsRoundInput,
-  GenericPointsRoundEditor,
-} from "../../types";
+import type { AddGenericRoundInput, EditGenericRoundInput, GenericRoundEditor } from "../../types";
 import { Button, Dialog, DialogScrollArea, InlineError } from "../ui";
 
 export function useGenericRoundDialog(
   onClose: (open: boolean) => void,
-  editor?: GenericPointsRoundEditor,
+  editor?: GenericRoundEditor,
 ) {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<{
-    input: EditGenericPointsRoundInput;
+    input: EditGenericRoundInput;
     resetDraft: () => void;
   } | null>(null);
   const submitting = useRef(false);
@@ -30,7 +26,6 @@ export function useGenericRoundDialog(
 
   async function saveRound(input: AddGenericRoundInput, resetDraft: () => void) {
     if (editor) {
-      if (input.mode !== "points") throw new Error("Only Points Rounds can be edited.");
       const edit = { ...input, roundId: editor.round.id, version: editor.version };
       const impact = await previewEdit.mutateAsync(edit);
       if (impact.requiresConfirmation) {

@@ -235,26 +235,24 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
                               {score.totalTiebreaker}
                             </span>
                           )}
-                          {view.game.status === "active" &&
-                            view.game.settings.mode === "points" &&
-                            round.id && (
-                              <Button
-                                type="button"
-                                aria-label={`Edit Round ${round.roundNumber} for ${view.players[index].name}`}
-                                className="mt-2 min-h-11 px-3 text-xs"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  if (round.id) {
-                                    setEditTarget({
-                                      roundId: round.id,
-                                      playerId: score.playerId,
-                                    });
-                                  }
-                                }}
-                              >
-                                Edit
-                              </Button>
-                            )}
+                          {view.game.status === "active" && round.id && (
+                            <Button
+                              type="button"
+                              aria-label={`Edit Round ${round.roundNumber} for ${view.players[index].name}`}
+                              className="mt-2 min-h-11 px-3 text-xs"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                if (round.id) {
+                                  setEditTarget({
+                                    roundId: round.id,
+                                    playerId: score.playerId,
+                                  });
+                                }
+                              }}
+                            >
+                              Edit
+                            </Button>
+                          )}
                         </div>
                       </div>
                     )}

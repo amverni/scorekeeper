@@ -1,7 +1,7 @@
 import { Tab, TabGroup, TabPanel } from "@headlessui/react";
 import { useForm } from "@tanstack/react-form";
 import { useEffect, useRef, useState } from "react";
-import type { GameId, GenericPointsRoundEditor, PlayerId, PlayerIdentity } from "../../types";
+import type { GameId, GenericRoundEditor, PlayerId, PlayerIdentity } from "../../types";
 import { parseGenericPoints } from "../../utils/genericPoints";
 import { PlayerAvatar } from "../PlayerAvatar/PlayerAvatar";
 import { EditImpactDialog, SwipeableTabPanels, TabList, tabClasses } from "../ui";
@@ -20,7 +20,7 @@ interface GenericAddRoundDialogProps {
   players: PlayerIdentity[];
   mode: "points" | "singleRoundWinner";
   tiebreakerEnabled: boolean;
-  editor?: GenericPointsRoundEditor;
+  editor?: GenericRoundEditor;
   focusPlayerId?: PlayerId;
 }
 
@@ -67,14 +67,15 @@ export function GenericAddRoundDialog({
   const roundDialog = useGenericRoundDialog(onClose, editor);
   const form = useForm({
     defaultValues: {
-      scores: editor
-        ? editor.round.scores.map(({ playerId, points, tiebreaker }) => ({
-            playerId,
-            points: String(points),
-            tiebreaker: String(tiebreaker ?? 0),
-          }))
-        : players.map((player) => ({ playerId: player.id, points: "0", tiebreaker: "0" })),
-      winnerId: null as PlayerId | null,
+      scores:
+        editor?.round.mode === "points"
+          ? editor.round.scores.map(({ playerId, points, tiebreaker }) => ({
+              playerId,
+              points: String(points),
+              tiebreaker: String(tiebreaker ?? 0),
+            }))
+          : players.map((player) => ({ playerId: player.id, points: "0", tiebreaker: "0" })),
+      winnerId: editor && "winnerId" in editor ? editor.winnerId : (null as PlayerId | null),
     },
     onSubmit: async ({ value }) => {
       await roundDialog.saveRound(
@@ -154,6 +155,7 @@ export function GenericAddRoundDialog({
               <WinnerEntry
                 players={players}
                 value={field.state.value}
+                focusPlayerId={focusPlayerId}
                 disabled={roundDialog.isPending}
                 onChange={(value) => {
                   roundDialog.clearSubmitError();

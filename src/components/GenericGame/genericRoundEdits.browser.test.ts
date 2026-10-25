@@ -315,7 +315,7 @@ it.each([
   "points",
   "singleRoundWinner",
   "passFail",
-] as const)("does not expose editing for completed or unsupported %s Games", async (mode) => {
+] as const)("does not expose editing for completed %s Games", async (mode) => {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   page.setDefaultTimeout(5_000);
   page.setDefaultNavigationTimeout(30_000);
@@ -326,16 +326,14 @@ it.each([
         ? { mode, pointsDirection: "high", tiebreaker: null, dealer: false }
         : { mode, tiebreaker: null, dealer: false },
     );
-    if (mode === "points") {
-      await page.evaluate(`(async () => {
+    await page.evaluate(`(async () => {
           const { genericGamesApi } = await import("/scorekeeper/src/data/api/genericGames.ts");
           await genericGamesApi.finish(${JSON.stringify(gameId)});
         })()`);
-      await page.reload();
-      const standings = page.getByRole("dialog", { name: "Standings", exact: true });
-      await standings.getByRole("button", { name: "Close", exact: true }).click();
-      await standings.waitFor({ state: "detached" });
-    }
+    await page.reload();
+    const standings = page.getByRole("dialog", { name: "Standings", exact: true });
+    await standings.getByRole("button", { name: "Close", exact: true }).click();
+    await standings.waitFor({ state: "detached" });
     await page.getByRole("button", { name: "Expand Round 1", exact: true }).click();
     expect(await page.getByRole("button", { name: /^Edit Round/ }).count()).toBe(0);
   } finally {
@@ -386,6 +384,212 @@ it("rejects stale confirmation without losing the draft and reloads fresh values
     await page
       .getByRole("cell", { name: "Maya, Round 1: 9 Points, 2 Tiebreaker, Dealer", exact: true })
       .waitFor();
+  } finally {
+    await page.close();
+  }
+}, 60_000);
+
+it.each([
+  { width: 390, height: 844, hasTouch: false },
+  { width: 320, height: 568, hasTouch: true },
+])("edits a saved winner without changing selection on focus and preserves the next Round draft at $width x $height", async ({
+  width,
+  height,
+  hasTouch,
+}) => {
+  const page = await browser.newPage({ viewport: { width, height }, hasTouch });
+  page.setDefaultTimeout(5_000);
+  page.setDefaultNavigationTimeout(30_000);
+  try {
+    await openGame(page, { mode: "singleRoundWinner", tiebreaker: null, dealer: true });
+    const add = page.getByRole("button", { name: "Add Round", exact: true });
+    const addDialog = page.getByRole("dialog", { name: "Add Round", exact: true });
+    await add.click();
+    await addDialog.getByRole("radio", { name: "Maya", exact: true }).click();
+    await addDialog.getByRole("button", { name: "Close", exact: true }).click();
+    await addDialog.waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Expand Round 1", exact: true }).press("Enter");
+    await page.getByRole("button", { name: "Edit Round 1 for Rowan", exact: true }).press("Enter");
+    const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
+    const maya = editor.getByRole("radio", { name: "Maya", exact: true });
+    const rowan = editor.getByRole("radio", { name: "Rowan", exact: true });
+    await rowan.waitFor();
+    await expect
+      .poll(() => rowan.evaluate((element) => element === document.activeElement))
+      .toBe(true);
+    expect(await maya.isChecked()).toBe(true);
+    expect(await rowan.isChecked()).toBe(false);
+    expect(await editor.getByRole("tab").count()).toBe(0);
+    expect(await editor.getByRole("radio").count()).toBe(2);
+    await rowan.press("Space");
+    expect(await rowan.isChecked()).toBe(true);
+    expect(await editor.getByRole("radio", { checked: true }).count()).toBe(1);
+    const confirmation = page.getByRole("dialog", { name: "Edit round", exact: true });
+    for (const dismissal of ["Edit", "Escape", "outside"] as const) {
+      await editor.getByRole("button", { name: "Save", exact: true }).click();
+      await confirmation
+        .getByText("This edit will change game results.", { exact: true })
+        .waitFor();
+      expect(await confirmation.getByRole("button").allTextContents()).toEqual(["Edit", "Save"]);
+      expect(await confirmation.getByRole("button", { name: /Close|back/i }).count()).toBe(0);
+      if (dismissal === "Edit") {
+        await confirmation.getByRole("button", { name: "Edit", exact: true }).click();
+      } else if (dismissal === "Escape") {
+        await page.keyboard.press("Escape");
+      } else {
+        await page.mouse.click(1, 1);
+      }
+      await confirmation.waitFor({ state: "detached" });
+      expect(await rowan.isChecked()).toBe(true);
+    }
+    await editor.getByRole("button", { name: "Save", exact: true }).click();
+    await confirmation.getByRole("button", { name: "Save", exact: true }).click();
+    await editor.waitFor({ state: "detached" });
+    await confirmation.waitFor({ state: "detached" });
+    await page.getByRole("cell", { name: "Rowan, Round 1: Won", exact: true }).waitFor();
+    expect(await page.getByRole("columnheader", { name: /Maya/ }).innerText()).toContain(
+      "Total Wins: 0",
+    );
+    expect(await page.getByRole("columnheader", { name: /Rowan/ }).innerText()).toContain(
+      "Total Wins: 1",
+    );
+    await add.click();
+    expect(await addDialog.getByRole("radio", { name: "Maya", exact: true }).isChecked()).toBe(
+      true,
+    );
+    expect(await addDialog.getByRole("radio", { checked: true }).count()).toBe(1);
+    await addDialog.getByRole("button", { name: "Close", exact: true }).click();
+    await addDialog.waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Open Standings", exact: true }).click();
+    const standings = page.getByRole("dialog", { name: "Standings", exact: true });
+    expect(await standings.getByRole("listitem").allTextContents()).toEqual([
+      expect.stringMatching(/^Place 11.*RowanTotal Wins: 1$/),
+      expect.stringMatching(/^Place 22.*MayaTotal Wins: 0$/),
+    ]);
+    await page.reload();
+    await page.getByRole("cell", { name: "Rowan, Round 1: Won", exact: true }).waitFor();
+    await add.waitFor();
+    await page.getByRole("button", { name: "Expand Round 1", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 1 for Maya", exact: true }).click();
+    expect(await rowan.isChecked()).toBe(true);
+    await maya.click();
+    await editor.getByRole("button", { name: "Close", exact: true }).click();
+    await editor.waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Edit Round 1 for Maya", exact: true }).click();
+    expect(await rowan.isChecked()).toBe(true);
+  } finally {
+    await page.close();
+  }
+}, 60_000);
+
+it("retains a failed winner correction and prevents duplicate confirmed saves while storage is pending", async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  page.setDefaultTimeout(5_000);
+  page.setDefaultNavigationTimeout(30_000);
+  try {
+    const gameId = await openGame(page, {
+      mode: "singleRoundWinner",
+      tiebreaker: null,
+      dealer: false,
+    });
+    await page.getByRole("button", { name: "Expand Round 1", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 1 for Rowan", exact: true }).click();
+    const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
+    await editor.getByRole("radio", { name: "Rowan", exact: true }).click();
+    await editor.getByRole("button", { name: "Save", exact: true }).click();
+    const confirmation = page.getByRole("dialog", { name: "Edit round", exact: true });
+    const save = confirmation.getByRole("button", { name: "Save", exact: true });
+    await save.waitFor();
+    await holdRoundStorage(page);
+    await page.evaluate((gameId) => {
+      const put = IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put = function (value, key) {
+        if (value?.id === gameId) {
+          IDBObjectStore.prototype.put = put;
+          throw new DOMException("Winner correction storage unavailable", "QuotaExceededError");
+        }
+        return put.call(this, value, key);
+      };
+    }, gameId);
+    await save.evaluate((button: HTMLButtonElement) => {
+      button.click();
+      button.click();
+    });
+    await expect.poll(() => save.isDisabled()).toBe(true);
+    expect(await confirmation.getByRole("button", { name: "Edit", exact: true }).isDisabled()).toBe(
+      true,
+    );
+    await page.keyboard.press("Escape");
+    await save.waitFor();
+    await releaseRoundStorage(page);
+    await confirmation.waitFor({ state: "detached" });
+    await editor
+      .getByRole("alert")
+      .filter({ hasText: "Winner correction storage unavailable" })
+      .waitFor();
+    expect(await editor.getByRole("radio", { name: "Rowan", exact: true }).isChecked()).toBe(true);
+    expect(
+      await page.evaluate(`(async () => {
+      const { genericRoundsApi } = await import("/scorekeeper/src/data/api/genericRounds.ts");
+      return genericRoundsApi.getByGameId(${JSON.stringify(gameId)});
+    })()`),
+    ).toMatchObject([{ revision: 0, scores: [{ won: true }, { won: false }] }]);
+    await editor.getByRole("button", { name: "Save", exact: true }).click();
+    await save.click();
+    await editor.waitFor({ state: "detached" });
+    await confirmation.waitFor({ state: "detached" });
+    await page.reload();
+    await page.getByRole("cell", { name: "Rowan, Round 1: Won", exact: true }).waitFor();
+    expect(
+      await page.evaluate(`(async () => {
+      const { genericRoundsApi } = await import("/scorekeeper/src/data/api/genericRounds.ts");
+      return genericRoundsApi.getByGameId(${JSON.stringify(gameId)});
+    })()`),
+    ).toMatchObject([{ revision: 1, scores: [{ won: false }, { won: true }] }]);
+  } finally {
+    await releaseRoundStorage(page);
+    await page.close();
+  }
+}, 60_000);
+
+it("surfaces stale winner approval, keeps the correction draft, and reloads saved selection on reopening", async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  page.setDefaultTimeout(5_000);
+  page.setDefaultNavigationTimeout(30_000);
+  try {
+    const gameId = await openGame(page, {
+      mode: "singleRoundWinner",
+      tiebreaker: null,
+      dealer: false,
+    });
+    await page.getByRole("button", { name: "Expand Round 1", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 1 for Rowan", exact: true }).click();
+    const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
+    await editor.getByRole("radio", { name: "Rowan", exact: true }).click();
+    await editor.getByRole("button", { name: "Save", exact: true }).click();
+    const confirmation = page.getByRole("dialog", { name: "Edit round", exact: true });
+    await confirmation.getByRole("button", { name: "Save", exact: true }).waitFor();
+    await page.evaluate(`(async () => {
+      const { genericRoundsApi } = await import("/scorekeeper/src/data/api/genericRounds.ts");
+      const [round] = await genericRoundsApi.getByGameId(${JSON.stringify(gameId)});
+      await genericRoundsApi.add({
+        gameId: round.gameId, mode: round.mode, scores: round.scores,
+      });
+    })()`);
+    await confirmation.getByRole("button", { name: "Save", exact: true }).click();
+    await confirmation.waitFor({ state: "detached" });
+    await editor.getByRole("alert").filter({ hasText: "Game history changed." }).waitFor();
+    expect(await editor.getByRole("radio", { name: "Rowan", exact: true }).isChecked()).toBe(true);
+    await editor.getByRole("button", { name: "Close", exact: true }).click();
+    await editor.waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Edit Round 1 for Rowan", exact: true }).click();
+    expect(await editor.getByRole("radio", { name: "Maya", exact: true }).isChecked()).toBe(true);
+    await editor.getByRole("button", { name: "Save", exact: true }).click();
+    await editor.waitFor({ state: "detached" });
+    expect(await confirmation.count()).toBe(0);
+    await page.reload();
+    await page.getByRole("cell", { name: "Maya, Round 1: Won", exact: true }).waitFor();
+    await page.getByRole("cell", { name: "Maya, Round 2: Won", exact: true }).waitFor();
   } finally {
     await page.close();
   }
