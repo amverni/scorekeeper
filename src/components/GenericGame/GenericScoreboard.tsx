@@ -236,7 +236,7 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
                             </span>
                           )}
                           {view.game.status === "active" &&
-                            view.game.settings.mode === "points" &&
+                            view.game.settings.mode !== "passFail" &&
                             round.id && (
                               <Button
                                 type="button"

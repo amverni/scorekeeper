@@ -50,14 +50,18 @@ export type {
   AddGenericRoundInput,
   AddGenericWinnerRoundInput,
   EditGenericPointsRoundInput,
+  EditGenericRoundInput,
+  EditGenericWinnerRoundInput,
   GenericPassFailRound,
   GenericPassFailScore,
   GenericPointsRound,
   GenericPointsRoundEditor,
   GenericPointsScore,
   GenericRound,
+  GenericRoundEditor,
   GenericRoundId,
   GenericSingleRoundWinnerRound,
+  GenericWinnerRoundEditor,
   GenericWinnerScore,
 } from "./genericRound";
 export type {

@@ -2,7 +2,7 @@ import { queryOptions, useMutation, useQueryClient } from "@tanstack/react-query
 import type {
   AddGenericRoundInput,
   CreateGenericGameInput,
-  EditGenericPointsRoundInput,
+  EditGenericRoundInput,
   GameId,
   GenericRoundId,
 } from "../../types";
@@ -33,14 +33,14 @@ export function genericRoundEditorOptions(gameId: GameId, roundId: GenericRoundI
 
 export function usePreviewGenericRoundEdit() {
   return useMutation({
-    mutationFn: (input: EditGenericPointsRoundInput) => genericRoundsApi.previewEdit(input),
+    mutationFn: (input: EditGenericRoundInput) => genericRoundsApi.previewEdit(input),
   });
 }
 
 export function useEditGenericRound() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: EditGenericPointsRoundInput) => genericRoundsApi.edit(input),
+    mutationFn: (input: EditGenericRoundInput) => genericRoundsApi.edit(input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: genericGameKeys.all }),
   });
 }

@@ -119,21 +119,26 @@ retains a draft; saving clears it, and leaving (including Pause) discards it.
 Completed scoreboards, Standings, graphs, and Games lists use snapshots even after
 saved Players are edited or deleted.
 
-Active Generic Points Games support editing a saved Round from its expanded
-scorecard details. Edit opens the full prefilled entry form and selects the
-chosen Player. Closing an unsaved editor discards only that correction; the
-separate Add Round draft is retained. Changed totals and graph points save
-directly when places do not change. Changed places (including shared places)
-require the compact **Edit round** confirmation; **Edit**, Escape, and outside
-dismissal return to the unchanged draft, while **Save** commits it. Generic
-completion remains an explicit Finish Game action.
+Active Generic Points and Single Round Winner Games support editing a saved Round
+from its expanded scorecard details. Edit opens the full prefilled entry form and
+selects the chosen Player's tab for Points, or focuses their existing winner
+control without changing the saved selection for Single Round Winner. Closing an
+unsaved editor discards only that correction; the separate Add Round draft is
+retained. Changed totals and graph points save directly when places do not change.
+Changed Round winners or places (including shared places) require the compact
+**Edit round** confirmation; **Edit**, Escape, and outside dismissal return to the
+unchanged draft, while **Save** commits it. Generic completion remains an explicit
+Finish Game action.
 
 The public `genericRoundsApi.getEditor`, `previewEdit`, and `edit` commands
-validate Active Game ownership, Points mode, Player entries, and the loaded
-history version. Preview never writes. Save revalidates the version and impact
-inside the same transaction as the Round/activity writes, then invalidates
-related Generic Game queries. New Generic Rounds carry stable IDs and revisions
-without changing IndexedDB stores or indexes. Existing Rounds lacking this
-metadata remain readable but cannot be edited; no backfill or reset is performed.
-Completed Games, Single Round Winner/Pass-Fail editing, Round deletion,
-cross-reload draft persistence, and production debug controls are not exposed.
+validate Active Game ownership, matching supported Scoring Mode, Player entries,
+and the loaded history version. Preview never writes. Save revalidates the version
+and impact inside the same transaction as the Round/activity writes, then
+invalidates related Generic Game queries. New Generic Rounds carry stable IDs and
+revisions without changing IndexedDB stores or indexes. Existing Rounds lacking
+this metadata remain readable but cannot be edited; no backfill or reset is
+performed.
+Single Round Winner corrections require exactly one winner among the Game's
+eligible Players; impact approval cannot override invalid entries.
+Completed Games, Pass/Fail editing, Round deletion, cross-reload draft persistence,
+and production debug controls are not exposed.
