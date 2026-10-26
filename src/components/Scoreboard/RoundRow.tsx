@@ -32,6 +32,7 @@ export function RoundRow({
   return (
     <>
       <div
+        data-action-round={onEdit ? round.roundNumber : undefined}
         className={[
           "scoreboard-cell scoreboard-cell--sticky-left scoreboard-cell--anchor-top",
           lastRowClass,
@@ -73,6 +74,7 @@ export function RoundRow({
           // biome-ignore lint/a11y/noStaticElementInteractions: keyboard users toggle via the sibling round-number <button> with aria-expanded; this cell is a mouse/touch-only enlarged click target.
           <div
             key={player.id}
+            data-action-round={onEdit ? round.roundNumber : undefined}
             data-hold-round={onEdit && score ? round.roundNumber : undefined}
             data-hold-player={player.id}
             onClick={onToggle}

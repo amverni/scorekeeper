@@ -18,6 +18,17 @@
   container-type: inline-size;
 }
 
+.scorecard-row-action {
+  position: absolute;
+  border-radius: 0;
+  touch-action: manipulation;
+  box-shadow: none;
+}
+
+.scorecard-row-action--armed {
+  box-shadow: inset 0 0 0 3px var(--color-text-primary);
+}
+
 [data-hold-round] {
   -webkit-touch-callout: none;
   user-select: none;

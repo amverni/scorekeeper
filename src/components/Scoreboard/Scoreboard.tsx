@@ -6,6 +6,8 @@ import { EditRoundDialog } from "./EditRoundDialog";
 import { GhostRow } from "./GhostRow";
 import { RoundRow } from "./RoundRow";
 import { ScoreboardHeader } from "./ScoreboardHeader";
+import { PhaseScorecardRoundDeletion } from "./ScorecardRoundDeletion";
+import { ScorecardRowActions } from "./ScorecardRowActions";
 import { useAddRoundDraft } from "./useAddRoundDraft";
 import { useScorecardHold } from "./useScorecardHold";
 import "./scoreboard.css";
@@ -29,6 +31,10 @@ export function Scoreboard({ view, onGameCompleted }: ScoreboardProps) {
     null,
   );
   const [editOpen, setEditOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    roundNumber: number;
+    version: string;
+  } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   useScorecardHold(rootRef, (cell) => {
     if (game.status !== "active") return;
@@ -125,7 +131,21 @@ export function Scoreboard({ view, onGameCompleted }: ScoreboardProps) {
             />
           )}
         </div>
+        <ScorecardRowActions
+          rootRef={rootRef}
+          enabled={isActive && !entryVisible && !editing && deleteTarget === null}
+          onDelete={(roundNumber) => setDeleteTarget({ roundNumber, version: view.version })}
+        />
       </section>
+      {deleteTarget !== null && (
+        <PhaseScorecardRoundDeletion
+          gameId={game.id}
+          roundNumber={deleteTarget.roundNumber}
+          expectedVersion={deleteTarget.version}
+          onClose={() => setDeleteTarget(null)}
+          onGameCompleted={onGameCompleted}
+        />
+      )}
 
       <AddRoundDialog
         open={dialogOpen}
@@ -150,7 +170,7 @@ export function Scoreboard({ view, onGameCompleted }: ScoreboardProps) {
       )}
       <FirstFinisherDialog
         view={view}
-        ready={!entryVisible && editing === null}
+        ready={!entryVisible && editing === null && deleteTarget === null}
         onGameCompleted={onGameCompleted}
       />
     </div>

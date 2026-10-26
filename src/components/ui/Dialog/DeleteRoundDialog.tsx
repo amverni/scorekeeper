@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Button } from "../Button/Button";
+import { InlineError } from "../InlineError/InlineError";
 import { ConfirmationDialog } from "./ConfirmationDialog";
 
 interface DeleteRoundDialogProps {
@@ -8,6 +9,7 @@ interface DeleteRoundDialogProps {
   isPending: boolean;
   onCancel: () => void;
   onDelete: () => void;
+  error?: string | null;
 }
 
 export function DeleteRoundDialog({
@@ -16,6 +18,7 @@ export function DeleteRoundDialog({
   isPending,
   onCancel,
   onDelete,
+  error,
 }: DeleteRoundDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -33,25 +36,28 @@ export function DeleteRoundDialog({
       onClose={onCancel}
       dismissible={!isPending}
       actions={
-        <div className="flex justify-end gap-3">
-          <Button
-            ref={cancelRef}
-            type="button"
-            autoFocus
-            disabled={isPending}
-            onClick={onCancel}
-            className="min-h-11 px-5"
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            disabled={isPending}
-            onClick={onDelete}
-            className="min-h-11 px-5 text-pt-red-500"
-          >
-            Delete
-          </Button>
+        <div className="flex flex-col gap-3">
+          {error && <InlineError message={error} />}
+          <div className="flex justify-end gap-3">
+            <Button
+              ref={cancelRef}
+              type="button"
+              autoFocus
+              disabled={isPending}
+              onClick={onCancel}
+              className="min-h-11 px-5"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={isPending}
+              onClick={onDelete}
+              className="min-h-11 px-5 text-pt-red-500"
+            >
+              Delete
+            </Button>
+          </div>
         </div>
       }
     />
