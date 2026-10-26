@@ -86,6 +86,14 @@ export function AddRoundDialog({
     addRound.isPending || previewEdit.isPending || editRound.isPending || deleteRound.isPending;
   const locked = isPending || confirmation !== null || deleteConfirmationOpen;
 
+  useEffect(() => {
+    if (!editor || !open) return;
+    const frame = requestAnimationFrame(() =>
+      tabListRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus(),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [editor, open]);
+
   // Keep the selected player visible in the horizontal tab strip.
   useEffect(() => {
     const list = tabListRef.current;

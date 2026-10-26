@@ -1,5 +1,5 @@
 import { Delete, Minus, Plus } from "lucide-react";
-import { type KeyboardEvent, useId, useState } from "react";
+import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 import { editGenericPoints } from "../../utils/genericPoints";
 import { Button, DialogScrollArea } from "../ui";
 import "./PointsEntry.css";
@@ -16,14 +16,30 @@ interface PointsEntryProps {
   tiebreaker?: NumericField;
   disabled: boolean;
   submitError: string | null;
+  focusMetric?: "Tiebreaker";
 }
 
 const keyClasses = ["points-key font-semibold", "data-focus:outline-text-secondary!"].join(" ");
 const maxFullValueLength = String(Number.MIN_SAFE_INTEGER).length;
 
-export function PointsEntry({ name, points, tiebreaker, disabled, submitError }: PointsEntryProps) {
+export function PointsEntry({
+  name,
+  points,
+  tiebreaker,
+  disabled,
+  submitError,
+  focusMetric,
+}: PointsEntryProps) {
   const id = useId();
-  const [selectedMetric, setSelectedMetric] = useState<"Points" | "Tiebreaker">("Points");
+  const [selectedMetric, setSelectedMetric] = useState<"Points" | "Tiebreaker">(
+    focusMetric ?? "Points",
+  );
+  const focusRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!focusMetric) return;
+    const frame = requestAnimationFrame(() => focusRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [focusMetric]);
   const metric = tiebreaker ? selectedMetric : "Points";
   const { value, onChange } = metric === "Tiebreaker" && tiebreaker ? tiebreaker : points;
   const fields = [
@@ -82,6 +98,8 @@ export function PointsEntry({ name, points, tiebreaker, disabled, submitError }:
                   {tiebreaker ? (
                     <Button
                       type="button"
+                      ref={field.label === focusMetric ? focusRef : undefined}
+                      data-autofocus={field.label === focusMetric ? true : undefined}
                       aria-label={`${name} ${field.label}`}
                       aria-pressed={metric === field.label}
                       aria-invalid={!!field.error}

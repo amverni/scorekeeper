@@ -29,6 +29,7 @@ interface GenericAddRoundDialogProps {
   tiebreakerEnabled: boolean;
   editor?: GenericRoundEditor;
   focusPlayerId?: PlayerId;
+  focusMetric?: "Tiebreaker";
 }
 
 function pointsError(
@@ -63,6 +64,7 @@ export function GenericAddRoundDialog({
   tiebreakerEnabled,
   editor,
   focusPlayerId,
+  focusMetric,
 }: GenericAddRoundDialogProps) {
   const drafts = useSessionRoundDrafts();
   const savedDraft = editor ? undefined : drafts.generic.get(gameId);
@@ -155,6 +157,14 @@ export function GenericAddRoundDialog({
       [selectedIndex]?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [open, selectedIndex]);
 
+  useEffect(() => {
+    if (!open || !editor || !focusPlayerId || focusMetric || mode !== "points") return;
+    const frame = requestAnimationFrame(() =>
+      tabListRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus(),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [open, editor, focusPlayerId, focusMetric, mode]);
+
   return (
     <>
       <GenericRoundDialog
@@ -225,7 +235,9 @@ export function GenericAddRoundDialog({
                     title={player.name}
                     disabled={roundDialog.isPending}
                     data-autofocus={
-                      editor && player.id === players[selectedIndex]?.id ? true : undefined
+                      editor && !focusMetric && player.id === players[selectedIndex]?.id
+                        ? true
+                        : undefined
                     }
                     className={[
                       tabClasses,
@@ -256,6 +268,7 @@ export function GenericAddRoundDialog({
                     {(field) => (
                       <PointsEntry
                         name={player.name}
+                        focusMetric={player.id === focusPlayerId ? focusMetric : undefined}
                         points={{
                           value: field.state.value.points,
                           error: pointsError(field.state.value.points),

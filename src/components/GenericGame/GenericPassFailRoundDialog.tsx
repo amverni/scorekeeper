@@ -1,4 +1,5 @@
 import { useForm } from "@tanstack/react-form";
+import { useEffect, useRef } from "react";
 import type { GameId, GenericPassFailRoundEditor, PlayerId, PlayerIdentity } from "../../types";
 import { type PassFailEntryValues, useSessionRoundDrafts } from "../GameEditor/SessionRoundDrafts";
 import { PlayerAvatar } from "../PlayerAvatar/PlayerAvatar";
@@ -27,6 +28,12 @@ export function GenericPassFailRoundDialog({
   editor,
   focusPlayerId,
 }: GenericPassFailRoundDialogProps) {
+  const focusRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open || !editor || !focusPlayerId) return;
+    const frame = requestAnimationFrame(() => focusRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [open, editor, focusPlayerId]);
   const drafts = useSessionRoundDrafts();
   const emptyValues: PassFailEntryValues = {
     scores: players.map((player) => ({ playerId: player.id, passed: false })),
@@ -89,6 +96,7 @@ export function GenericPassFailRoundDialog({
                 {(field) => (
                   <Button
                     type="button"
+                    ref={player.id === focusPlayerId ? focusRef : undefined}
                     aria-label={player.name}
                     aria-pressed={field.state.value}
                     data-autofocus={editor && player.id === focusPlayerId ? true : undefined}

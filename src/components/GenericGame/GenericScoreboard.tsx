@@ -7,6 +7,7 @@ import type {
   PlayerId,
 } from "../../types";
 import { ScoreboardPlayerName } from "../Scoreboard/ScoreboardPlayerName";
+import { useScorecardHold } from "../Scoreboard/useScorecardHold";
 import { Button, DealerMarker } from "../ui";
 import { GenericAddRoundDialog } from "./GenericAddRoundDialog";
 import { GenericEditRoundDialog } from "./GenericEditRoundDialog";
@@ -29,10 +30,22 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
   const [expandedRound, setExpandedRound] = useState<number | null>(null);
   const [editTarget, setEditTarget] = useState<{
     roundId: GenericRoundId;
-    playerId: PlayerId;
+    playerId?: PlayerId;
+    metric?: "Tiebreaker";
   } | null>(null);
   const rootRef = useRef<HTMLElement>(null);
   const resultsId = useId();
+  useScorecardHold(rootRef, (cell, origin) => {
+    if (view.game.status !== "active") return;
+    const round = view.rounds.find((round) => String(round.roundNumber) === cell.dataset.holdRound);
+    if (!round?.id) return;
+    const player = view.players.find((player) => player.id === cell.dataset.holdPlayer);
+    setEditTarget({
+      roundId: round.id,
+      playerId: player?.id,
+      metric: origin.closest("[data-hold-tiebreaker]") ? "Tiebreaker" : undefined,
+    });
+  });
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: Reconnect the observer when saved Round DOM nodes change.
   useLayoutEffect(() => {
@@ -165,6 +178,9 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
                 >
                   <button
                     type="button"
+                    data-hold-round={
+                      view.game.status === "active" && round.id ? round.roundNumber : undefined
+                    }
                     aria-label={`${expandedRound === round.roundNumber ? "Collapse" : "Expand"} Round ${round.roundNumber}`}
                     aria-expanded={expandedRound === round.roundNumber}
                     onClick={() => toggleRound(round.roundNumber)}
@@ -194,6 +210,10 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
                     // biome-ignore lint/a11y/useKeyWithClickEvents: The round control is the keyboard equivalent of this enlarged pointer target.
                     <td
                       key={score.playerId}
+                      data-hold-round={
+                        view.game.status === "active" && round.id ? round.roundNumber : undefined
+                      }
+                      data-hold-player={score.playerId}
                       onClick={() => toggleRound(round.roundNumber)}
                       aria-label={`${view.players[index].name}, Round ${round.roundNumber}: ${"points" in score ? `${score.points} Points${score.tiebreaker !== undefined ? `, ${score.tiebreaker} Tiebreaker` : ""}` : "passed" in score ? (score.passed ? "Passed" : "Failed") : score.won ? "Won" : "Lost"}${round.dealerId === score.playerId ? ", Dealer" : ""}`}
                       aria-describedby={
@@ -218,7 +238,10 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
                             <>
                               <span>{score.points}</span>
                               {score.tiebreaker !== undefined && (
-                                <span className="text-sm font-normal leading-none text-text-secondary">
+                                <span
+                                  data-hold-tiebreaker
+                                  className="text-sm font-normal leading-none text-text-secondary"
+                                >
                                   {score.tiebreaker}
                                 </span>
                               )}
@@ -341,6 +364,7 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
           gameId={view.game.id}
           roundId={editTarget.roundId}
           focusPlayerId={editTarget.playerId}
+          focusMetric={editTarget.metric}
           onClose={() => setEditTarget(null)}
         />
       )}

@@ -39,6 +39,7 @@ export function RoundRow({
       >
         <button
           type="button"
+          data-hold-round={onEdit ? round.roundNumber : undefined}
           onClick={onToggle}
           aria-expanded={isExpanded}
           aria-label={`Round ${round.roundNumber}${!view.counted ? ", not counted" : ""}${isExpanded ? ", expanded" : ""}`}
@@ -72,6 +73,8 @@ export function RoundRow({
           // biome-ignore lint/a11y/noStaticElementInteractions: keyboard users toggle via the sibling round-number <button> with aria-expanded; this cell is a mouse/touch-only enlarged click target.
           <div
             key={player.id}
+            data-hold-round={onEdit && score ? round.roundNumber : undefined}
+            data-hold-player={player.id}
             onClick={onToggle}
             role="presentation"
             className={[
