@@ -29,6 +29,7 @@ Holding a saved scorecard cell opens the full Round editor at that Player or con
 
 **Round Deletion**:
 The removal of a saved Round from an Active Game. Any saved Round may be deleted in either Scorekeeper. Only the selected Round is removed; remaining Rounds are renumbered consecutively and results and dealers are recalculated. Deleting the sole Round retains the same empty Active Game, roster, and settings.
+Deletion requires explicit confirmation; revealing or arming a row action alone never removes saved history.
 Saved Round identity survives renumbering. Deletion validates the editor's whole-history version and shifts Join, Withdrawal, and Rejoin boundaries atomically, preserving all surviving inputs, excluded history, and actual Participation Gaps.
 
 **Active Game**:

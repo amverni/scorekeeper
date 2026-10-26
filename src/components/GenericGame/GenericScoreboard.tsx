@@ -7,6 +7,8 @@ import type {
   PlayerId,
 } from "../../types";
 import { ScoreboardPlayerName } from "../Scoreboard/ScoreboardPlayerName";
+import { GenericScorecardRoundDeletion } from "../Scoreboard/ScorecardRoundDeletion";
+import { ScorecardRowActions } from "../Scoreboard/ScorecardRowActions";
 import { useScorecardHold } from "../Scoreboard/useScorecardHold";
 import { Button, DealerMarker } from "../ui";
 import { GenericAddRoundDialog } from "./GenericAddRoundDialog";
@@ -28,6 +30,7 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
   const [addOpen, setAddOpen] = useState(false);
   const [namesExpanded, setNamesExpanded] = useState(false);
   const [expandedRound, setExpandedRound] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<GenericRoundId | null>(null);
   const [editTarget, setEditTarget] = useState<{
     roundId: GenericRoundId;
     playerId?: PlayerId;
@@ -179,6 +182,9 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
               <tr key={round.id ?? round.roundNumber}>
                 <th
                   scope="row"
+                  data-action-round={
+                    view.game.status === "active" && round.id ? round.roundNumber : undefined
+                  }
                   className={[
                     "scoreboard-cell scoreboard-cell--sticky-left scoreboard-cell--anchor-top",
                     roundIndex === view.rounds.length - 1 ? "scoreboard-cell--last-row" : "",
@@ -205,6 +211,9 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
                     return (
                       <td
                         key={player.id}
+                        data-action-round={
+                          view.game.status === "active" && round.id ? round.roundNumber : undefined
+                        }
                         aria-label={`${player.name}, Round ${round.roundNumber}: Did not play`}
                         className={[
                           "scoreboard-cell scoreboard-cell--anchor-top",
@@ -218,6 +227,9 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
                     // biome-ignore lint/a11y/useKeyWithClickEvents: The round control is the keyboard equivalent of this enlarged pointer target.
                     <td
                       key={score.playerId}
+                      data-action-round={
+                        view.game.status === "active" && round.id ? round.roundNumber : undefined
+                      }
                       data-hold-round={
                         view.game.status === "active" && round.id ? round.roundNumber : undefined
                       }
@@ -345,7 +357,22 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
             )}
           </tbody>
         </table>
+        <ScorecardRowActions
+          rootRef={rootRef}
+          enabled={view.game.status === "active" && !addOpen && !editTarget && !deleteTarget}
+          onDelete={(roundNumber) => {
+            const round = view.rounds.find((round) => round.roundNumber === roundNumber);
+            if (round?.id) setDeleteTarget(round.id);
+          }}
+        />
       </section>
+      {deleteTarget && (
+        <GenericScorecardRoundDeletion
+          gameId={view.game.id}
+          roundId={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+        />
+      )}
       {view.game.status === "active" &&
         (view.game.settings.mode === "passFail" ? (
           <GenericPassFailRoundDialog
