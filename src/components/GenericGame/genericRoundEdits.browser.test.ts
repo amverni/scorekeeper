@@ -5,6 +5,7 @@ import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { holdRoundStorage, releaseRoundStorage } from "../../test/roundStorage";
+import { holdScorecard } from "../../test/scorecardHold";
 import { touchGesture } from "../../test/touchGesture";
 import type { GenericGameSettings } from "../../types";
 
@@ -161,9 +162,15 @@ it("prevents duplicate pending edits and retains the draft after a storage failu
   page.setDefaultNavigationTimeout(30_000);
   try {
     const gameId = await openGame(page);
-    await page.getByRole("button", { name: "Expand Round 1", exact: true }).click();
-    await page.getByRole("button", { name: "Edit Round 1 for Maya", exact: true }).click();
     const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
+    await holdScorecard(
+      page,
+      page.getByRole("cell", {
+        name: "Maya, Round 1: 10 Points, 2 Tiebreaker, Dealer",
+        exact: true,
+      }),
+      editor.getByRole("tab", { name: "Maya", exact: true }),
+    );
     await enterPoints(page, editor, "8");
     await holdRoundStorage(page);
     await page.evaluate((gameId) => {
@@ -256,6 +263,166 @@ async function enterPoints(page: Page, dialog: Locator, value: string) {
   if (value.startsWith("-")) await page.keyboard.press("-");
 }
 
+it("holds a saved cell to edit its Player without toggling details and restores Round focus", async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  page.setDefaultTimeout(5_000);
+  page.setDefaultNavigationTimeout(30_000);
+  try {
+    await openGame(page);
+    const round = page.getByRole("button", {
+      name: /^(Expand|Collapse) Round 1$/,
+      includeHidden: true,
+    });
+    const cell = page.getByRole("cell", {
+      name: "Rowan, Round 1: 0 Points, -3 Tiebreaker",
+      exact: true,
+    });
+    await cell.click();
+    expect(await round.getAttribute("aria-expanded")).toBe("true");
+    await page.getByRole("button", { name: "Collapse Round 1", exact: true }).click();
+    await cell.hover();
+    await page.mouse.down();
+    const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
+    await editor.getByRole("tab", { name: "Rowan", exact: true }).waitFor();
+    await page.mouse.up();
+    expect(await round.getAttribute("aria-expanded")).toBe("false");
+    await expect
+      .poll(() =>
+        editor
+          .getByRole("tab", { name: "Rowan", exact: true })
+          .evaluate((tab) => tab === document.activeElement),
+      )
+      .toBe(true);
+    expect(
+      await editor.getByRole("status", { name: "Rowan Points", exact: true }).innerText(),
+    ).toBe("0");
+    await page.keyboard.press("Escape");
+    await editor.waitFor({ state: "detached" });
+    await expect
+      .poll(() => round.evaluate((button) => button === document.activeElement))
+      .toBe(true);
+    await round.press("Enter");
+    await page.getByRole("button", { name: "Edit Round 1 for Rowan", exact: true }).press("Enter");
+    await editor.getByRole("tab", { name: "Rowan", exact: true }).waitFor();
+  } finally {
+    await page.mouse.up();
+    await page.close();
+  }
+}, 30_000);
+
+it.each([
+  "mouse",
+  "touch",
+] as const)("holds a Generic Tiebreaker with %s to focus that field and persist a correction", async (pointerType) => {
+  const page = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+    hasTouch: pointerType === "touch",
+  });
+  page.setDefaultTimeout(5_000);
+  page.setDefaultNavigationTimeout(30_000);
+  try {
+    await openGame(page);
+    const target = page
+      .getByRole("cell", { name: "Rowan, Round 1: 0 Points, -3 Tiebreaker", exact: true })
+      .getByText("-3", { exact: true });
+    const field = page
+      .getByRole("dialog", { name: "Edit Round", exact: true })
+      .getByRole("button", { name: "Rowan Tiebreaker", exact: true });
+    await holdScorecard(page, target, field, pointerType);
+    await expect
+      .poll(() => field.evaluate((button) => button === document.activeElement))
+      .toBe(true);
+    expect(await field.getAttribute("aria-pressed")).toBe("true");
+    await field.press("Delete");
+    await page.keyboard.type("4");
+    const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
+    expect(
+      await editor.getByRole("status", { name: "Rowan Points", exact: true }).innerText(),
+    ).toBe("0");
+    await editor.getByRole("button", { name: "Save", exact: true }).click();
+    await editor.waitFor({ state: "detached" });
+    await page.reload();
+    await page
+      .getByRole("cell", { name: "Rowan, Round 1: 0 Points, 4 Tiebreaker", exact: true })
+      .waitFor();
+  } finally {
+    await page.close();
+  }
+}, 30_000);
+
+it.each([
+  { mode: "points", pointerType: "mouse" },
+  { mode: "points", pointerType: "touch" },
+  { mode: "singleRoundWinner", pointerType: "mouse" },
+  { mode: "singleRoundWinner", pointerType: "touch" },
+  { mode: "passFail", pointerType: "mouse" },
+  { mode: "passFail", pointerType: "touch" },
+] as const)("holds $mode cells and Round numbers with $pointerType without changing the selected outcome", async ({
+  mode,
+  pointerType,
+}) => {
+  const page = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+    hasTouch: pointerType === "touch",
+  });
+  page.setDefaultTimeout(5_000);
+  page.setDefaultNavigationTimeout(30_000);
+  try {
+    await openGame(
+      page,
+      mode === "points"
+        ? { mode, pointsDirection: "high", tiebreaker: null, dealer: false }
+        : { mode, tiebreaker: null, dealer: false },
+    );
+    const cell = page.getByRole("cell", { name: /^Rowan, Round 1:/ });
+    const round = page.getByRole("button", {
+      name: /^(Expand|Collapse) Round 1$/,
+      includeHidden: true,
+    });
+    if (pointerType === "touch") {
+      await cell.tap();
+      expect(await round.getAttribute("aria-expanded")).toBe("true");
+      await round.tap();
+    }
+    const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
+    const control = editor.getByRole(
+      mode === "points" ? "tab" : mode === "singleRoundWinner" ? "radio" : "button",
+      { name: "Rowan", exact: true },
+    );
+    await holdScorecard(page, cell, control, pointerType);
+    await expect
+      .poll(() => control.evaluate((element) => element === document.activeElement))
+      .toBe(true);
+    expect(
+      await control.getAttribute(
+        mode === "points"
+          ? "aria-selected"
+          : mode === "singleRoundWinner"
+            ? "aria-checked"
+            : "aria-pressed",
+      ),
+    ).toBe(mode === "points" ? "true" : "false");
+    await page.keyboard.press("Escape");
+    await editor.waitFor({ state: "detached" });
+    expect(await round.getAttribute("aria-expanded")).toBe("false");
+    await holdScorecard(
+      page,
+      round,
+      editor.getByRole(
+        mode === "points" ? "tab" : mode === "singleRoundWinner" ? "radio" : "button",
+        { name: "Maya", exact: true },
+      ),
+      pointerType,
+    );
+    await page.keyboard.press("Escape");
+    await editor.waitFor({ state: "detached" });
+    await page.reload();
+    await cell.waitFor();
+  } finally {
+    await page.close();
+  }
+}, 30_000);
+
 it("opens the full prefilled Round from keyboard-accessible details and saves a simple correction directly", async () => {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   page.setDefaultTimeout(5_000);
@@ -334,7 +501,14 @@ it.each([
     const standings = page.getByRole("dialog", { name: "Standings", exact: true });
     await standings.getByRole("button", { name: "Close", exact: true }).click();
     await standings.waitFor({ state: "detached" });
-    await page.getByRole("button", { name: "Expand Round 1", exact: true }).click();
+    const cell = page.getByRole("cell", { name: /^Maya, Round 1:/ });
+    await cell.hover();
+    await page.mouse.down();
+    await page.waitForTimeout(700);
+    await page.mouse.up();
+    expect(await page.getByRole("dialog").count()).toBe(0);
+    const expand = page.getByRole("button", { name: "Expand Round 1", exact: true });
+    if (await expand.count()) await expand.click();
     expect(await page.getByRole("button", { name: /^Edit Round/ }).count()).toBe(0);
   } finally {
     await page.close();

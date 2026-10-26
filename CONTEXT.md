@@ -25,6 +25,7 @@ _Avoid_: Hand, turn cycle
 
 **Round Edit**:
 A correction to the recorded scores or outcomes of an existing Round in an Active Game, rather than the recording of a new Round. Any saved Round may be edited.
+Holding a saved scorecard cell opens the full Round editor at that Player or control; holding its Round number opens the whole Round. Normal taps expand details, with a visible Edit action for keyboard and non-gesture access. Scrolling cancels a pending hold.
 
 **Round Deletion**:
 The removal of a saved Round from an Active Game. Any saved Round may be deleted in either Scorekeeper. Only the selected Round is removed; remaining Rounds are renumbered consecutively and results and dealers are recalculated. Deleting the sole Round retains the same empty Active Game, roster, and settings.

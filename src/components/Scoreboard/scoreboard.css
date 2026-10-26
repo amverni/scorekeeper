@@ -18,6 +18,11 @@
   container-type: inline-size;
 }
 
+[data-hold-round] {
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
 /* Spare width is split 1:2:2:1 around symmetric marker slots. The preferred
    spread never caps intrinsic content, and markers don't affect row height. */
 .scoreboard-entry {

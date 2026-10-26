@@ -125,6 +125,125 @@ afterAll(async () => {
   await server?.close();
 });
 
+it.each([
+  "mouse",
+  "touch",
+] as const)("cancels %s holds during movement, scrolling, and pointer cancellation without trapping navigation", async (pointerType) => {
+  const page = await browser.newPage({
+    viewport: { width: 320, height: 568 },
+    hasTouch: pointerType === "touch",
+  });
+  page.setDefaultTimeout(5_000);
+  try {
+    const id = await openGame(
+      page,
+      {
+        mode: "points",
+        pointsDirection: "high",
+        tiebreaker: null,
+        dealer: false,
+      },
+      ["Maya Chen", "Rowan Patel", "Amy", "Bob", "Cam", "Dee"],
+    );
+    await saveRounds(page, id, 18);
+    const card = page.getByRole("region", { name: "Scoreboard", exact: true });
+    expect(
+      await card.evaluate(
+        (element) =>
+          element.scrollWidth > element.clientWidth && element.scrollHeight > element.clientHeight,
+      ),
+    ).toBe(true);
+    const cell = card.getByRole("cell", { name: "Maya Chen, Round 1: -12 Points", exact: true });
+    for (const cancellation of [
+      "horizontal move",
+      "vertical move",
+      "horizontal scroll",
+      "vertical scroll",
+      "pointercancel",
+      "lostpointercapture",
+    ] as const) {
+      await card.evaluate((element) => element.scrollTo(0, 0));
+      await expect
+        .poll(() => card.evaluate((element) => element.scrollTop + element.scrollLeft))
+        .toBe(0);
+      await cell.hover();
+      const bounds = await box(cell);
+      const x = bounds.x + bounds.width / 2;
+      const y = bounds.y + bounds.height / 2;
+      if (pointerType === "mouse") await page.mouse.down();
+      else
+        await cell.dispatchEvent("pointerdown", {
+          pointerType,
+          pointerId: 7,
+          isPrimary: true,
+          button: 0,
+          clientX: x,
+          clientY: y,
+        });
+      if (cancellation.endsWith("move")) {
+        const move = {
+          x: x + (cancellation.startsWith("horizontal") ? 30 : 0),
+          y: y + (cancellation.startsWith("vertical") ? 30 : 0),
+        };
+        if (pointerType === "mouse") {
+          await page.mouse.move(move.x, move.y);
+          await page.mouse.move(x, y);
+        } else {
+          await cell.dispatchEvent("pointermove", {
+            pointerType,
+            pointerId: 7,
+            clientX: move.x,
+            clientY: move.y,
+          });
+          await cell.dispatchEvent("pointermove", {
+            pointerType,
+            pointerId: 7,
+            clientX: x,
+            clientY: y,
+          });
+        }
+      } else if (cancellation.endsWith("scroll")) {
+        const horizontal = cancellation.startsWith("horizontal");
+        await page.mouse.wheel(horizontal ? 140 : 0, horizontal ? 0 : 120);
+        await expect
+          .poll(() =>
+            card.evaluate(
+              (element, horizontal) => (horizontal ? element.scrollLeft : element.scrollTop),
+              horizontal,
+            ),
+          )
+          .toBeGreaterThan(0);
+      } else {
+        await cell.dispatchEvent(cancellation, {
+          pointerType,
+          pointerId: pointerType === "mouse" ? 1 : 7,
+        });
+      }
+      await page.waitForTimeout(700);
+      if (pointerType === "mouse") await page.mouse.up();
+      else await cell.dispatchEvent("pointerup", { pointerType, pointerId: 7 });
+      expect(await page.getByRole("dialog").count()).toBe(0);
+      expect(
+        await card.getByRole("button", { name: "Collapse Round 1", exact: true }).count(),
+        cancellation,
+      ).toBe(0);
+    }
+    await card.evaluate((element) => element.scrollTo(0, 0));
+    if (pointerType === "touch") await cell.tap();
+    else await cell.click();
+    await card
+      .getByRole("button", { name: "Edit Round 1 for Maya Chen", exact: true })
+      .press("Enter");
+    await page
+      .getByRole("dialog", { name: "Edit Round", exact: true })
+      .getByRole("tab", { name: "Maya Chen", exact: true })
+      .waitFor();
+  } finally {
+    await page.mouse.up();
+    await page.close();
+  }
+}, 45_000);
+
 async function box(locator: Locator) {
   const bounds = await locator.boundingBox();
   if (!bounds) throw new Error("Expected visible scoreboard content");

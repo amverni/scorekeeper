@@ -5,6 +5,7 @@ import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { holdRoundStorage, releaseRoundStorage } from "../../test/roundStorage";
+import { holdScorecard } from "../../test/scorecardHold";
 import type { Game, GameReadModel, Player } from "../../types";
 
 let server: ViteDevServer;
@@ -28,6 +29,57 @@ afterAll(async () => {
 });
 
 it.each([
+  "mouse",
+  "touch",
+] as const)("holds Phase 10 cells and Round numbers with %s without changing saved results on opening", async (pointerType) => {
+  const page = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+    hasTouch: pointerType === "touch",
+  });
+  page.setDefaultTimeout(5_000);
+  page.setDefaultNavigationTimeout(30_000);
+  try {
+    const { game } = await seedGame(page);
+    const before = await readView(page, game.id);
+    await page.goto(`${appUrl}#/phaseCompan10n/game/${game.id}`);
+    const round = page.getByRole("button", { name: /^Round 1/, includeHidden: true });
+    await round.click();
+    const cell = page
+      .locator(".scoreboard-cell")
+      .filter({ has: page.getByRole("button", { name: "Edit Round 1 for Bob", exact: true }) })
+      .locator(".scoreboard-entry__phase");
+    const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
+    const bob = editor.getByRole("tab", { name: "Bob", exact: true });
+    await holdScorecard(page, cell, bob, pointerType);
+    expect(await bob.getAttribute("aria-selected")).toBe("true");
+    await expect.poll(() => bob.evaluate((tab) => tab === document.activeElement)).toBe(true);
+    await page.keyboard.press("Escape");
+    await editor.waitFor({ state: "detached" });
+    await expect
+      .poll(() => round.evaluate((button) => button === document.activeElement))
+      .toBe(true);
+    expect(await round.getAttribute("aria-expanded")).toBe("true");
+    await round.click();
+    await holdScorecard(
+      page,
+      round,
+      editor.getByRole("tab", { name: "Amy", exact: true }),
+      pointerType,
+    );
+    expect(
+      await editor.getByRole("tab", { name: "Amy", exact: true }).getAttribute("aria-selected"),
+    ).toBe("true");
+    await page.keyboard.press("Escape");
+    await editor.waitFor({ state: "detached" });
+    await page.reload();
+    await page.getByRole("button", { name: "Round 1", exact: true }).waitFor();
+    expect(await readView(page, game.id)).toEqual(before);
+  } finally {
+    await page.close();
+  }
+}, 45_000);
+
+it.each([
   320, 768,
 ])("restores exact counters and Player focus at %s px, saves a numeric correction, and preserves the separate next-Round draft", async (width) => {
   const page = await browser.newPage({ viewport: { width, height: 844 } });
@@ -45,9 +97,19 @@ it.each([
 
     await page.getByRole("button", { name: "Round 1", exact: true }).click();
     const editAction = page.getByRole("button", { name: "Edit Round 1 for Bob", exact: true });
-    await editAction.focus();
-    await page.keyboard.press("Enter");
     const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
+    if (width === 320) {
+      await holdScorecard(
+        page,
+        page
+          .locator(".scoreboard-cell")
+          .filter({ has: editAction })
+          .locator(".scoreboard-entry__phase"),
+        editor.getByRole("tab", { name: "Bob", exact: true }),
+      );
+    } else {
+      await editAction.press("Enter");
+    }
     await expect
       .poll(() =>
         editor.getByRole("tab", { name: "Bob", exact: true }).getAttribute("aria-selected"),

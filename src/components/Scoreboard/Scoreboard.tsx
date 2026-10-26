@@ -7,6 +7,7 @@ import { GhostRow } from "./GhostRow";
 import { RoundRow } from "./RoundRow";
 import { ScoreboardHeader } from "./ScoreboardHeader";
 import { useAddRoundDraft } from "./useAddRoundDraft";
+import { useScorecardHold } from "./useScorecardHold";
 import "./scoreboard.css";
 
 interface ScoreboardProps {
@@ -29,11 +30,21 @@ export function Scoreboard({ view, onGameCompleted }: ScoreboardProps) {
   );
   const [editOpen, setEditOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  useScorecardHold(rootRef, (cell) => {
+    if (game.status !== "active") return;
+    const round = rounds.find(
+      (round) => String(round.source.roundNumber) === cell.dataset.holdRound,
+    );
+    if (!round) return;
+    const player = players.find((player) => player.id === cell.dataset.holdPlayer);
+    setEditing({ roundNumber: round.source.roundNumber, focusPlayerId: player?.id });
+    setEditOpen(true);
+  });
 
   // Outside-click collapses any expanded row. Use mousedown so it fires
   // before potential click handlers, and ignore events inside the grid.
   useEffect(() => {
-    if (expandedRound === null) return;
+    if (expandedRound === null || editing) return;
     const handler = (event: MouseEvent) => {
       const node = rootRef.current;
       if (!node) return;
@@ -42,7 +53,7 @@ export function Scoreboard({ view, onGameCompleted }: ScoreboardProps) {
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [expandedRound]);
+  }, [expandedRound, editing]);
 
   const tiebreaker = game.settings.tiebreaker;
   const isActive = game.status === "active";

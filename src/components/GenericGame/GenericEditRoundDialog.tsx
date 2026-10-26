@@ -11,6 +11,7 @@ interface GenericEditRoundDialogProps {
   gameId: GameId;
   roundId: GenericRoundId;
   focusPlayerId?: PlayerId;
+  focusMetric?: "Tiebreaker";
   onClose: () => void;
 }
 
@@ -18,6 +19,7 @@ export function GenericEditRoundDialog({
   gameId,
   roundId,
   focusPlayerId,
+  focusMetric,
   onClose,
 }: GenericEditRoundDialogProps) {
   const {
@@ -42,13 +44,17 @@ export function GenericEditRoundDialog({
     );
   }
   return (
-    <LoadedRoundEditor {...{ gameId, roundId, focusPlayerId, onClose }} initialEditor={editor} />
+    <LoadedRoundEditor
+      {...{ gameId, roundId, focusPlayerId, focusMetric, onClose }}
+      initialEditor={editor}
+    />
   );
 }
 
 function LoadedRoundEditor({
   gameId,
   focusPlayerId,
+  focusMetric,
   onClose,
   initialEditor,
 }: GenericEditRoundDialogProps & { initialEditor: GenericRoundEditor }) {
@@ -76,6 +82,7 @@ function LoadedRoundEditor({
       tiebreakerEnabled={editor.tiebreakerEnabled}
       editor={editor}
       focusPlayerId={focusPlayerId}
+      focusMetric={focusMetric}
     />
   );
 }
