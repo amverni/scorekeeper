@@ -71,6 +71,7 @@ A Player's first addition to a Game, taking effect from the next unsaved Round w
 
 **Withdrawal**:
 The suspension of a Player's competitive eligibility, with no participation or dealer turns from the next unsaved Round. Their saved Player profile and earlier Game history remain intact, but they are not ranked or eligible to win while withdrawn.
+In Phase 10, Finished Players cannot Withdraw and still count toward the minimum of two eligible members after a Withdrawal. A correction revealing a finish before a later Withdrawal makes that Withdrawal and associated later membership actions inapplicable while the finish applies; reversing the correction restores their applicability.
 
 **Rejoin**:
 A withdrawn Player's return to the same Game from the next unsaved Round, resuming their existing totals and phase progress. Their absence contributes no score, penalty, or phase advancement.
@@ -196,6 +197,7 @@ A Finished Player's distinct place, ordered by earliest Finishing Round, then th
 
 **Game Ending Round**:
 The last Round included in a finalized Phase 10 Game's result, distinct from any individual Player's Finishing Round.
+A prospective Withdrawal that causes normal completion ends the Game at the latest played Round, not an earlier Finishing Round based on the reduced roster.
 
 **Excluded Round**:
 A saved Phase 10 Round after the Game Ending Round, retained as history but not contributing to the finalized result.
@@ -223,6 +225,7 @@ _Avoid_: Early Finish
 **Phase 10 Standings**:
 Finished Players are ordered by Finishing Place ahead of unfinished Players, who compare phase progress, then the selected Tiebreaker, with equal place when those values are tied and subsequent places skipping by the number of tied Players. Progress means highest Current Phase in Sequential Phase Order and number of Resolved Phases in Selectable Phase Order.
 In an Active Game, Standings compare Active Players; in a Completed Game, Standings compare the Players eligible when its result was finalized; unfinished Players within an equal place are ordered by most recent Round Winner, then Seating Order.
+Withdrawn Players retain their totals and progress below eligible Players, without a place or eligibility to win. Rejoin restores eligibility in the same saved seat without adding score or progress for Participation Gaps.
 
 **Phase 10 Score Entry Complete**:
 A player's round score entry has enough Round Result and Tiebreaker information to be counted as entered for that round. For Points Tiebreakers, this includes a valid Points Card Count for the player's Round Result.

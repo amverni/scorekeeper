@@ -34,6 +34,11 @@ interface PhaseGameFields {
   settings: GameSettings;
   continuation?: boolean;
   playerJoins?: Array<{ playerId: PlayerId; afterRoundNumber: number }>;
+  playerMembershipChanges?: Array<{
+    playerId: PlayerId;
+    afterRoundNumber: number;
+    type: "withdrawal" | "rejoin";
+  }>;
 }
 
 export type CreateGameInput = Pick<ActiveGame, "players" | "phaseSet" | "settings">;

@@ -333,13 +333,25 @@ export const roundsApi = {
       }
 
       await store.delete([gameId, roundNumber]);
-      if (game.playerJoins) {
+      if (game.playerJoins || game.playerMembershipChanges) {
         await tx.objectStore("games").put({
           ...game,
-          playerJoins: game.playerJoins.map((join) => ({
-            ...join,
-            afterRoundNumber: Math.min(join.afterRoundNumber, roundNumber - 1),
-          })),
+          ...(game.playerJoins
+            ? {
+                playerJoins: game.playerJoins.map((join) => ({
+                  ...join,
+                  afterRoundNumber: Math.min(join.afterRoundNumber, roundNumber - 1),
+                })),
+              }
+            : {}),
+          ...(game.playerMembershipChanges
+            ? {
+                playerMembershipChanges: game.playerMembershipChanges.map((change) => ({
+                  ...change,
+                  afterRoundNumber: Math.min(change.afterRoundNumber, roundNumber - 1),
+                })),
+              }
+            : {}),
           lastActivityAt: Date.now(),
         });
       }
@@ -359,10 +371,20 @@ export const roundsApi = {
       const rounds = await store.index("by-game").getAll(gameId);
       assertPhaseRounds(rounds);
       await Promise.all(rounds.map((r) => store.delete([r.gameId, r.roundNumber])));
-      if (game.playerJoins) {
+      if (game.playerJoins || game.playerMembershipChanges) {
         await tx.objectStore("games").put({
           ...game,
-          playerJoins: game.playerJoins.map((join) => ({ ...join, afterRoundNumber: 0 })),
+          ...(game.playerJoins
+            ? { playerJoins: game.playerJoins.map((join) => ({ ...join, afterRoundNumber: 0 })) }
+            : {}),
+          ...(game.playerMembershipChanges
+            ? {
+                playerMembershipChanges: game.playerMembershipChanges.map((change) => ({
+                  ...change,
+                  afterRoundNumber: 0,
+                })),
+              }
+            : {}),
           lastActivityAt: Date.now(),
         });
       }

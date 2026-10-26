@@ -49,6 +49,15 @@ export const phaseRoundEdits = {
               })),
             }
           : {}),
+        ...(game.playerMembershipChanges
+          ? {
+              playerMembershipChanges: game.playerMembershipChanges.map((change) => ({
+                ...change,
+                afterRoundNumber:
+                  change.afterRoundNumber - Number(selected.roundNumber <= change.afterRoundNumber),
+              })),
+            }
+          : {}),
         lastActivityAt: now,
       };
       const completion = resolveGameCompletion({

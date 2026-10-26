@@ -9,12 +9,15 @@ export interface PhaseGameEditor {
   players: Player[];
   phases: Phase[];
   version: string;
+  withdrawnPlayers: PlayerId[];
+  finishedPlayers: PlayerId[];
 }
 
 export interface EditGamePlayersInput {
   gameId: GameId;
   version: string;
   players: PlayerId[];
+  withdrawnPlayers?: PlayerId[];
   confirmImpact?: boolean;
 }
 

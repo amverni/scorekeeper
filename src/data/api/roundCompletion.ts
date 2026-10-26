@@ -66,6 +66,9 @@ function createCompletedGame(
     settings: input.game.settings,
     ...(input.game.continuation !== undefined ? { continuation: input.game.continuation } : {}),
     ...(input.game.playerJoins !== undefined ? { playerJoins: input.game.playerJoins } : {}),
+    ...(input.game.playerMembershipChanges !== undefined
+      ? { playerMembershipChanges: input.game.playerMembershipChanges }
+      : {}),
     createdAt: input.game.createdAt,
     lastActivityAt: input.completedAt,
     completedAt: input.completedAt,

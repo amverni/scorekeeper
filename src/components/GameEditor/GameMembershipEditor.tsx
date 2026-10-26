@@ -2,7 +2,7 @@ import { TabPanel } from "@headlessui/react";
 import { useForm } from "@tanstack/react-form";
 import { type ReactNode, useRef, useState } from "react";
 import type {
-  EditGenericGameInput,
+  EditGamePlayersInput,
   GenericGameEditor,
   PhaseGameEditor,
   PlayerId,
@@ -30,16 +30,16 @@ export function GameMembershipEditor({
   phases?: ReactNode;
   settings: ReactNode;
   isPending: boolean;
-  preview: (input: EditGenericGameInput) => Promise<{ requiresConfirmation: boolean }>;
-  save: (input: EditGenericGameInput) => Promise<void>;
+  preview: (input: EditGamePlayersInput) => Promise<{ requiresConfirmation: boolean }>;
+  save: (input: EditGamePlayersInput) => Promise<void>;
 }) {
   const { game } = editor;
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [confirmation, setConfirmation] = useState<EditGenericGameInput | null>(null);
+  const [confirmation, setConfirmation] = useState<EditGamePlayersInput | null>(null);
   const submitting = useRef(false);
   const savedIds = new Set(game.players);
-  const savedWithdrawn = "withdrawnPlayers" in editor ? editor.withdrawnPlayers : [];
+  const savedWithdrawn = editor.withdrawnPlayers;
   const form = useForm({
     defaultValues: { players: editor.players, withdrawnPlayers: savedWithdrawn },
     onSubmit: async ({ value }) => {
@@ -47,7 +47,7 @@ export function GameMembershipEditor({
         gameId: game.id,
         version: editor.version,
         players: value.players.map(({ id }) => id),
-        ...(experience === "scorekeeper" ? { withdrawnPlayers: value.withdrawnPlayers } : {}),
+        withdrawnPlayers: value.withdrawnPlayers,
       };
       const impact = await preview(input);
       if (impact.requiresConfirmation) {
@@ -140,11 +140,9 @@ export function GameMembershipEditor({
                             if (submitting.current) return;
                             setSubmitError(null);
                             if (savedIds.has(id)) {
-                              if (experience === "scorekeeper") {
-                                form.setFieldValue("withdrawnPlayers", (ids) =>
-                                  ids.includes(id) ? ids : [...ids, id],
-                                );
-                              }
+                              form.setFieldValue("withdrawnPlayers", (ids) =>
+                                ids.includes(id) ? ids : [...ids, id],
+                              );
                               return;
                             }
                             field.handleChange((selected) =>
@@ -162,7 +160,10 @@ export function GameMembershipEditor({
                           <GameMembershipPlayers
                             lockedPlayerIds={game.players}
                             withdrawnPlayers={withdrawnPlayers}
-                            onRejoin={experience === "scorekeeper" ? rejoin : undefined}
+                            finishedPlayers={
+                              "finishedPlayers" in editor ? editor.finishedPlayers : []
+                            }
+                            onRejoin={rejoin}
                           />
                           {invalid && (
                             <output className="text-sm text-text-secondary">

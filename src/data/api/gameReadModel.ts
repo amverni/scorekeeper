@@ -64,6 +64,26 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
     if (!state) throw new Error(`Player interpretation not found: ${id}`);
     return state;
   };
+  const membershipChanges = (game.playerMembershipChanges ?? [])
+    .slice()
+    .sort((a, b) => a.afterRoundNumber - b.afterRoundNumber);
+  const withdrawn = new Set<PlayerId>();
+  let nextMembershipChange = 0;
+  const applyMembershipThrough = (afterRoundNumber: number) => {
+    while (nextMembershipChange < membershipChanges.length) {
+      const change = membershipChanges[nextMembershipChange];
+      if (change.afterRoundNumber > afterRoundNumber) break;
+      nextMembershipChange++;
+      if (
+        !hasJoined(change.playerId, change.afterRoundNumber + 1) ||
+        stateFor(change.playerId).progress.isFinished
+      ) {
+        continue;
+      }
+      if (change.type === "withdrawal") withdrawn.add(change.playerId);
+      else withdrawn.delete(change.playerId);
+    }
+  };
   let nextSeat = 0;
   const nextDealer = (participatingIds: readonly PlayerId[]) => {
     for (let offset = 0; offset < game.players.length; offset++) {
@@ -75,13 +95,31 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
   };
   let gameEndingRound: number | null = null;
   let automaticCompletion = false;
+  const checkCompletion = (roundNumber: number, rosterRoundNumber: number) => {
+    if (roundNumber === 0) return;
+    const members = includedPlayers.filter(
+      (player) => hasJoined(player.id, rosterRoundNumber) && !withdrawn.has(player.id),
+    );
+    const finishedCount = members.filter(
+      (player) => stateFor(player.id).progress.isFinished,
+    ).length;
+    automaticCompletion = finishedCount > 0 && finishedCount >= members.length - 1;
+    if (automaticCompletion || (finishedCount > 0 && !game.continuation)) {
+      gameEndingRound = roundNumber;
+    }
+  };
   const roundViews: GameRoundView[] = [];
 
   for (const round of sortedRounds) {
+    if (gameEndingRound === null) {
+      applyMembershipThrough(round.roundNumber - 1);
+      checkCompletion(round.roundNumber - 1, round.roundNumber);
+    }
     const counted = gameEndingRound === null;
     const participatingIds = columnIds.filter(
       (id) =>
         hasJoined(id, round.roundNumber) &&
+        !withdrawn.has(id) &&
         !stateFor(id).progress.isFinished &&
         round.scores.some((score) => score.playerId === id),
     );
@@ -91,7 +129,12 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
       const state = stateFor(player.id);
       const recorded = round.scores.find((entry) => entry.playerId === player.id);
       const joined = hasJoined(player.id, round.roundNumber);
-      const entryCounts = counted && joined && !state.progress.isFinished && recorded !== undefined;
+      const entryCounts =
+        counted &&
+        joined &&
+        !withdrawn.has(player.id) &&
+        !state.progress.isFinished &&
+        recorded !== undefined;
       // Phase assignment is derived from counted history, never from an excluded entry.
       const effectiveScore = entryCounts
         ? { ...recorded, currentPhase: state.progress.currentPhase }
@@ -110,7 +153,7 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
         if (round.roundWinnerId === player.id) state.mostRecentWin = round.roundNumber;
         if (state.progress.isFinished) state.finishingRound = round.roundNumber;
       }
-      if (counted && joined && !wasFinished) {
+      if (counted && joined && !withdrawn.has(player.id) && !wasFinished) {
         state.phasePoints.push({ roundNumber: round.roundNumber, ...state.progress });
         state.tiebreakerPoints.push({
           roundNumber: round.roundNumber,
@@ -130,18 +173,18 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
     });
     roundViews.push({ source: round, dealerId, scores, counted });
     if (counted) {
-      const members = includedPlayers.filter((player) => hasJoined(player.id, round.roundNumber));
-      const finishedCount = members.filter(
-        (player) => stateFor(player.id).progress.isFinished,
-      ).length;
-      automaticCompletion = finishedCount > 0 && finishedCount >= members.length - 1;
-      if (automaticCompletion || (finishedCount > 0 && !game.continuation)) {
-        gameEndingRound = round.roundNumber;
-      }
+      checkCompletion(round.roundNumber, round.roundNumber);
     }
   }
 
-  const eligible = (id: PlayerId) => gameEndingRound === null || hasJoined(id, gameEndingRound);
+  if (gameEndingRound === null) {
+    const lastRoundNumber = sortedRounds.at(-1)?.roundNumber ?? 0;
+    applyMembershipThrough(lastRoundNumber);
+    checkCompletion(lastRoundNumber, lastRoundNumber + 1);
+  }
+  const eligible = (id: PlayerId) =>
+    !withdrawn.has(id) &&
+    hasJoined(id, gameEndingRound ?? (sortedRounds.at(-1)?.roundNumber ?? 0) + 1);
   const sortedRows = includedPlayers
     .map((player) => {
       const state = stateFor(player.id);
@@ -191,11 +234,17 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
     rows,
     phaseGraphSeries: includedPlayers.map((player) => ({
       player,
-      points: eligible(player.id) ? stateFor(player.id).phasePoints : [],
+      points:
+        gameEndingRound === null || hasJoined(player.id, gameEndingRound)
+          ? stateFor(player.id).phasePoints
+          : [],
     })),
     tiebreakerGraphSeries: includedPlayers.map((player) => ({
       player,
-      points: eligible(player.id) ? stateFor(player.id).tiebreakerPoints : [],
+      points:
+        gameEndingRound === null || hasJoined(player.id, gameEndingRound)
+          ? stateFor(player.id).tiebreakerPoints
+          : [],
     })),
     hasFinishedPlayers,
     gameWinner,

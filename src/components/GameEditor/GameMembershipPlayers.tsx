@@ -11,11 +11,13 @@ import { Button, List, type SortableItem } from "../ui";
 export function GameMembershipPlayers({
   lockedPlayerIds,
   withdrawnPlayers,
+  finishedPlayers,
   onRejoin,
 }: {
   lockedPlayerIds: PlayerId[];
   withdrawnPlayers: PlayerId[];
-  onRejoin?: (id: PlayerId) => void;
+  finishedPlayers: PlayerId[];
+  onRejoin: (id: PlayerId) => void;
 }) {
   const players = useGamePlayers();
   const removePlayer = useRemovePlayer();
@@ -56,7 +58,7 @@ export function GameMembershipPlayers({
           >
             <PlayerRow player={player} />
           </div>
-          {lockedIds.has(player.id) && !onRejoin ? (
+          {finishedPlayers.includes(player.id) ? (
             <span className="size-11 shrink-0" aria-hidden />
           ) : (
             <Button
@@ -64,9 +66,7 @@ export function GameMembershipPlayers({
               aria-label={`${withdrawnPlayers.includes(player.id) ? "Rejoin" : lockedIds.has(player.id) ? "Withdraw" : "Remove"} ${player.name}`}
               className="size-11 shrink-0"
               onClick={() =>
-                withdrawnPlayers.includes(player.id)
-                  ? onRejoin?.(player.id)
-                  : removePlayer(player.id)
+                withdrawnPlayers.includes(player.id) ? onRejoin(player.id) : removePlayer(player.id)
               }
             >
               {withdrawnPlayers.includes(player.id) ? (

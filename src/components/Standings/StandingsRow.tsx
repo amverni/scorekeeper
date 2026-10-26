@@ -18,7 +18,9 @@ export function StandingsRow({ row }: StandingsRowProps) {
     .join(" ");
 
   return (
-    <li className={[standingsRowClasses, row.place === null ? "opacity-45" : ""].join(" ")}>
+    <li
+      className={[standingsRowClasses, row.place === null ? "grayscale opacity-45" : ""].join(" ")}
+    >
       <span className="sr-only">
         {row.place === null
           ? "Unranked"

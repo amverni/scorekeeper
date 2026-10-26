@@ -32,6 +32,374 @@ async function setup(initialPlayers = 2) {
   return { game, amy, bob, cam };
 }
 
+it("withdraws and rejoins the same saved seat without resetting history or filling Participation Gaps", async () => {
+  const { game, amy, bob, cam } = await setup(3);
+  async function membership(withdrawnPlayers: string[]) {
+    const editor = await gamesApi.getEditor(game.id);
+    if (!editor) throw new Error("Missing Game editor");
+    const input = {
+      gameId: game.id,
+      version: editor.version,
+      players: game.players,
+      withdrawnPlayers,
+      confirmImpact: true,
+    };
+    await gamesApi.edit(input);
+    closeDB();
+  }
+  await membership([amy.id]);
+  let view = await gamesApi.getView(game.id);
+  expect(view?.standings.rows.map(({ player, place }) => [player.id, place])).toEqual([
+    [bob.id, 1],
+    [cam.id, 1],
+    [amy.id, null],
+  ]);
+  expect(view?.upcomingDealerId).toBe(bob.id);
+  await membership([]);
+  await roundsApi.add({
+    gameId: game.id,
+    roundWinnerId: amy.id,
+    scores: [
+      { playerId: amy.id, phaseStatus: "completed", score: 2 },
+      { playerId: bob.id, phaseStatus: "failed", score: 3 },
+      { playerId: cam.id, phaseStatus: "failed", score: 1 },
+    ],
+  });
+  await membership([amy.id]);
+  await expect(
+    roundsApi.add({
+      gameId: game.id,
+      roundWinnerId: null,
+      scores: [
+        { playerId: amy.id, phaseStatus: "failed", score: 0 },
+        { playerId: bob.id, phaseStatus: "failed", score: 0 },
+        { playerId: cam.id, phaseStatus: "failed", score: 0 },
+      ],
+    }),
+  ).rejects.toThrow("every Player still playing");
+  await roundsApi.add({
+    gameId: game.id,
+    roundWinnerId: bob.id,
+    scores: [
+      { playerId: bob.id, phaseStatus: "completed", score: 4 },
+      { playerId: cam.id, phaseStatus: "failed", score: 1 },
+    ],
+  });
+  const history = await roundsApi.getByGameId(game.id);
+  await membership([]);
+  await roundsApi.add({
+    gameId: game.id,
+    roundWinnerId: amy.id,
+    scores: [
+      { playerId: amy.id, phaseStatus: "completed", score: 1 },
+      { playerId: bob.id, phaseStatus: "failed", score: 2 },
+      { playerId: cam.id, phaseStatus: "failed", score: 1 },
+    ],
+  });
+  closeDB();
+  view = await gamesApi.getView(game.id);
+  expect(view?.players.map(({ id }) => id)).toEqual(game.players);
+  expect(view?.players[0]).toMatchObject({
+    progress: { currentPhase: 3, isFinished: false },
+    tiebreakerTotal: 3,
+  });
+  expect(view?.rounds[1].scores[0]).toMatchObject({ source: undefined, counted: false });
+  expect(view?.rounds.map(({ dealerId }) => dealerId)).toEqual([amy.id, bob.id, cam.id]);
+  expect(view?.upcomingDealerId).toBe(amy.id);
+  expect(view?.standings.tiebreakerGraphSeries[0].points).toEqual([
+    { roundNumber: 0, value: 0, standingValue: 0 },
+    { roundNumber: 1, value: 2, standingValue: -2 },
+    { roundNumber: 3, value: 3, standingValue: -3 },
+  ]);
+  expect((await roundsApi.getByGameId(game.id)).slice(0, 2)).toEqual(history);
+  expect(await playersApi.getById(amy.id)).toEqual(amy);
+});
+
+it("completes a Withdrawal prospectively at Round 10, retaining counted play and final identities", async () => {
+  const { game, amy, bob, cam } = await setup(3);
+  for (let number = 1; number <= 10; number++) {
+    await roundsApi.add({
+      gameId: game.id,
+      roundWinnerId: null,
+      scores:
+        number <= 3
+          ? [
+              { playerId: amy.id, phaseStatus: "completed", score: 1 },
+              { playerId: bob.id, phaseStatus: "failed", score: 2 },
+              { playerId: cam.id, phaseStatus: "failed", score: 3 },
+            ]
+          : [
+              { playerId: bob.id, phaseStatus: "failed", score: 2 },
+              { playerId: cam.id, phaseStatus: "failed", score: 3 },
+            ],
+    });
+    if (number === 3) {
+      const view = await gamesApi.getView(game.id);
+      if (!view?.pendingFinishChoice) throw new Error("Missing Finish Game choice");
+      await gamesApi.resolveFinishChoice(game.id, "continue", view.pendingFinishChoice.token);
+    }
+  }
+  const history = await roundsApi.getByGameId(game.id);
+  const editor = await gamesApi.getEditor(game.id);
+  if (!editor) throw new Error("Missing Game editor");
+  const input = {
+    gameId: game.id,
+    version: editor.version,
+    players: game.players,
+    withdrawnPlayers: [cam.id],
+  };
+  expect(await gamesApi.previewEdit(input)).toEqual({ requiresConfirmation: true });
+  await expect(gamesApi.edit(input)).rejects.toThrow("Confirm");
+  expect(await gamesApi.getById(game.id)).toEqual(editor.game);
+  const completed = await gamesApi.edit({ ...input, confirmImpact: true });
+  expect(completed.status).toBe("completed");
+  closeDB();
+  const view = await gamesApi.getView(game.id);
+  expect(view?.gameEndingRound).toBe(10);
+  expect(view?.rounds.every((round) => round.counted)).toBe(true);
+  expect(view?.players.map(({ tiebreakerTotal }) => tiebreakerTotal)).toEqual([3, 20, 30]);
+  expect(view?.standings.rows.map(({ player, place }) => [player.id, place])).toEqual([
+    [amy.id, 1],
+    [bob.id, 2],
+    [cam.id, null],
+  ]);
+  expect(view?.game).toMatchObject({ completionType: "normal", winnerIds: [amy.id] });
+  expect(await roundsApi.getByGameId(game.id)).toEqual(history);
+  for (const id of game.players) await playersApi.delete(id);
+  closeDB();
+  expect(await gamesApi.getView(game.id)).toEqual(view);
+});
+
+it("ignores a Withdrawal and its later actions while a corrected earlier finish applies, then restores them", async () => {
+  const { game, amy, bob, cam } = await setup(3);
+  const dora = await playersApi.create({ name: "Dora", color: "Jam", isFavorite: 0 });
+  const initial = await gamesApi.getEditor(game.id);
+  if (!initial) throw new Error("Missing Game editor");
+  await gamesApi.edit({
+    gameId: game.id,
+    version: initial.version,
+    players: [...game.players, dora.id],
+  });
+  async function membership(withdrawnPlayers: string[]) {
+    const editor = await gamesApi.getEditor(game.id);
+    if (!editor) throw new Error("Missing Game editor");
+    await gamesApi.edit({
+      gameId: game.id,
+      version: editor.version,
+      players: editor.game.players,
+      withdrawnPlayers,
+      confirmImpact: true,
+    });
+  }
+  for (let number = 1; number <= 6; number++) {
+    await roundsApi.add({
+      gameId: game.id,
+      roundWinnerId: null,
+      scores: [
+        { playerId: cam.id, phaseStatus: "failed", score: 3 },
+        { playerId: dora.id, phaseStatus: "failed", score: 0 },
+        ...(number <= 3 || number === 5
+          ? [
+              {
+                playerId: amy.id,
+                phaseStatus:
+                  number === 2 || number === 3 ? ("completed" as const) : ("failed" as const),
+                score: 2,
+              },
+            ]
+          : []),
+        ...(number <= 4
+          ? [
+              {
+                playerId: bob.id,
+                phaseStatus:
+                  number === 1 || number === 2 || number === 4
+                    ? ("completed" as const)
+                    : ("failed" as const),
+                score: 1,
+              },
+            ]
+          : []),
+      ],
+    });
+    if (number === 3 || number === 5) await membership([amy.id]);
+    if (number === 4) {
+      const view = await gamesApi.getView(game.id);
+      if (!view?.pendingFinishChoice) throw new Error("Missing Finish Game choice");
+      await gamesApi.resolveFinishChoice(game.id, "continue", view.pendingFinishChoice.token);
+      await membership([]);
+    }
+  }
+  const before = await gamesApi.getView(game.id);
+  const original = await gamesApi.getRoundEditor(game.id, 1);
+  await gamesApi.editRound({
+    gameId: game.id,
+    roundNumber: 1,
+    version: original.version,
+    roundWinnerId: null,
+    confirmImpact: true,
+    scores: original.round.scores.map((score) =>
+      score.playerId === amy.id ? { ...score, phaseStatus: "completed" as const } : score,
+    ),
+  });
+  closeDB();
+  const corrected = await gamesApi.getView(game.id);
+  expect(corrected?.game.status).toBe("active");
+  expect(corrected?.game.playerMembershipChanges).toEqual(before?.game.playerMembershipChanges);
+  expect(corrected?.players[0]).toMatchObject({
+    id: amy.id,
+    place: 1,
+    finishingRound: 3,
+    finishingPlace: 1,
+    tiebreakerTotal: 6,
+  });
+  expect(corrected?.players[1]).toMatchObject({ id: bob.id, place: 2, finishingRound: 4 });
+  expect(corrected?.rounds[4].scores[0]).toMatchObject({
+    source: before?.rounds[4].scores[0].source,
+    counted: false,
+  });
+  expect((await gamesApi.getEditor(game.id))?.withdrawnPlayers).toEqual([]);
+  const fresh = await gamesApi.getRoundEditor(game.id, 1);
+  await gamesApi.editRound({
+    gameId: game.id,
+    roundNumber: 1,
+    version: fresh.version,
+    roundWinnerId: null,
+    scores: original.round.scores,
+    confirmImpact: true,
+  });
+  closeDB();
+  const restored = await gamesApi.getView(game.id);
+  expect(restored?.players).toEqual(before?.players);
+  expect(restored?.standings).toEqual(before?.standings);
+  expect(restored?.rounds.slice(1)).toEqual(before?.rounds.slice(1));
+  expect((await gamesApi.getEditor(game.id))?.withdrawnPlayers).toEqual([amy.id]);
+});
+
+it("preserves actual attendance and source identity when deletion shifts Join, Withdrawal and Rejoin boundaries", async () => {
+  const { game, amy, bob, cam } = await setup(3);
+  const dora = await playersApi.create({ name: "Dora", color: "Jam", isFavorite: 0 });
+  for (let number = 1; number <= 4; number++) {
+    await roundsApi.add({
+      gameId: game.id,
+      roundWinnerId: null,
+      scores: [
+        { playerId: bob.id, phaseStatus: "failed", score: 1 },
+        ...(number !== 3
+          ? [{ playerId: amy.id, phaseStatus: "completed" as const, score: 2 }]
+          : []),
+        { playerId: cam.id, phaseStatus: "failed", score: 3 },
+        ...(number > 1 ? [{ playerId: dora.id, phaseStatus: "failed" as const, score: 4 }] : []),
+      ],
+    });
+    const editor = await gamesApi.getEditor(game.id);
+    if (!editor) throw new Error("Missing Game editor");
+    if (number < 4) {
+      await gamesApi.edit({
+        gameId: game.id,
+        version: editor.version,
+        players: [...game.players, dora.id],
+        withdrawnPlayers: number === 2 ? [amy.id] : [],
+        confirmImpact: true,
+      });
+    }
+  }
+  const before = await roundsApi.getByGameId(game.id);
+  const editor = await gamesApi.getRoundEditor(game.id, 2);
+  await gamesApi.deleteRound({
+    gameId: game.id,
+    roundId: editor.round.id,
+    version: editor.version,
+  });
+  closeDB();
+  const view = await gamesApi.getView(game.id);
+  expect(view?.rounds.map(({ source }) => source.id)).toEqual([
+    before[0].id,
+    before[2].id,
+    before[3].id,
+  ]);
+  expect(view?.rounds[1].scores[0]).toMatchObject({
+    playerId: amy.id,
+    source: undefined,
+    counted: false,
+  });
+  expect(view?.players[0]).toMatchObject({ progress: { currentPhase: 3 }, tiebreakerTotal: 4 });
+  expect(view?.game.playerJoins).toEqual([{ playerId: dora.id, afterRoundNumber: 1 }]);
+  expect(view?.game.playerMembershipChanges).toEqual([
+    { playerId: amy.id, afterRoundNumber: 1, type: "withdrawal" },
+    { playerId: amy.id, afterRoundNumber: 2, type: "rejoin" },
+  ]);
+  expect(view?.playingPlayers.map(({ id }) => id)).toEqual([...game.players, dora.id]);
+  expect(view?.standings.tiebreakerGraphSeries[0].points).toEqual([
+    { roundNumber: 0, value: 0, standingValue: 0 },
+    { roundNumber: 1, value: 2, standingValue: -2 },
+    { roundNumber: 3, value: 4, standingValue: -4 },
+  ]);
+});
+
+it("rejects invalid or stale Withdrawals atomically, counts Finished Players, and evaluates the entire replacement batch", async () => {
+  const { game, amy, bob, cam } = await setup(3);
+  const dora = await playersApi.create({ name: "Dora", color: "Jam", isFavorite: 0 });
+  for (let number = 1; number <= 3; number++) {
+    await roundsApi.add({
+      gameId: game.id,
+      roundWinnerId: amy.id,
+      scores: [
+        { playerId: amy.id, phaseStatus: "completed", score: 0 },
+        { playerId: bob.id, phaseStatus: "failed", score: 2 },
+        { playerId: cam.id, phaseStatus: "failed", score: 3 },
+      ],
+    });
+  }
+  const choice = (await gamesApi.getView(game.id))?.pendingFinishChoice;
+  if (!choice) throw new Error("Missing Finish Game choice");
+  await gamesApi.resolveFinishChoice(game.id, "continue", choice.token);
+  const editor = await gamesApi.getEditor(game.id);
+  if (!editor) throw new Error("Missing Game editor");
+  expect(editor.finishedPlayers).toEqual([amy.id]);
+  const before = await gamesApi.getView(game.id);
+  const input = {
+    gameId: game.id,
+    version: editor.version,
+    players: game.players,
+    confirmImpact: true,
+  };
+  for (const withdrawnPlayers of [[amy.id], [bob.id, cam.id], [cam.id, cam.id], [dora.id]]) {
+    await expect(gamesApi.previewEdit({ ...input, withdrawnPlayers })).rejects.toThrow();
+    await expect(gamesApi.edit({ ...input, withdrawnPlayers })).rejects.toThrow();
+    closeDB();
+    expect(await gamesApi.getView(game.id)).toEqual(before);
+  }
+  const replacement = {
+    ...input,
+    players: [...game.players, dora.id],
+    withdrawnPlayers: [cam.id],
+  };
+  await expect(
+    // @ts-expect-error Untyped callers must not save malformed membership with a valid Join.
+    gamesApi.edit({ ...replacement, withdrawnPlayers: null }),
+  ).rejects.toThrow("Withdrawn Players must be unique saved Game members.");
+  closeDB();
+  expect(await gamesApi.getView(game.id)).toEqual(before);
+  const results = await Promise.allSettled([
+    gamesApi.edit(replacement),
+    gamesApi.edit(replacement),
+  ]);
+  expect(results.map(({ status }) => status).sort()).toEqual(["fulfilled", "rejected"]);
+  await expect(gamesApi.edit({ ...input, withdrawnPlayers: [bob.id] })).rejects.toThrow(
+    "history changed",
+  );
+  closeDB();
+  const replaced = await gamesApi.getView(game.id);
+  expect(replaced?.game.status).toBe("active");
+  expect(replaced?.automaticCompletion).toBe(false);
+  expect(replaced?.players.map(({ id }) => id)).toEqual(replacement.players);
+  expect(replaced?.playingPlayers.map(({ id }) => id)).toEqual([bob.id, dora.id]);
+  expect(replaced?.players[0]).toMatchObject({ place: 1, finishingRound: 3 });
+  expect(replaced?.players[2]).toMatchObject({ place: null, tiebreakerTotal: 9 });
+  expect(replaced?.players[3]).toMatchObject({ progress: { currentPhase: 1 }, tiebreakerTotal: 0 });
+});
+
 it("saves a prospective seat with zero progress and totals, blank earlier cells and continuous dealing", async () => {
   const { game, amy, bob, cam } = await setup();
   await roundsApi.add({
@@ -379,7 +747,7 @@ it("keeps Finished Players out of new Rounds and dealing after a Join, without r
 it.each([
   "latest",
   "all",
-] as const)("preserves prospective Join eligibility when deleting %s history and recording replacement play", async (deletion) => {
+] as const)("preserves Join and Withdrawal/Rejoin eligibility when deleting %s history and recording replacement play", async (deletion) => {
   const { game, amy, bob, cam } = await setup();
   for (let number = 1; number <= 2; number++) {
     await roundsApi.add({
@@ -397,15 +765,20 @@ it.each([
     gameId: game.id,
     version: editor.version,
     players: [amy.id, cam.id, bob.id],
+    withdrawnPlayers: [amy.id],
     confirmImpact: true,
   });
   if (deletion === "latest") await roundsApi.delete(game.id, 2);
   else await roundsApi.deleteByGameId(game.id);
+  closeDB();
+  expect((await gamesApi.getView(game.id))?.playingPlayers.map(({ id }) => id)).toEqual([
+    cam.id,
+    bob.id,
+  ]);
   await roundsApi.add({
     gameId: game.id,
     roundWinnerId: cam.id,
     scores: [
-      { playerId: amy.id, phaseStatus: "failed", score: 1 },
       { playerId: cam.id, phaseStatus: "completed", score: 3 },
       { playerId: bob.id, phaseStatus: "failed", score: 2 },
     ],
@@ -418,8 +791,25 @@ it.each([
     tiebreakerTotal: 3,
   });
   expect(view?.rounds.at(-1)?.scores[1].counted).toBe(true);
-  expect(view?.rounds.at(-1)?.dealerId).toBe(deletion === "latest" ? cam.id : amy.id);
+  expect(view?.rounds.at(-1)?.dealerId).toBe(cam.id);
   expect(view?.game.playerJoins).toEqual([
     { playerId: cam.id, afterRoundNumber: deletion === "latest" ? 1 : 0 },
+  ]);
+  const returning = await gamesApi.getEditor(game.id);
+  if (!returning) throw new Error("Missing Game editor");
+  await gamesApi.edit({
+    gameId: game.id,
+    version: returning.version,
+    players: returning.game.players,
+    withdrawnPlayers: [],
+    confirmImpact: true,
+  });
+  if (deletion === "latest") await roundsApi.delete(game.id, 2);
+  else await roundsApi.deleteByGameId(game.id);
+  closeDB();
+  expect((await gamesApi.getView(game.id))?.playingPlayers.map(({ id }) => id)).toEqual([
+    amy.id,
+    cam.id,
+    bob.id,
   ]);
 });

@@ -36,7 +36,12 @@ export function ScoreboardHeader({
             {isUpcomingDealer && (
               <span className="sr-only">Upcoming Round Dealer: {player.name}</span>
             )}
-            <div className="flex flex-col items-center gap-1">
+            <div
+              className={[
+                "flex flex-col items-center gap-1",
+                player.place === null ? "grayscale" : "",
+              ].join(" ")}
+            >
               <ScoreboardPlayerName
                 player={player}
                 expanded={namesExpanded}

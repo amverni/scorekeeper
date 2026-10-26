@@ -54,13 +54,13 @@ export function Game({ gameId }: GameProps) {
   const showPhasesCardEntryButton = game ? shouldShowPhasesCardEntryButton(game.status) : true;
 
   useEffect(() => {
-    if (!game) return;
+    if (!game || !actionReady) return;
     if (checkedInitialStandingsGameId.current === game.id) return;
     checkedInitialStandingsGameId.current = game.id;
     if (shouldAutoOpenStandings(game.status, game.id, null)) {
       setStandingsOpen(true);
     }
-  }, [game]);
+  }, [game, actionReady]);
 
   return (
     <>

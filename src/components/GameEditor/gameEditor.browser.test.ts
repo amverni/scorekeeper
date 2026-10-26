@@ -137,20 +137,23 @@ it("stages a favorite Player, undoes additions, discards on Cancel, and saves on
   }
 }, 60_000);
 
-it("stages saved-member Withdrawal before any Round, allows invalid drafts, and rejoins in the locked seat", async () => {
+it.each([
+  "generic",
+  "phase10",
+] as const)("stages %s saved-member Withdrawal before any Round, allows invalid drafts, and rejoins in the locked seat", async (owner) => {
   const page = await newPage();
   try {
-    const game = await seed(page, "generic");
+    const game = await seed(page, owner);
     await page.evaluate(`(async () => {
-      const { genericGamesApi } = await import("/scorekeeper/src/data/api/genericGames.ts");
+      ${apiImport(owner)}
       const { playersApi } = await import("/scorekeeper/src/data/api/players.ts");
       const cam = await playersApi.create({ name: "Cam", color: "Lime", isFavorite: 1 });
-      const editor = await genericGamesApi.getEditor(${JSON.stringify(game.id)});
-      await genericGamesApi.edit({
+      const editor = await api.getEditor(${JSON.stringify(game.id)});
+      await api.edit({
         gameId: editor.game.id, version: editor.version, players: [...editor.game.players, cam.id],
       });
     })()`);
-    await page.goto(`${appUrl}#/scorekeeper/game/${game.id}`);
+    await page.goto(`${appUrl}#${home(owner)}/game/${game.id}`);
     await openEditor(page);
     const seating = page.getByRole("list", { name: "Seating Order", exact: true });
     const save = page.getByRole("button", { name: "Save", exact: true });
@@ -172,7 +175,7 @@ it("stages saved-member Withdrawal before any Round, allows invalid drafts, and 
     await page.getByRole("button", { name: "Withdraw Bob", exact: true }).click();
     await page.getByRole("link", { name: "Cancel", exact: true }).click();
     await openEditor(page);
-    expect(await page.getByRole("button", { name: "Withdraw Bob", exact: true }).count()).toBe(1);
+    await page.getByRole("button", { name: "Withdraw Bob", exact: true }).waitFor();
     expect(await save.isDisabled()).toBe(true);
     await page.getByRole("button", { name: "Withdraw Bob", exact: true }).click();
     await save.click();
@@ -185,14 +188,163 @@ it("stages saved-member Withdrawal before any Round, allows invalid drafts, and 
     await save.click();
     await page.getByRole("button", { name: "Menu", exact: true }).waitFor();
     await page.reload();
-    const headers = page
-      .getByRole("columnheader")
-      .filter({ has: page.getByRole("button", { name: /all Player names/ }) });
+    const headers = page.getByRole("button", { name: /all Player names/ });
     await headers.nth(2).waitFor();
     expect(await headers.count()).toBe(3);
-    expect(await headers.nth(0).getByRole("button").getAttribute("aria-label")).toBe(
-      "Bob: Show all Player names",
+    expect(await headers.nth(0).getAttribute("aria-label")).toBe("Bob: Show all Player names");
+  } finally {
+    await page.close();
+  }
+}, 60_000);
+
+it("withdraws and rejoins a Phase 10 Player with gray unranked history, recoverable Round drafts and no Finished Player action", async () => {
+  const page = await newPage(390, 844);
+  try {
+    const game = await seed(page, "phase10");
+    await page.evaluate(`(async () => {
+      const { gamesApi } = await import("/scorekeeper/src/data/api/games.ts");
+      const { roundsApi } = await import("/scorekeeper/src/data/api/rounds.ts");
+      const { playersApi } = await import("/scorekeeper/src/data/api/players.ts");
+      const cam = await playersApi.create({ name: "Cam", color: "Lime", isFavorite: 0 });
+      const editor = await gamesApi.getEditor(${JSON.stringify(game.id)});
+      const players = [...editor.game.players, cam.id];
+      await gamesApi.edit({ gameId: editor.game.id, version: editor.version, players });
+      await roundsApi.add({
+        gameId: editor.game.id, roundWinnerId: players[0],
+        scores: players.map((playerId, index) => ({
+          playerId, phaseStatus: index === 0 ? "completed" : "failed", score: index + 1,
+        })),
+      });
+    })()`);
+    await page.goto(`${appUrl}#/phaseCompan10n/game/${game.id}`);
+    const round = page.getByRole("dialog", { name: "Add Round", exact: true });
+    await page.getByRole("button", { name: "Add round 2", exact: true }).click();
+    await round.getByRole("button", { name: /Round Winner/ }).click();
+    await page.getByRole("option", { name: "Bob", exact: true }).click();
+    await round.getByRole("tab", { name: "Amy", exact: true }).click();
+    await round.getByRole("button", { name: "Failed", exact: true }).click();
+    await round.getByRole("button", { name: "Set to 3", exact: true }).click();
+    await page.keyboard.press("Escape");
+    await round.waitFor({ state: "detached" });
+    await openEditor(page);
+    await page.getByRole("button", { name: "Withdraw Bob", exact: true }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    const confirmation = page.getByRole("dialog", { name: "Edit game", exact: true });
+    await confirmation.getByRole("button", { name: "Edit", exact: true }).waitFor();
+    await page.keyboard.press("Escape");
+    await confirmation.waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Rejoin Bob", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await confirmation.getByRole("button", { name: "Save", exact: true }).click();
+    const bobHeader = page.locator(".scoreboard-cell--sticky-top").filter({
+      has: page.getByRole("button", { name: "Bob: Show all Player names", exact: true }),
+    });
+    await bobHeader.waitFor();
+    expect(
+      await bobHeader
+        .locator("div")
+        .first()
+        .evaluate((content) => getComputedStyle(content).filter),
+    ).toBe("grayscale(1)");
+    await page.getByRole("button", { name: "Open Standings", exact: true }).click();
+    const standings = page.getByRole("dialog");
+    const lastRow = standings.getByRole("listitem").last();
+    await lastRow.getByText("Bob", { exact: true }).waitFor();
+    expect(await lastRow.evaluate((row) => getComputedStyle(row).filter)).toBe("grayscale(1)");
+    expect(
+      await lastRow
+        .getByText("Unranked", { exact: true })
+        .evaluate((element) => element.getBoundingClientRect().width),
+    ).toBe(1);
+    expect(await standings.getByText("Withdrawal", { exact: true }).count()).toBe(0);
+    await page.keyboard.press("Escape");
+    await standings.waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Add round 2", exact: true }).click();
+    expect(await round.getByRole("tab", { name: "Bob", exact: true }).count()).toBe(0);
+    expect(
+      await round.getByRole("tab", { name: "Amy", exact: true }).getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(
+      await round
+        .getByRole("spinbutton", { name: "Wilds used", exact: true })
+        .getAttribute("aria-valuenow"),
+    ).toBe("3");
+    await round
+      .getByRole("alert")
+      .filter({ hasText: "The selected Round Winner is no longer playing." })
+      .waitFor();
+    expect(await round.getByRole("button", { name: "Save round", exact: true }).isDisabled()).toBe(
+      true,
     );
+    await round.getByRole("button", { name: /Round Winner/ }).click();
+    await page.getByRole("option", { name: "Choose winner", exact: true }).click();
+    await round.getByRole("tab", { name: "Cam", exact: true }).click();
+    await round.getByRole("button", { name: "Failed", exact: true }).click();
+    await round.getByRole("button", { name: "Save round", exact: true }).click();
+    await round.waitFor({ state: "detached" });
+    await openEditor(page);
+    await page.getByRole("button", { name: "Rejoin Bob", exact: true }).click();
+    expect(await page.getByRole("button", { name: "Reorder Bob", exact: true }).count()).toBe(0);
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await confirmation.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByRole("button", { name: "Menu", exact: true }).waitFor();
+    await page.reload();
+    await page.getByRole("button", { name: "Add round 3", exact: true }).waitFor();
+    const view = await page.evaluate<import("../../types").GameReadModel>(`(async () => {
+      const { gamesApi } = await import("/scorekeeper/src/data/api/games.ts");
+      return gamesApi.getView(${JSON.stringify(game.id)});
+    })()`);
+    expect(view.players[0]).toMatchObject({
+      name: "Bob",
+      progress: { currentPhase: 2 },
+      tiebreakerTotal: 1,
+    });
+    expect(view.rounds[1].scores[0]).toMatchObject({ source: undefined, counted: false });
+    expect(view.rounds[1].scores[1].source).toMatchObject({ score: 3, phaseStatus: "failed" });
+    await page.evaluate(`(async () => {
+      const { gamesApi } = await import("/scorekeeper/src/data/api/games.ts");
+      const { roundsApi } = await import("/scorekeeper/src/data/api/rounds.ts");
+      const game = await gamesApi.getById(${JSON.stringify(game.id)});
+      for (let number = 3; number <= 4; number++) {
+        await roundsApi.add({
+          gameId: game.id, roundWinnerId: game.players[0],
+          scores: game.players.map((playerId, index) => ({
+            playerId, phaseStatus: index === 0 ? "completed" : "failed", score: 0,
+          })),
+        });
+      }
+      const view = await gamesApi.getView(game.id);
+      await gamesApi.resolveFinishChoice(game.id, "continue", view.pendingFinishChoice.token);
+    })()`);
+    await page.reload();
+    await openEditor(page);
+    expect(await page.getByRole("button", { name: "Withdraw Bob", exact: true }).count()).toBe(0);
+    const bobRow = page
+      .getByRole("list", { name: "Seating Order", exact: true })
+      .getByRole("listitem")
+      .filter({ hasText: "Bob" });
+    expect(
+      await bobRow
+        .locator(":scope > span[aria-hidden]")
+        .evaluate((element) => element.getBoundingClientRect().width),
+    ).toBe(44);
+    await page.getByRole("button", { name: "Withdraw Cam", exact: true }).click();
+    expect(await page.getByRole("button", { name: "Save", exact: true }).isEnabled()).toBe(true);
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await confirmation.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByRole("dialog").getByText("Unranked", { exact: true }).waitFor();
+    await page.reload();
+    const completed = await page.evaluate<import("../../types").GameReadModel>(`(async () => {
+      const { gamesApi } = await import("/scorekeeper/src/data/api/games.ts");
+      return gamesApi.getView(${JSON.stringify(game.id)});
+    })()`);
+    expect(completed.game).toMatchObject({ status: "completed", winnerIds: [game.players[0]] });
+    expect(completed.gameEndingRound).toBe(4);
+    expect(completed.standings.rows.map(({ player, place }) => [player.name, place])).toEqual([
+      ["Bob", 1],
+      ["Amy", 2],
+      ["Cam", null],
+    ]);
   } finally {
     await page.close();
   }
@@ -460,6 +612,7 @@ it("reuses Player search and profile creation, retaining explicitly saved profil
 
 it.each([
   { owner: "phase10", operation: "Join" },
+  { owner: "phase10", operation: "Withdrawal" },
   { owner: "generic", operation: "Join" },
   { owner: "generic", operation: "Withdrawal" },
 ] as const)("blocks pending duplicate $owner $operation saves and retains the draft after storage failure", async ({
@@ -475,9 +628,9 @@ it.each([
     })()`);
     if (operation === "Withdrawal") {
       game = await page.evaluate<StoredGame>(`(async () => {
-        const { genericGamesApi } = await import("/scorekeeper/src/data/api/genericGames.ts");
-        const editor = await genericGamesApi.getEditor(${JSON.stringify(game.id)});
-        return genericGamesApi.edit({
+        ${apiImport(owner)}
+        const editor = await api.getEditor(${JSON.stringify(game.id)});
+        return api.edit({
           gameId: editor.game.id, version: editor.version,
           players: [...editor.game.players, ${JSON.stringify(cam.id)}],
         });
