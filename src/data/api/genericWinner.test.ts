@@ -375,6 +375,8 @@ it("keeps an unplayed Single Round Winner Game active with zero wins and shared 
   const { game, players } = await createWinnerGame();
   expect(await genericGamesApi.getScoreboard(game.id)).toEqual({
     game,
+    withdrawnPlayers: [],
+    eligiblePlayers: players.map(({ id, name, color }) => ({ id, name, color })),
     primaryGraph: {
       metric: "Rounds Won",
       direction: "high",
@@ -419,6 +421,8 @@ it.each([
   closeDB();
   expect(await genericGamesApi.getScoreboard(game.id)).toEqual({
     game: completed,
+    withdrawnPlayers: [],
+    eligiblePlayers: [{ id: amy.id, name: "Amy", color: "Jam" }],
     primaryGraph: {
       metric: "Rounds Won",
       direction: "high",

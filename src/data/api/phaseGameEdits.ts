@@ -4,7 +4,7 @@ import {
   requirePlayers,
   withGameTransaction,
 } from "./gameLifecycle";
-import { assertJoinSeats } from "./gameMembership";
+import { assertSavedSeats } from "./gameMembership";
 import { deriveGameReadModel } from "./gameReadModel";
 import { assertActivePhaseGame, assertPhaseRounds } from "./games";
 import { phasesApi } from "./phases";
@@ -69,8 +69,9 @@ async function evaluateEdit(tx: GameLifecycleTransaction, input: EditGamePlayers
   if (view.automaticCompletion || view.pendingFinishChoice) {
     throw new Error("Resolve Finish Game before adding Players.");
   }
-  assertJoinSeats(game.players, input.players);
+  assertSavedSeats(game.players, input.players);
   const addedIds = input.players.filter((id) => !game.players.includes(id));
+  if (addedIds.length === 0) throw new Error("Add at least one new Player.");
   await requirePlayers(tx, addedIds);
   return {
     game: {

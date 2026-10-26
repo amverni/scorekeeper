@@ -1,4 +1,4 @@
-import { Minus } from "lucide-react";
+import { Minus, Plus } from "lucide-react";
 import type { PlayerId } from "../../types";
 import {
   useGamePlayers,
@@ -8,7 +8,15 @@ import {
 import { PlayerRow } from "../Create/Players/PlayerRow";
 import { Button, List, type SortableItem } from "../ui";
 
-export function GameMembershipPlayers({ lockedPlayerIds }: { lockedPlayerIds: PlayerId[] }) {
+export function GameMembershipPlayers({
+  lockedPlayerIds,
+  withdrawnPlayers,
+  onRejoin,
+}: {
+  lockedPlayerIds: PlayerId[];
+  withdrawnPlayers: PlayerId[];
+  onRejoin?: (id: PlayerId) => void;
+}) {
   const players = useGamePlayers();
   const removePlayer = useRemovePlayer();
   const reorderPlayers = useReorderPlayers();
@@ -40,19 +48,32 @@ export function GameMembershipPlayers({ lockedPlayerIds }: { lockedPlayerIds: Pl
     >
       {players.map((player) => (
         <li key={player.id} className="flex w-full min-w-0 items-center">
-          <div className="min-w-0 flex-1 wrap-anywhere">
+          <div
+            className={[
+              "min-w-0 flex-1 wrap-anywhere",
+              withdrawnPlayers.includes(player.id) ? "grayscale text-text-secondary" : "",
+            ].join(" ")}
+          >
             <PlayerRow player={player} />
           </div>
-          {lockedIds.has(player.id) ? (
+          {lockedIds.has(player.id) && !onRejoin ? (
             <span className="size-11 shrink-0" aria-hidden />
           ) : (
             <Button
               type="button"
-              aria-label={`Remove ${player.name}`}
+              aria-label={`${withdrawnPlayers.includes(player.id) ? "Rejoin" : lockedIds.has(player.id) ? "Withdraw" : "Remove"} ${player.name}`}
               className="size-11 shrink-0"
-              onClick={() => removePlayer(player.id)}
+              onClick={() =>
+                withdrawnPlayers.includes(player.id)
+                  ? onRejoin?.(player.id)
+                  : removePlayer(player.id)
+              }
             >
-              <Minus className="size-5" aria-hidden />
+              {withdrawnPlayers.includes(player.id) ? (
+                <Plus className="size-5" aria-hidden />
+              ) : (
+                <Minus className="size-5" aria-hidden />
+              )}
             </Button>
           )}
         </li>

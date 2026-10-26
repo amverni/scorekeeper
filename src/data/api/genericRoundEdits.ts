@@ -46,6 +46,15 @@ export const genericRoundEdits = {
               })),
             }
           : {}),
+        ...(game.playerMembershipChanges
+          ? {
+              playerMembershipChanges: game.playerMembershipChanges.map((change) => ({
+                ...change,
+                afterRoundNumber:
+                  change.afterRoundNumber - Number(round.roundNumber <= change.afterRoundNumber),
+              })),
+            }
+          : {}),
         lastActivityAt: Date.now(),
       };
       deriveGenericScoreboard(updatedGame, players, remaining);

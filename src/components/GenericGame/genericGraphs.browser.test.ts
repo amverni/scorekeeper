@@ -86,6 +86,71 @@ async function expectValues(dialog: Locator, metric: string, rows: string[][]) {
   ).toEqual(rows);
 }
 
+it("anchors equal totals at their actual latest Round through Withdrawal and Rejoin", async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  page.setDefaultTimeout(5_000);
+  page.setDefaultNavigationTimeout(30_000);
+  try {
+    const { gameId, dialog } = await openGraphGame(
+      page,
+      {
+        mode: "points",
+        pointsDirection: "high",
+        tiebreaker: null,
+        dealer: false,
+      },
+      3,
+    );
+    await dialog.getByRole("button", { name: "Close", exact: true }).click();
+    await dialog.waitFor({ state: "detached" });
+    await page.evaluate(`(async () => {
+      const { genericGamesApi } = await import("/scorekeeper/src/data/api/genericGames.ts");
+      const { genericRoundsApi } = await import("/scorekeeper/src/data/api/genericRounds.ts");
+      const editor = await genericGamesApi.getEditor(${JSON.stringify(gameId)});
+      await genericGamesApi.edit({
+        gameId: editor.game.id, version: editor.version, players: editor.game.players,
+        withdrawnPlayers: [editor.game.players[0]], confirmImpact: true,
+      });
+      await genericRoundsApi.add({
+        gameId: editor.game.id, mode: "points",
+        scores: editor.game.players.slice(1).map(playerId => ({playerId, points: "0"})),
+      });
+    })()`);
+    await page.reload();
+    await page.getByRole("button", { name: "Open Standings", exact: true }).click();
+    await dialog.getByRole("tab", { name: "Points", exact: true }).click();
+    const maya = await dialog
+      .getByRole("img", { name: "Latest -6: Maya", exact: true })
+      .boundingBox();
+    const rowan = await dialog
+      .getByRole("img", { name: "Latest -6: Rowan", exact: true })
+      .boundingBox();
+    if (!maya || !rowan) throw new Error("Missing separate graph endpoints");
+    expect(rowan.x - maya.x).toBeGreaterThan(20);
+    await dialog.getByRole("button", { name: "Close", exact: true }).click();
+    await dialog.waitFor({ state: "detached" });
+    await page.evaluate(`(async () => {
+      const { genericGamesApi } = await import("/scorekeeper/src/data/api/genericGames.ts");
+      const { genericRoundsApi } = await import("/scorekeeper/src/data/api/genericRounds.ts");
+      const editor = await genericGamesApi.getEditor(${JSON.stringify(gameId)});
+      await genericGamesApi.edit({
+        gameId: editor.game.id, version: editor.version, players: editor.game.players,
+        withdrawnPlayers: [], confirmImpact: true,
+      });
+      await genericRoundsApi.add({
+        gameId: editor.game.id, mode: "points",
+        scores: editor.game.players.map(playerId => ({playerId, points: "0"})),
+      });
+    })()`);
+    await page.reload();
+    await page.getByRole("button", { name: "Open Standings", exact: true }).click();
+    await dialog.getByRole("tab", { name: "Points", exact: true }).click();
+    await dialog.getByRole("img", { name: "Latest -6: Maya, Rowan", exact: true }).waitFor();
+  } finally {
+    await page.close();
+  }
+}, 60_000);
+
 it.each([
   ["low", "high"],
   ["high", "low"],

@@ -127,6 +127,7 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
                     "scoreboard-cell scoreboard-cell--sticky-top",
                     index === view.players.length - 1 ? "scoreboard-cell--last-col" : "",
                     view.upcomingDealerId === player.id ? "scoreboard-cell--upcoming-dealer" : "",
+                    view.withdrawnPlayers.includes(player.id) ? "scoreboard-cell--withdrawn" : "",
                   ].join(" ")}
                 >
                   {view.upcomingDealerId === player.id && (
@@ -138,7 +139,14 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
                       expanded={namesExpanded}
                       onToggle={() => setNamesExpanded((previous) => !previous)}
                     />
-                    <span className="whitespace-nowrap text-2xl font-medium leading-none text-text-primary tabular-nums">
+                    <span
+                      className={[
+                        "whitespace-nowrap text-2xl font-medium leading-none tabular-nums",
+                        view.withdrawnPlayers.includes(player.id)
+                          ? "text-text-secondary"
+                          : "text-text-primary",
+                      ].join(" ")}
+                    >
                       <span className="sr-only">Total {metric}: </span>
                       {primaryTotal(player)}
                     </span>
@@ -321,14 +329,14 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
             open={addOpen}
             onClose={setAddOpen}
             gameId={view.game.id}
-            players={view.players}
+            players={view.eligiblePlayers}
           />
         ) : (
           <GenericAddRoundDialog
             open={addOpen}
             onClose={setAddOpen}
             gameId={view.game.id}
-            players={view.players}
+            players={view.eligiblePlayers}
             mode={view.game.settings.mode}
             tiebreakerEnabled={
               view.game.settings.mode === "points" && view.game.settings.tiebreaker !== null

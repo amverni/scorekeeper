@@ -7,6 +7,14 @@
   min-width: 70px;
 }
 
+.generic-scoreboard .scoreboard-cell--withdrawn {
+  color: var(--color-text-secondary);
+}
+
+.generic-scoreboard .scoreboard-cell--withdrawn .scoreboard-identity {
+  filter: grayscale(1);
+}
+
 /* Keep the existing 24px intrinsic allowance on either side when tracking
    a Dealer, without adding a new column minimum when tracking is off. */
 .generic-scoreboard-entry {

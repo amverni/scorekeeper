@@ -21,5 +21,6 @@ export interface EditGamePlayersInput {
 export interface GenericGameEditor {
   game: ActiveGenericGame;
   players: Player[];
+  withdrawnPlayers: PlayerId[];
   version: string;
 }

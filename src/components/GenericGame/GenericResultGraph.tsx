@@ -64,7 +64,7 @@ export function GenericResultGraph({ graph }: { graph: GenericGraph }) {
         />
         {view.latestEndpointGroups.map((group) => (
           <GraphEndpointAvatarGroup
-            key={group.value}
+            key={`${group.roundNumber}:${group.value}`}
             label={String(group.value)}
             players={group.players}
             x={group.x}

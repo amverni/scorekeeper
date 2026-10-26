@@ -53,13 +53,38 @@ export function assertGenericGame(game: GenericGame): void {
   ) {
     throw new Error("Generic Game has invalid Join history.");
   }
+  let previousBoundary = 0;
+  const withdrawn = new Set<PlayerId>();
+  for (const change of game.playerMembershipChanges ?? []) {
+    const joinBoundary =
+      game.playerJoins?.find(({ playerId }) => playerId === change.playerId)?.afterRoundNumber ?? 0;
+    if (
+      !game.players.includes(change.playerId) ||
+      !Number.isSafeInteger(change.afterRoundNumber) ||
+      change.afterRoundNumber < Math.max(previousBoundary, joinBoundary) ||
+      (change.type !== "withdrawal" && change.type !== "rejoin") ||
+      (change.type === "withdrawal") === withdrawn.has(change.playerId)
+    ) {
+      throw new Error("Generic Game has invalid Withdrawal/Rejoin history.");
+    }
+    if (change.type === "withdrawal") withdrawn.add(change.playerId);
+    else withdrawn.delete(change.playerId);
+    previousBoundary = change.afterRoundNumber;
+  }
 }
 
 export function genericRoundPlayerIds(game: GenericGame, roundNumber: number): PlayerId[] {
-  return game.players.filter((id) => {
-    const join = game.playerJoins?.find(({ playerId }) => playerId === id);
-    return !join || roundNumber > join.afterRoundNumber;
-  });
+  const excluded = new Set(
+    game.playerJoins
+      ?.filter(({ afterRoundNumber }) => afterRoundNumber >= roundNumber)
+      .map(({ playerId }) => playerId),
+  );
+  for (const change of game.playerMembershipChanges ?? []) {
+    if (change.afterRoundNumber >= roundNumber) break;
+    if (change.type === "withdrawal") excluded.add(change.playerId);
+    else excluded.delete(change.playerId);
+  }
+  return game.players.filter((id) => !excluded.has(id));
 }
 
 function nextDealer(game: GenericGame, previous: PlayerId | null, eligible: PlayerId[]) {
@@ -173,7 +198,10 @@ export function deriveGenericScoreboard(
     if (total === undefined) throw new Error("Player does not belong to the Game");
     return { id, name, color, ...scoreTotal(game.settings, total, tiebreakerTotals.get(id)) };
   });
+  const nextRoundNumber = (rounds.at(-1)?.roundNumber ?? 0) + 1;
+  const eligible = new Set(genericRoundPlayerIds(game, nextRoundNumber));
   const ranked = identities
+    .filter(({ id }) => eligible.has(id))
     .map((player) => {
       const total = totals.get(player.id);
       if (total === undefined) throw new Error("Player does not belong to the Game");
@@ -191,27 +219,40 @@ export function deriveGenericScoreboard(
         : -lower;
     });
   let place = 1;
-  const standings = ranked.map(({ total, totalTiebreaker, player: { id, name, color } }, index) => {
-    if (
-      index > 0 &&
-      (ranked[index - 1].total !== total ||
-        (tiebreaker && ranked[index - 1].totalTiebreaker !== totalTiebreaker))
-    ) {
-      place = index + 1;
-    }
-    return {
-      player: { id, name, color },
-      ...scoreTotal(game.settings, total, totalTiebreaker),
-      place,
-    };
-  });
-  const nextRoundNumber = (rounds.at(-1)?.roundNumber ?? 0) + 1;
+  const standings: GenericScoreboardView["standings"] = ranked.map(
+    ({ total, totalTiebreaker, player: { id, name, color } }, index) => {
+      if (
+        index > 0 &&
+        (ranked[index - 1].total !== total ||
+          (tiebreaker && ranked[index - 1].totalTiebreaker !== totalTiebreaker))
+      ) {
+        place = index + 1;
+      }
+      return {
+        player: { id, name, color },
+        ...scoreTotal(game.settings, total, totalTiebreaker),
+        place,
+      };
+    },
+  );
+  const withdrawnPlayers = game.players.filter((id) => !eligible.has(id));
+  for (const player of identities.filter(({ id }) => !eligible.has(id))) {
+    standings.push({
+      player,
+      ...scoreTotal(game.settings, totals.get(player.id) ?? 0, tiebreakerTotals.get(player.id)),
+      place: null,
+    });
+  }
   const upcomingDealerId =
     game.status === "active" && game.settings.dealer
       ? nextDealer(game, previousDealer, genericRoundPlayerIds(game, nextRoundNumber))
       : null;
   return {
     game,
+    withdrawnPlayers,
+    eligiblePlayers: identities
+      .filter(({ id }) => eligible.has(id))
+      .map(({ id, name, color }) => ({ id, name, color })),
     players,
     rounds,
     standings,

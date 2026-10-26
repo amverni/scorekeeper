@@ -55,15 +55,16 @@ export function getGenericGraphView(graph: GenericGraph) {
     };
   });
   const groups = new Map<
-    number,
-    { value: number; x: number; y: number; players: PlayerIdentity[] }
+    string,
+    { roundNumber: number; value: number; x: number; y: number; players: PlayerIdentity[] }
   >();
   for (const entry of series) {
     const latest = entry.linePoints.at(-1);
     if (!latest) continue;
-    const group = groups.get(latest.value);
+    const key = `${latest.roundNumber}:${latest.value}`;
+    const group = groups.get(key);
     if (group) group.players.push(entry.player);
-    else groups.set(latest.value, { ...latest, players: [entry.player] });
+    else groups.set(key, { ...latest, players: [entry.player] });
   }
   const middle = Math.round(min + (max - min) / 2);
   return {

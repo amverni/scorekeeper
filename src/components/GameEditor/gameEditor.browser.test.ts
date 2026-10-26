@@ -137,6 +137,179 @@ it("stages a favorite Player, undoes additions, discards on Cancel, and saves on
   }
 }, 60_000);
 
+it("stages saved-member Withdrawal before any Round, allows invalid drafts, and rejoins in the locked seat", async () => {
+  const page = await newPage();
+  try {
+    const game = await seed(page, "generic");
+    await page.evaluate(`(async () => {
+      const { genericGamesApi } = await import("/scorekeeper/src/data/api/genericGames.ts");
+      const { playersApi } = await import("/scorekeeper/src/data/api/players.ts");
+      const cam = await playersApi.create({ name: "Cam", color: "Lime", isFavorite: 1 });
+      const editor = await genericGamesApi.getEditor(${JSON.stringify(game.id)});
+      await genericGamesApi.edit({
+        gameId: editor.game.id, version: editor.version, players: [...editor.game.players, cam.id],
+      });
+    })()`);
+    await page.goto(`${appUrl}#/scorekeeper/game/${game.id}`);
+    await openEditor(page);
+    const seating = page.getByRole("list", { name: "Seating Order", exact: true });
+    const save = page.getByRole("button", { name: "Save", exact: true });
+    await page.getByRole("button", { name: "Withdraw Bob", exact: true }).click();
+    expect(await seating.getByRole("listitem").count()).toBe(3);
+    expect(await save.isEnabled()).toBe(true);
+    await page.getByRole("button", { name: "Withdraw Amy", exact: true }).click();
+    expect(await save.isDisabled()).toBe(true);
+    expect(
+      await page
+        .getByText("Withdrawal must leave at least two eligible Players.", { exact: true })
+        .count(),
+    ).toBe(1);
+    await page.getByRole("button", { name: "Rejoin Bob", exact: true }).click();
+    expect(await save.isEnabled()).toBe(true);
+    await page.getByRole("button", { name: "Rejoin Amy", exact: true }).click();
+    expect(await save.isDisabled()).toBe(true);
+    expect(await seating.getByRole("button", { name: /^Reorder / }).count()).toBe(0);
+    await page.getByRole("button", { name: "Withdraw Bob", exact: true }).click();
+    await page.getByRole("link", { name: "Cancel", exact: true }).click();
+    await openEditor(page);
+    expect(await page.getByRole("button", { name: "Withdraw Bob", exact: true }).count()).toBe(1);
+    expect(await save.isDisabled()).toBe(true);
+    await page.getByRole("button", { name: "Withdraw Bob", exact: true }).click();
+    await save.click();
+    await page.getByRole("button", { name: "Menu", exact: true }).waitFor();
+    await page.reload();
+    await openEditor(page);
+    await page.getByRole("button", { name: "Rejoin Bob", exact: true }).click();
+    expect(await seating.getByRole("listitem").count()).toBe(3);
+    expect(await seating.getByRole("button", { name: /^Reorder / }).count()).toBe(0);
+    await save.click();
+    await page.getByRole("button", { name: "Menu", exact: true }).waitFor();
+    await page.reload();
+    const headers = page
+      .getByRole("columnheader")
+      .filter({ has: page.getByRole("button", { name: /all Player names/ }) });
+    await headers.nth(2).waitFor();
+    expect(await headers.count()).toBe(3);
+    expect(await headers.nth(0).getByRole("button").getAttribute("aria-label")).toBe(
+      "Bob: Show all Player names",
+    );
+  } finally {
+    await page.close();
+  }
+}, 60_000);
+
+it.each([
+  "points",
+  "singleRoundWinner",
+  "passFail",
+])("withdraws and rejoins in %s while preserving history and revalidating the next Round draft", async (mode) => {
+  const page = await newPage(390, 844);
+  try {
+    const game = await seed(page, "generic", mode);
+    await page.evaluate(`(async () => {
+      const { genericGamesApi } = await import("/scorekeeper/src/data/api/genericGames.ts");
+      const { genericRoundsApi } = await import("/scorekeeper/src/data/api/genericRounds.ts");
+      const { playersApi } = await import("/scorekeeper/src/data/api/players.ts");
+      const cam = await playersApi.create({ name: "Cam", color: "Lime", isFavorite: 0 });
+      const editor = await genericGamesApi.getEditor(${JSON.stringify(game.id)});
+      const ids = [...editor.game.players, cam.id];
+      await genericGamesApi.edit({ gameId: editor.game.id, version: editor.version, players: ids });
+      await genericRoundsApi.add({
+        gameId: editor.game.id, mode: ${JSON.stringify(mode)},
+        scores: ids.map((playerId, index) => ({
+          playerId,
+          ${mode === "points" ? 'points: index === 0 ? "-10" : "2", tiebreaker: "1"' : mode === "passFail" ? "passed: index === 0" : "won: index === 0"}
+        })),
+      });
+    })()`);
+    await page.goto(`${appUrl}#/scorekeeper/game/${game.id}`);
+    const round = page.getByRole("dialog", { name: "Add Round", exact: true });
+    await page.getByRole("button", { name: "Add Round", exact: true }).click();
+    if (mode === "points") {
+      await round.getByRole("tab", { name: "Amy", exact: true }).click();
+      await round.getByRole("button", { name: "7", exact: true }).click();
+    } else {
+      await round
+        .getByRole(mode === "passFail" ? "button" : "radio", { name: "Bob", exact: true })
+        .click();
+    }
+    await page.keyboard.press("Escape");
+    await round.waitFor({ state: "detached" });
+    await openEditor(page);
+    await page.getByRole("button", { name: "Withdraw Bob", exact: true }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    const confirmation = page.getByRole("dialog", { name: "Edit game", exact: true });
+    await confirmation.getByRole("button", { name: "Edit", exact: true }).waitFor();
+    await page.keyboard.press("Escape");
+    await confirmation.waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Rejoin Bob", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await confirmation.getByRole("button", { name: "Save", exact: true }).click();
+    const bobHeader = page.getByRole("columnheader").filter({ hasText: "Bob" });
+    await bobHeader.waitFor();
+    expect(
+      await bobHeader.evaluate(
+        (header) =>
+          getComputedStyle(header.querySelector(".scoreboard-identity") as Element).filter,
+      ),
+    ).toBe("grayscale(1)");
+    await page.getByRole("button", { name: "Open Standings", exact: true }).click();
+    const standings = page.getByRole("dialog", { name: "Standings", exact: true });
+    const rows = standings.getByRole("listitem");
+    await rows.nth(2).waitFor();
+    expect(await rows.nth(2).innerText()).toContain("Bob");
+    expect(
+      await rows
+        .nth(2)
+        .getByText("Unranked", { exact: true })
+        .evaluate((element) => element.getBoundingClientRect().width),
+    ).toBe(1);
+    expect(await rows.nth(2).evaluate((row) => getComputedStyle(row).color)).not.toBe(
+      await rows.nth(0).evaluate((row) => getComputedStyle(row).color),
+    );
+    await page.keyboard.press("Escape");
+    await standings.waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Add Round", exact: true }).click();
+    expect(
+      await round
+        .getByRole(mode === "points" ? "tab" : mode === "passFail" ? "button" : "radio", {
+          name: "Bob",
+          exact: true,
+        })
+        .count(),
+    ).toBe(0);
+    if (mode === "points") {
+      expect(await round.getByRole("status", { name: "Amy Points", exact: true }).innerText()).toBe(
+        "7",
+      );
+    } else if (mode === "singleRoundWinner") {
+      expect(await round.getByRole("button", { name: "Save", exact: true }).isDisabled()).toBe(
+        true,
+      );
+      await round.getByRole("radio", { name: "Amy", exact: true }).click();
+    }
+    await round.getByRole("button", { name: "Save", exact: true }).click();
+    await round.waitFor({ state: "detached" });
+    await openEditor(page);
+    await page.getByRole("button", { name: "Rejoin Bob", exact: true }).click();
+    expect(await page.getByRole("button", { name: "Reorder Bob", exact: true }).count()).toBe(0);
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await confirmation.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByRole("button", { name: "Add Round", exact: true }).waitFor();
+    await page.reload();
+    await page.getByRole("cell", { name: "Bob, Round 2: Did not play", exact: true }).waitFor();
+    expect(await page.getByRole("columnheader").filter({ hasText: "Bob" }).count()).toBe(1);
+    await page.getByRole("button", { name: "Open Standings", exact: true }).click();
+    await standings
+      .getByRole("listitem")
+      .filter({ hasText: "Bob" })
+      .getByText("Place 1", { exact: true })
+      .waitFor();
+  } finally {
+    await page.close();
+  }
+}, 60_000);
+
 it.each([
   320, 390,
 ])("positions only new seats with keyboard and pointer at %spx, then locks them on Save", async (width) => {
@@ -178,6 +351,7 @@ it.each([
           touches: { value: type === "touchend" ? [] : [touch] },
           changedTouches: { value: [touch] },
         });
+
         element.dispatchEvent(event);
       }
     });
@@ -285,20 +459,38 @@ it("reuses Player search and profile creation, retaining explicitly saved profil
 }, 60_000);
 
 it.each([
-  "phase10",
-  "generic",
-] as const)("blocks pending duplicate %s Game saves and retains the staged addition after storage failure", async (owner) => {
+  { owner: "phase10", operation: "Join" },
+  { owner: "generic", operation: "Join" },
+  { owner: "generic", operation: "Withdrawal" },
+] as const)("blocks pending duplicate $owner $operation saves and retains the draft after storage failure", async ({
+  owner,
+  operation,
+}) => {
   const page = await newPage(390, 844);
   try {
-    const game = await seed(page, owner);
+    let game = await seed(page, owner);
     const cam = await page.evaluate<Player>(`(async () => {
       const { playersApi } = await import("/scorekeeper/src/data/api/players.ts");
       return playersApi.create({ name: "Cam", color: "Lime", isFavorite: 1 });
     })()`);
+    if (operation === "Withdrawal") {
+      game = await page.evaluate<StoredGame>(`(async () => {
+        const { genericGamesApi } = await import("/scorekeeper/src/data/api/genericGames.ts");
+        const editor = await genericGamesApi.getEditor(${JSON.stringify(game.id)});
+        return genericGamesApi.edit({
+          gameId: editor.game.id, version: editor.version,
+          players: [...editor.game.players, ${JSON.stringify(cam.id)}],
+        });
+      })()`);
+    }
     await page.goto(`${appUrl}#${home(owner)}/game/${game.id}`);
     await openEditor(page);
-    await page.getByRole("button", { name: "Cam", exact: true }).click();
-    await movePlayerUp(page, "Cam");
+    if (operation === "Withdrawal") {
+      await page.getByRole("button", { name: "Withdraw Bob", exact: true }).click();
+    } else {
+      await page.getByRole("button", { name: "Cam", exact: true }).click();
+      await movePlayerUp(page, "Cam");
+    }
     await holdRoundStorage(page);
     await page.evaluate((id) => {
       const put = IDBObjectStore.prototype.put;
@@ -319,7 +511,12 @@ it.each([
     });
     await releaseRoundStorage(page);
     await page.getByRole("alert").filter({ hasText: "Membership storage unavailable" }).waitFor();
-    await page.getByRole("button", { name: "Remove Cam", exact: true }).waitFor();
+    await page
+      .getByRole("button", {
+        name: operation === "Withdrawal" ? "Rejoin Bob" : "Remove Cam",
+        exact: true,
+      })
+      .waitFor();
     const saved = await page.evaluate<StoredGame>(`(async () => {
       ${apiImport(owner)}
       return api.getById(${JSON.stringify(game.id)});
@@ -338,7 +535,13 @@ it.each([
       ${apiImport(owner)}
       return (await api.getById(${JSON.stringify(game.id)})).players;
     })()`),
-    ).toEqual([game.players[0], cam.id, game.players[1]]);
+    ).toEqual(
+      operation === "Withdrawal" ? game.players : [game.players[0], cam.id, game.players[1]],
+    );
+    if (operation === "Withdrawal") {
+      await openEditor(page);
+      await page.getByRole("button", { name: "Rejoin Bob", exact: true }).waitFor();
+    }
   } finally {
     await releaseRoundStorage(page);
     await page.close();

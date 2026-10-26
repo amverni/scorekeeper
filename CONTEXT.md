@@ -28,7 +28,7 @@ A correction to the recorded scores or outcomes of an existing Round in an Activ
 
 **Round Deletion**:
 The removal of a saved Round from an Active Game. Any saved Round may be deleted in either Scorekeeper. Only the selected Round is removed; remaining Rounds are renumbered consecutively and results and dealers are recalculated. Deleting the sole Round retains the same empty Active Game, roster, and settings.
-Saved Round identity survives renumbering. Deletion validates the editor's whole-history version and shifts Join boundaries atomically, preserving all surviving inputs, excluded history, and actual Participation Gaps.
+Saved Round identity survives renumbering. Deletion validates the editor's whole-history version and shifts Join, Withdrawal, and Rejoin boundaries atomically, preserving all surviving inputs, excluded history, and actual Participation Gaps.
 
 **Active Game**:
 A Game whose competitive result is not finalized, accepting new Rounds or Round Edits as its rules allow.
@@ -128,7 +128,7 @@ The per-game choice of whether higher or lower accumulated totals rank ahead in 
 A Player awarded the win when a Generic Game is explicitly finished. Players who remain tied under the Game's scoring rules share the win.
 
 **Generic Standings**:
-The comparison of eligible Players in a Generic Game using its selected scoring rules. Players equal under those rules share a place, with subsequent places skipping by the number of tied Players (for example, 1, 1, 3). Players sharing a place are displayed in Seating Order; that order does not break the tie or affect Game Winners.
+The comparison of eligible Players in a Generic Game using its selected scoring rules. Players equal under those rules share a place, with subsequent places skipping by the number of tied Players (for example, 1, 1, 3). Players sharing a place are displayed in Seating Order; that order does not break the tie or affect Game Winners. Withdrawn Players retain their totals below eligible Players, without a place or eligibility to win. Rejoin restores their competitive eligibility without resetting totals.
 
 **Points Graph**:
 A round-by-round view of each Player's accumulated points in a Generic Game.

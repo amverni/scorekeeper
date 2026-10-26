@@ -60,20 +60,33 @@ export function GenericStandingsDialog({ open, onClose, view }: GenericStandings
               <DialogScrollArea aria-label={`${primaryGraph.metric} Standings`}>
                 <StandingsList scorekeeper="generic">
                   {standings.map((row, index) => {
-                    const showPlace = standings[index - 1]?.place !== row.place;
+                    const showPlace =
+                      row.place !== null && standings[index - 1]?.place !== row.place;
                     const placeClasses = [numberCircleClasses, !showPlace && "opacity-0"]
                       .filter(Boolean)
                       .join(" ");
 
                     return (
-                      <li key={row.player.id} className={standingsRowClasses}>
+                      <li
+                        key={row.player.id}
+                        className={[
+                          standingsRowClasses,
+                          row.place === null ? "text-text-secondary" : "",
+                        ].join(" ")}
+                      >
                         <span className="sr-only">
-                          {showPlace ? `Place ${row.place}` : `Tied for place ${row.place}`}
+                          {row.place === null
+                            ? "Unranked"
+                            : showPlace
+                              ? `Place ${row.place}`
+                              : `Tied for place ${row.place}`}
                         </span>
                         <span className={placeClasses} aria-hidden>
                           {row.place}
                         </span>
-                        <PlayerAvatar player={row.player} size={16} variant="icon" />
+                        <span className={row.place === null ? "grayscale" : undefined}>
+                          <PlayerAvatar player={row.player} size={16} variant="icon" />
+                        </span>
                         <span
                           className="min-w-0 flex-1 truncate font-medium"
                           title={row.player.name}

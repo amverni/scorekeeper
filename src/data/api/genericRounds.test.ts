@@ -278,6 +278,8 @@ it("starts an empty Game with explicit zero totals and shared first place, witho
   } = await createPointsGame();
   expect(await genericGamesApi.getScoreboard(game.id)).toEqual({
     game,
+    withdrawnPlayers: [],
+    eligiblePlayers: [zed, amy].map(identity),
     primaryGraph: {
       metric: "Points",
       direction: "high",

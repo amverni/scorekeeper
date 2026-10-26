@@ -3,7 +3,12 @@ import { parseGenericPoints } from "../../utils/genericPoints";
 import { getDB } from "../db";
 import { requirePlayers, withGameTransaction } from "./gameLifecycle";
 import { genericRoundEdits } from "./genericRoundEdits";
-import { assertGenericGame, deriveGenericScoreboard, orderGenericScores } from "./genericScoring";
+import {
+  assertGenericGame,
+  deriveGenericScoreboard,
+  genericRoundPlayerIds,
+  orderGenericScores,
+} from "./genericScoring";
 
 export const genericRoundsApi = {
   ...genericRoundEdits,
@@ -62,24 +67,25 @@ export const genericRoundsApi = {
         scorekeeper: "generic" as const,
         roundNumber: existing.reduce((latest, saved) => Math.max(latest, saved.roundNumber), 0) + 1,
       };
+      const eligible = genericRoundPlayerIds(game, metadata.roundNumber);
       const round: GenericRound =
         draft.mode === "passFail"
           ? {
               ...metadata,
               mode: "passFail",
-              scores: orderGenericScores(game.players, draft.scores),
+              scores: orderGenericScores(eligible, draft.scores),
             }
           : draft.mode === "singleRoundWinner"
             ? {
                 ...metadata,
                 mode: "singleRoundWinner",
-                scores: orderGenericScores(game.players, draft.scores),
+                scores: orderGenericScores(eligible, draft.scores),
               }
             : {
                 ...metadata,
                 mode: "points",
                 scores: orderGenericScores(
-                  game.players,
+                  eligible,
                   draft.scores.map(({ playerId, points, tiebreaker }) =>
                     game.settings.mode === "points" && game.settings.tiebreaker
                       ? {

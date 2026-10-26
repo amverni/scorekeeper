@@ -42,6 +42,11 @@ interface GenericGameFields {
   name?: string;
   settings: GenericGameSettings;
   playerJoins?: Array<{ playerId: PlayerId; afterRoundNumber: number }>;
+  playerMembershipChanges?: Array<{
+    playerId: PlayerId;
+    afterRoundNumber: number;
+    type: "withdrawal" | "rejoin";
+  }>;
 }
 
 export interface ActiveGenericGame extends ActiveGameMetadata<"generic">, GenericGameFields {}
@@ -58,7 +63,9 @@ export interface CreateGenericGameInput {
   settings: GenericGameSettings;
 }
 
-export type EditGenericGameInput = EditGamePlayersInput;
+export interface EditGenericGameInput extends EditGamePlayersInput {
+  withdrawnPlayers?: PlayerId[];
+}
 
 export interface GenericGameView {
   game: GenericGame;
@@ -88,6 +95,8 @@ export interface GenericGraph {
 
 export interface GenericScoreboardView {
   game: GenericGame;
+  withdrawnPlayers: PlayerId[];
+  eligiblePlayers: PlayerIdentity[];
   primaryGraph: GenericGraph;
   tiebreakerGraph: GenericGraph | null;
   upcomingDealerId: PlayerId | null;
@@ -108,5 +117,5 @@ export interface GenericScoreboardView {
       | { playerId: PlayerId; passed: boolean; totalPasses: number }
     >;
   }>;
-  standings: Array<{ player: PlayerIdentity; place: number } & GenericScoreTotal>;
+  standings: Array<{ player: PlayerIdentity; place: number | null } & GenericScoreTotal>;
 }
