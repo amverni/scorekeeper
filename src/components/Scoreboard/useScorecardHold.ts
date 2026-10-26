@@ -76,6 +76,13 @@ export function useScorecardHold(
       event.preventDefault();
       event.stopImmediatePropagation();
     }
+    function mouseDown(event: MouseEvent) {
+      // Touch compatibility mousedown can move modal focus before the suppressed click.
+      if (suppressClick) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    }
     function contextMenu(event: MouseEvent) {
       if (pending || suppressClick) event.preventDefault();
     }
@@ -89,6 +96,7 @@ export function useScorecardHold(
     document.addEventListener("pointercancel", cancelPointer, true);
     document.addEventListener("lostpointercapture", cancelPointer, true);
     document.addEventListener("click", click, true);
+    document.addEventListener("mousedown", mouseDown, true);
     root.addEventListener("contextmenu", contextMenu);
     root.addEventListener("scroll", cancelNavigation, true);
     root.addEventListener("wheel", cancelNavigation, { passive: true });
@@ -102,6 +110,7 @@ export function useScorecardHold(
       document.removeEventListener("pointercancel", cancelPointer, true);
       document.removeEventListener("lostpointercapture", cancelPointer, true);
       document.removeEventListener("click", click, true);
+      document.removeEventListener("mousedown", mouseDown, true);
       root.removeEventListener("contextmenu", contextMenu);
       root.removeEventListener("scroll", cancelNavigation, true);
       root.removeEventListener("wheel", cancelNavigation);

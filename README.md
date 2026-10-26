@@ -114,18 +114,21 @@ Phases Card sharing remains self-contained at the
 ## Tests
 
 `npm test` runs Vitest behavior tests, including rendered safe-area layout tests
-using Playwright WebKit. After installing npm dependencies, install that browser:
+using Playwright WebKit. A supporting Chromium journey verifies native sustained
+touch, compatibility mouse events on release, and touch scrolling; Playwright's
+WebKit touchscreen API exposes taps only. Install both browsers after npm dependencies:
 
 ```bash
-npx playwright install webkit
+npx playwright install webkit chromium
 npm test
 ```
 
-On Linux CI, use `npx playwright install --with-deps webkit` instead. The browser
+On Linux CI, use `npx playwright install --with-deps webkit chromium` instead. The browser
 tests start and close their own local Vite server; no running app is required.
 Device insets are supplied through the shared `--safe-area-inset-*` CSS variables
 because desktop WebKit automation does not expose hardware cutouts or Safari's
-mobile toolbar. Real-device checks remain necessary for browser-chrome overlap.
+mobile toolbar. Chromium touch coverage does not establish physical iPhone Safari
+behavior; real-device checks remain necessary for browser-chrome overlap.
 
 ## Scorekeeper persistence
 
