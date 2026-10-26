@@ -28,7 +28,7 @@ A correction to the recorded scores or outcomes of an existing Round in an Activ
 
 **Round Deletion**:
 The removal of a saved Round from an Active Game. Any saved Round may be deleted in either Scorekeeper. Only the selected Round is removed; remaining Rounds are renumbered consecutively and results and dealers are recalculated. Deleting the sole Round retains the same empty Active Game, roster, and settings.
-Saved Round identity survives renumbering. Deletion validates the editor's whole-history version atomically, preserving all surviving inputs, excluded history, and actual Participation Gaps.
+Saved Round identity survives renumbering. Deletion validates the editor's whole-history version and shifts Join boundaries atomically, preserving all surviving inputs, excluded history, and actual Participation Gaps.
 
 **Active Game**:
 A Game whose competitive result is not finalized, accepting new Rounds or Round Edits as its rules allow.

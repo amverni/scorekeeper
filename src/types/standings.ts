@@ -19,7 +19,7 @@ export interface StandingsDerivation<TPlayer extends PlayerIdentity = PlayerIden
 
 export interface StandingsRow<TPlayer extends PlayerIdentity = PlayerIdentity> {
   player: TPlayer;
-  place: number;
+  place: number | null;
   showPlace: boolean;
   progress: PlayerProgress;
   tiebreakerTotal: number;

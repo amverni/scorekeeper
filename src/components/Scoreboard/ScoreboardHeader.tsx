@@ -30,6 +30,7 @@ export function ScoreboardHeader({
               "scoreboard-cell scoreboard-cell--sticky-top",
               isLast ? "scoreboard-cell--last-col" : "",
               isUpcomingDealer ? "scoreboard-cell--upcoming-dealer" : "",
+              player.place === null ? "opacity-45" : "",
             ].join(" ")}
           >
             {isUpcomingDealer && (
@@ -43,14 +44,18 @@ export function ScoreboardHeader({
               />
               <span className="text-2xl font-medium leading-none tabular-nums text-text-primary">
                 <span className="sr-only">
-                  {completed || player.finishingPlace !== null
-                    ? `Place ${player.place}`
-                    : `Current Phase ${player.progress.currentPhase}`}
+                  {player.place === null
+                    ? "Unranked"
+                    : completed || player.finishingPlace !== null
+                      ? `Place ${player.place}`
+                      : `Current Phase ${player.progress.currentPhase}`}
                 </span>
                 <span aria-hidden>
-                  {completed || player.finishingPlace !== null
-                    ? formatPlace(player.place)
-                    : player.progress.currentPhase}
+                  {player.place === null
+                    ? "\u2014"
+                    : completed || player.finishingPlace !== null
+                      ? formatPlace(player.place)
+                      : player.progress.currentPhase}
                 </span>
               </span>
               <span className="text-sm leading-none text-text-secondary tabular-nums">

@@ -382,6 +382,127 @@ it("atomically finalizes a deletion that restores an automatic finish without dr
   );
 });
 
+it.each([
+  1, 3, 4,
+])("preserves actual Join attendance and graphs when deleting Round %s before, at or after the Join boundary", async (roundNumber) => {
+  const { game, amy, bob } = await createHistory();
+  const stale = await gamesApi.getRoundEditor(game.id, 3);
+  const cam = await playersApi.create({ name: "Cam", color: "Jam", isFavorite: 0 });
+  const editor = await gamesApi.getEditor(game.id);
+  if (!editor) throw new Error("Missing Game editor.");
+  await gamesApi.edit({
+    gameId: game.id,
+    players: [amy.id, bob.id, cam.id],
+    version: editor.version,
+    confirmImpact: true,
+  });
+  await expect(
+    gamesApi.deleteRound({ gameId: game.id, roundId: stale.round.id, version: stale.version }),
+  ).rejects.toThrow("history changed");
+  await roundsApi.add({
+    gameId: game.id,
+    roundWinnerId: null,
+    scores: [
+      { playerId: amy.id, phaseStatus: "satOut", score: 50 },
+      { playerId: bob.id, phaseStatus: "satOut", score: 50 },
+      { playerId: cam.id, phaseStatus: "satOut", score: 50 },
+    ],
+  });
+  const before = await gamesApi.getView(game.id);
+  const selected = await gamesApi.getRoundEditor(game.id, roundNumber);
+  const input = { gameId: game.id, roundId: selected.round.id, version: selected.version };
+  if (roundNumber === 3) {
+    const put = IDBObjectStore.prototype.put;
+    const failure = vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function (
+      this: IDBObjectStore,
+      value,
+      key,
+    ) {
+      if (value?.id === game.id) throw new DOMException("Join write failed", "QuotaExceededError");
+      return put.call(this, value, key);
+    });
+    try {
+      await expect(gamesApi.deleteRound(input)).rejects.toThrow("Join write failed");
+    } finally {
+      failure.mockRestore();
+    }
+    closeDB();
+    expect(await gamesApi.getView(game.id)).toEqual(before);
+  }
+  await gamesApi.deleteRound(input);
+  closeDB();
+  const saved = await gamesApi.getView(game.id);
+  const afterRoundNumber = roundNumber === 4 ? 3 : 2;
+  expect(saved?.game).toMatchObject({
+    players: [amy.id, bob.id, cam.id],
+    playerJoins: [{ playerId: cam.id, afterRoundNumber }],
+  });
+  expect(saved?.rounds.map((round) => round.source)).toEqual(
+    before?.rounds
+      .filter((round) => round.source.roundNumber !== roundNumber)
+      .map((round, index) => ({ ...round.source, roundNumber: index + 1 })),
+  );
+  expect(saved?.rounds.map((round) => round.scores[2].counted)).toEqual(
+    roundNumber === 4 ? [false, false, false] : [false, false, true],
+  );
+  expect(saved?.players[2]).toMatchObject({
+    progress: { currentPhase: 1, isFinished: false },
+    tiebreakerTotal: roundNumber === 4 ? 0 : 50,
+  });
+  expect(saved?.standings.tiebreakerGraphSeries[2].points).toMatchObject(
+    roundNumber === 4
+      ? [{ roundNumber: 3, value: 0 }]
+      : [
+          { roundNumber: 2, value: 0 },
+          { roundNumber: 3, value: 50 },
+        ],
+  );
+  if (roundNumber !== 4) expect(saved?.rounds[2].dealerId).toBe(cam.id);
+});
+
+it("retains an unplayed Join and the current roster when deleting the sole remaining Round", async () => {
+  const { game, amy, bob } = await createHistory();
+  for (const roundNumber of [3, 2]) {
+    const editor = await gamesApi.getRoundEditor(game.id, roundNumber);
+    await gamesApi.deleteRound({
+      gameId: game.id,
+      roundId: editor.round.id,
+      version: editor.version,
+    });
+  }
+  const cam = await playersApi.create({ name: "Cam", color: "Jam", isFavorite: 0 });
+  const editor = await gamesApi.getEditor(game.id);
+  if (!editor) throw new Error("Missing Game editor.");
+  await gamesApi.edit({
+    gameId: game.id,
+    players: [amy.id, bob.id, cam.id],
+    version: editor.version,
+    confirmImpact: true,
+  });
+  const round = await gamesApi.getRoundEditor(game.id, 1);
+  await gamesApi.deleteRound({
+    gameId: game.id,
+    roundId: round.round.id,
+    version: round.version,
+  });
+  closeDB();
+  expect(await gamesApi.getView(game.id)).toMatchObject({
+    game: {
+      id: game.id,
+      status: "active",
+      activePlayers: [amy.id, bob.id, cam.id],
+      playerJoins: [{ playerId: cam.id, afterRoundNumber: 0 }],
+    },
+    rounds: [],
+    nextRoundNumber: 1,
+    playingPlayers: [
+      { id: amy.id, progress: { currentPhase: 1 }, tiebreakerTotal: 0 },
+      { id: bob.id, progress: { currentPhase: 1 }, tiebreakerTotal: 0 },
+      { id: cam.id, progress: { currentPhase: 1 }, tiebreakerTotal: 0 },
+    ],
+  });
+});
+
 async function createHistory() {
   const amy = await playersApi.create({ name: "Amy", color: "Jam", isFavorite: 0 });
   const bob = await playersApi.create({ name: "Bob", color: "Ocean", isFavorite: 0 });

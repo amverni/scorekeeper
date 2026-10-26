@@ -24,7 +24,7 @@ export interface GamePlayerView extends PlayerIdentity {
   formattedTiebreaker: string;
   finishingRound: number | null;
   finishingPlace: number | null;
-  place: number;
+  place: number | null;
 }
 
 export interface GameRoundView {

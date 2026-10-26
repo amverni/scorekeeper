@@ -38,7 +38,19 @@ export const phaseRoundEdits = {
         .sort((a, b) => a.roundNumber - b.roundNumber)
         .map((round, index) => ({ ...round, roundNumber: index + 1 }));
       const now = Date.now();
-      const activeGame = { ...game, lastActivityAt: now };
+      const activeGame = {
+        ...game,
+        ...(game.playerJoins
+          ? {
+              playerJoins: game.playerJoins.map((join) => ({
+                ...join,
+                afterRoundNumber:
+                  join.afterRoundNumber - Number(selected.roundNumber <= join.afterRoundNumber),
+              })),
+            }
+          : {}),
+        lastActivityAt: now,
+      };
       const completion = resolveGameCompletion({
         game: activeGame,
         players,

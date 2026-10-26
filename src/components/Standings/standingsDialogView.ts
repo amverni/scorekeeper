@@ -2,7 +2,7 @@ import type { PlayerIdentity, StandingsDerivation } from "../../types";
 
 export interface StandingsDisplayRow {
   player: PlayerIdentity;
-  place: number;
+  place: number | null;
   showPlace: boolean;
   phaseNumber: number;
   isFinished: boolean;
