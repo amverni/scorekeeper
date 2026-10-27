@@ -64,7 +64,7 @@ export function Scoreboard({ view, onGameCompleted }: ScoreboardProps) {
   const tiebreaker = game.settings.tiebreaker;
   const isActive = game.status === "active";
 
-  const showGhost = isActive && !view.pendingFinishChoice && !view.automaticCompletion;
+  const showGhost = isActive && view.gameEndingRound === null;
   const draft = useAddRoundDraft(game.id, playingPlayers, game.settings);
 
   return (

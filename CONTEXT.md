@@ -42,6 +42,7 @@ _Avoid_: Archived game, old game
 
 **Reopen for Correction**:
 The explicit return of a Completed Game to Active Game status, withdrawing its finalized result while preserving its Round history. Reopening uses the saved Players' current names and colors and requires all referenced saved Players to still exist.
+Each saved correction follows normal completion rules; a Game that finalizes again requires another explicit reopen for a further correction. Reopening is not Continuation or recovery of an unanswered first-finisher choice.
 
 **Pause**:
 Leaving an Active Game to return to its Scorekeeper Dashboard without finalizing its result. The Game remains active and can be continued later; pausing is not a separate Game status.

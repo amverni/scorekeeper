@@ -1,10 +1,10 @@
 import { CloseButton } from "@headlessui/react";
 import { Link, type LinkOptions } from "@tanstack/react-router";
 import type { LucideIcon } from "lucide-react";
-import { History, House, ListChecks, Menu, Pencil, Settings, Users } from "lucide-react";
-import { Fragment } from "react";
+import { History, House, ListChecks, Menu, Pencil, RotateCcw, Settings, Users } from "lucide-react";
+import { Fragment, useRef, useState } from "react";
 import type { GameId, ScorekeeperExperience } from "../../types";
-import { Popover, PopoverButton, PopoverPanel } from "../ui";
+import { InlineError, PlainButton, Popover, PopoverButton, PopoverPanel } from "../ui";
 
 interface MenuItem {
   label: string;
@@ -30,52 +30,98 @@ const itemClassName =
 export function HomeMenu({
   experience,
   editGameId,
+  onReopenGame,
 }: {
   experience: ScorekeeperExperience;
   editGameId?: GameId;
+  onReopenGame?: () => Promise<void>;
 }) {
   const items = [homeItem, ...(experience === "phaseCompan10n" ? phaseItems : genericItems)];
+  const reopenStarted = useRef(false);
+  const [reopening, setReopening] = useState(false);
+  const [reopenError, setReopenError] = useState<string | null>(null);
+
+  async function reopen(close: () => void) {
+    if (!onReopenGame || reopenStarted.current) return;
+    reopenStarted.current = true;
+    setReopening(true);
+    setReopenError(null);
+    try {
+      await onReopenGame();
+      close();
+    } catch (cause) {
+      setReopenError(
+        `Couldn't reopen Game: ${cause instanceof Error ? cause.message : String(cause)}`,
+      );
+    } finally {
+      reopenStarted.current = false;
+      setReopening(false);
+    }
+  }
+
   return (
     <Popover className="relative">
-      {/* The outer button keeps a fixed box at each responsive size so Headless UI's anchored
+      {({ close }) => (
+        <>
+          {/* The outer button keeps a fixed box at each responsive size so Headless UI's anchored
           panel never sees a size change (which would otherwise drift the
           popover when the press-scale fires). The visible glass + icon live
           in an inner span that grows uniformly from center on press. */}
-      <PopoverButton
-        aria-label="Menu"
-        className="page-shell-button relative rounded-full group cursor-pointer focus:outline-none data-[focus]:outline-2 data-[focus]:outline-offset-2 data-focus:outline-solid data-focus:outline-text-secondary!"
-      >
-        <span className="absolute inset-0 inline-flex items-center justify-center rounded-full glass transition-transform group-hover:brightness-110 group-active:scale-110">
-          <Menu className="size-6 relative z-10" aria-hidden="true" />
-        </span>
-      </PopoverButton>
+          <PopoverButton
+            aria-label="Menu"
+            className="page-shell-button relative rounded-full group cursor-pointer focus:outline-none data-[focus]:outline-2 data-[focus]:outline-offset-2 data-focus:outline-solid data-focus:outline-text-secondary!"
+          >
+            <span className="absolute inset-0 inline-flex items-center justify-center rounded-full glass transition-transform group-hover:brightness-110 group-active:scale-110">
+              <Menu className="size-6 relative z-10" aria-hidden="true" />
+            </span>
+          </PopoverButton>
 
-      <PopoverPanel anchor="bottom end" className="z-50 min-w-44 [--anchor-gap:8px]">
-        <nav className="flex flex-col">
-          {items.map(({ label, icon: Icon, to }) => (
-            <CloseButton key={label} as={Link} to={to} className={itemClassName}>
-              <Icon className="size-5 shrink-0" aria-hidden="true" />
-              {label}
-            </CloseButton>
-          ))}
-          {editGameId && (
-            <CloseButton as={Fragment}>
-              <Link
-                to={
-                  experience === "phaseCompan10n"
-                    ? "/phaseCompan10n/game/$gameId/edit"
-                    : "/scorekeeper/game/$gameId/edit"
-                }
-                params={{ gameId: editGameId }}
-                className={itemClassName}
-              >
-                <Pencil className="size-5 shrink-0" aria-hidden />
-                Edit game
-              </Link>
-            </CloseButton>
-          )}
-        </nav>
-      </PopoverPanel>
+          <PopoverPanel anchor="bottom end" className="z-50 min-w-44 [--anchor-gap:8px]">
+            <nav className="flex flex-col">
+              {items.map(({ label, icon: Icon, to }) => (
+                <CloseButton key={label} as={Link} to={to} className={itemClassName}>
+                  <Icon className="size-5 shrink-0" aria-hidden="true" />
+                  {label}
+                </CloseButton>
+              ))}
+              {editGameId && (
+                <CloseButton as={Fragment}>
+                  <Link
+                    to={
+                      experience === "phaseCompan10n"
+                        ? "/phaseCompan10n/game/$gameId/edit"
+                        : "/scorekeeper/game/$gameId/edit"
+                    }
+                    params={{ gameId: editGameId }}
+                    className={itemClassName}
+                  >
+                    <Pencil className="size-5 shrink-0" aria-hidden />
+                    Edit game
+                  </Link>
+                </CloseButton>
+              )}
+              {onReopenGame && (
+                <PlainButton
+                  type="button"
+                  className={[itemClassName, "min-h-11"].join(" ")}
+                  aria-label="Reopen for Correction"
+                  aria-busy={reopening}
+                  disabled={reopening}
+                  onClick={() => reopen(close)}
+                >
+                  <RotateCcw className="size-5 shrink-0" aria-hidden />
+                  {reopening ? "Reopening..." : "Reopen for Correction"}
+                </PlainButton>
+              )}
+              {onReopenGame && reopenError && (
+                <div className="max-w-64 px-3 pb-3">
+                  <InlineError message={reopenError} />
+                </div>
+              )}
+            </nav>
+          </PopoverPanel>
+        </>
+      )}
     </Popover>
   );
 }

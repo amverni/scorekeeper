@@ -128,6 +128,15 @@ export function useFinishGame() {
   });
 }
 
+export function useReopenGame() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, version }: { id: GameId; version: string }) => gamesApi.reopen(id, version),
+    onSuccess: (game) => refreshGameCache(queryClient, game),
+    onError: () => queryClient.invalidateQueries({ queryKey: gameKeys.all }),
+  });
+}
+
 export function useFinishChoice(id: GameId) {
   const queryClient = useQueryClient();
   return useMutation({

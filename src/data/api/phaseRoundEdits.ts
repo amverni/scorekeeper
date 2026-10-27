@@ -40,6 +40,7 @@ export const phaseRoundEdits = {
       const now = Date.now();
       const activeGame = {
         ...game,
+        deferFinishChoiceUntilSave: undefined,
         ...(game.playerJoins
           ? {
               playerJoins: game.playerJoins.map((join) => ({
@@ -109,7 +110,7 @@ export const phaseRoundEdits = {
         throw new Error("This edit will change game results. Confirm the edit before saving.");
       }
       const now = Date.now();
-      const activeGame = { ...game, lastActivityAt: now };
+      const activeGame = { ...game, deferFinishChoiceUntilSave: undefined, lastActivityAt: now };
       const completion = resolveGameCompletion({
         game: activeGame,
         players,

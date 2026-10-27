@@ -169,3 +169,17 @@ export function useFinishGenericGame() {
       ]),
   });
 }
+
+export function useReopenGenericGame() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, version }: { id: GameId; version: string }) =>
+      genericGamesApi.reopen(id, version),
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: genericGameKeys.all }),
+        queryClient.invalidateQueries({ queryKey: playerKeys.all }),
+      ]),
+    onError: () => queryClient.invalidateQueries({ queryKey: genericGameKeys.all }),
+  });
+}

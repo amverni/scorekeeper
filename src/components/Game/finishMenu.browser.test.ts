@@ -4,6 +4,7 @@ import type { Browser, Page } from "playwright";
 import { webkit } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { holdRoundStorage, releaseRoundStorage } from "../../test/roundStorage";
 import type { Player, ScorekeeperId, StoredGame } from "../../types";
 
 let server: ViteDevServer;
@@ -86,6 +87,159 @@ function readGame(page: Page, owner: ScorekeeperId, id: string) {
     return api.getById(${JSON.stringify(id)});
   })()`);
 }
+
+async function completeGame(page: Page, owner: ScorekeeperId, game: StoredGame) {
+  await page.evaluate(`(async () => {
+    ${apiImport(owner)}
+    ${
+      owner === "phase10"
+        ? `const { roundsApi } = await import("/scorekeeper/src/data/api/rounds.ts");
+           await roundsApi.add({ gameId: ${JSON.stringify(game.id)}, roundWinnerId: ${JSON.stringify(game.players[0])},
+             scores: ${JSON.stringify(game.players)}.map(playerId => ({ playerId, phaseStatus: "completed", score: 0 })) });`
+        : `const { genericRoundsApi } = await import("/scorekeeper/src/data/api/genericRounds.ts");
+           await genericRoundsApi.add({ gameId: ${JSON.stringify(game.id)}, mode: "points",
+             scores: ${JSON.stringify(game.players)}.map(playerId => ({ playerId, points: "5" })) });`
+    }
+    await api.finish(${JSON.stringify(game.id)});
+  })()`);
+}
+
+it.each(
+  owners,
+)("explicitly reopens %s from its Completed Game menu, keeps failures retryable and reloads the same editable history", async (owner) => {
+  const page = await newPage();
+  try {
+    const { game, players } = await seed(page, owner);
+    await completeGame(page, owner, game);
+    await page.evaluate(`(async () => {
+      const { playersApi } = await import("/scorekeeper/src/data/api/players.ts");
+      await playersApi.update(${JSON.stringify(players[0].id)}, { name: "Amelia", color: "Lime" });
+    })()`);
+    const completed = await readGame(page, owner, game.id);
+    const url = `${appUrl}#${gamePath(owner, game.id)}`;
+    await page.goto(url);
+    await page.getByRole("tabpanel", { name: "Standings", exact: true }).waitFor();
+    await page.keyboard.press("Escape");
+    await page.getByRole("dialog").waitFor({ state: "detached" });
+    const round = page.getByRole("button", {
+      name: owner === "phase10" ? "Round 1" : "Expand Round 1",
+      exact: true,
+    });
+    await round.hover();
+    await page.mouse.down();
+    await page.waitForTimeout(700);
+    await page.mouse.up();
+    expect(await page.getByRole("dialog", { name: "Edit Round", exact: true }).count()).toBe(0);
+    expect(await readGame(page, owner, game.id)).toEqual(completed);
+    const menu = page.getByRole("button", { name: "Menu", exact: true });
+    await menu.click();
+    const reopen = page.getByRole("button", { name: "Reopen for Correction", exact: true });
+    await reopen.waitFor();
+    expect(await page.getByRole("link", { name: "Edit game", exact: true }).count()).toBe(0);
+    const bounds = await reopen.boundingBox();
+    if (!bounds) throw new Error("Missing Reopen action");
+    expect(bounds.height).toBeGreaterThanOrEqual(44);
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(320);
+    await page.evaluate(() => {
+      const put = IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put = function (value, key) {
+        if (this.name === "games") {
+          IDBObjectStore.prototype.put = put;
+          throw new DOMException("Reopen storage unavailable", "QuotaExceededError");
+        }
+        return put.call(this, value, key);
+      };
+    });
+    await holdRoundStorage(page);
+    await reopen.evaluate((button) => {
+      (button as HTMLButtonElement).click();
+      (button as HTMLButtonElement).click();
+    });
+    await expect.poll(() => reopen.isDisabled()).toBe(true);
+    await releaseRoundStorage(page);
+    await page.getByRole("alert").filter({ hasText: "Reopen storage unavailable" }).waitFor();
+    expect(await readGame(page, owner, game.id)).toEqual(completed);
+    await reopen.focus();
+    await page.keyboard.press("Enter");
+    await page.getByRole("navigation").waitFor({ state: "detached" });
+    await expect
+      .poll(() => menu.evaluate((button) => button === document.activeElement))
+      .toBe(true);
+    expect(page.url()).toBe(url);
+    await page.reload();
+    await expect.poll(async () => (await readGame(page, owner, game.id))?.status).toBe("active");
+    await menu.focus();
+    await page.keyboard.press("Enter");
+    expect(
+      await page.getByRole("button", { name: "Reopen for Correction", exact: true }).count(),
+    ).toBe(0);
+    await page.getByRole("link", { name: "Edit game", exact: true }).waitFor();
+    await page.keyboard.press("Escape");
+    await page.getByRole("navigation").waitFor({ state: "detached" });
+    await page.getByRole("button", { name: /^Round 1|^Expand Round 1/ }).click();
+    const edit = page.getByRole("button", { name: "Edit Round 1 for Amelia", exact: true });
+    await edit.click();
+    const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
+    await editor.getByRole("tab", { name: "Amelia", exact: true }).waitFor();
+    if (owner === "phase10") {
+      await editor.getByRole("button", { name: "Failed", exact: true }).click();
+      await editor.getByRole("button", { name: /Round Winner/ }).click();
+      await page.getByRole("option", { name: "Bob", exact: true }).click();
+    } else {
+      await editor.getByRole("button", { name: "0", exact: true }).focus();
+      await page.keyboard.press("Delete");
+      await page.keyboard.type("8");
+    }
+    await editor
+      .getByRole("button", {
+        name: owner === "phase10" ? "Save round" : "Save",
+        exact: true,
+      })
+      .click();
+    await page
+      .getByRole("dialog", { name: "Edit round", exact: true })
+      .getByRole("button", { name: "Save", exact: true })
+      .click();
+    await editor.waitFor({ state: "detached" });
+    await page.reload();
+    expect(await readGame(page, owner, game.id)).toMatchObject({ id: game.id, status: "active" });
+  } finally {
+    await releaseRoundStorage(page);
+    await page.close();
+  }
+}, 60_000);
+
+it.each(
+  owners,
+)("explains a missing saved Player without reopening or hiding the %s result", async (owner) => {
+  const page = await newPage();
+  try {
+    const { game, players } = await seed(page, owner);
+    await completeGame(page, owner, game);
+    const completed = await readGame(page, owner, game.id);
+    await page.evaluate(`(async () => {
+      const { playersApi } = await import("/scorekeeper/src/data/api/players.ts");
+      await playersApi.delete(${JSON.stringify(players[1].id)});
+    })()`);
+    const url = `${appUrl}#${gamePath(owner, game.id)}`;
+    await page.goto(url);
+    await page.getByRole("tabpanel", { name: "Standings", exact: true }).waitFor();
+    await page.keyboard.press("Escape");
+    await page.getByRole("dialog").waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Menu", exact: true }).click();
+    await page.getByRole("button", { name: "Reopen for Correction", exact: true }).click();
+    await page.getByRole("alert").filter({ hasText: "Player no longer exists" }).waitFor();
+    expect(await readGame(page, owner, game.id)).toEqual(completed);
+    await page.reload();
+    const standings = page.getByRole("tabpanel", { name: "Standings", exact: true });
+    await standings.waitFor();
+    expect(await standings.innerText()).toContain("Bob");
+    expect(await readGame(page, owner, game.id)).toEqual(completed);
+  } finally {
+    await page.close();
+  }
+}, 60_000);
 
 it.each(
   owners,

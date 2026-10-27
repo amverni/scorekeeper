@@ -56,7 +56,7 @@ export const phaseGameEdits = {
       if (requiresConfirmation && input.confirmImpact !== true) {
         throw new Error("This edit will change game results. Confirm the edit before saving.");
       }
-      const saved = { ...game, lastActivityAt: Date.now() };
+      const saved = { ...game, deferFinishChoiceUntilSave: undefined, lastActivityAt: Date.now() };
       const completion = resolveGameCompletion({
         game: saved,
         players,
@@ -89,7 +89,7 @@ async function evaluateEdit(tx: GameLifecycleTransaction, input: EditGamePlayers
   if (input.version !== view.version) {
     throw new Error("Game history changed. Close and reopen Edit game to load the saved values.");
   }
-  if (view.automaticCompletion || view.pendingFinishChoice) {
+  if (view.gameEndingRound !== null) {
     throw new Error("Resolve Finish Game before adding Players.");
   }
   assertSavedSeats(game.players, input.players);

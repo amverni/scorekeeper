@@ -250,7 +250,11 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
     gameWinner,
   };
   const pendingFinishChoice =
-    game.status === "active" && !game.continuation && gameWinner && !automaticCompletion
+    game.status === "active" &&
+    !game.deferFinishChoiceUntilSave &&
+    !game.continuation &&
+    gameWinner &&
+    !automaticCompletion
       ? { winner: gameWinner.player, token: version }
       : null;
   const playingPlayerIds = columnIds.filter(
@@ -278,9 +282,7 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
     rounds: roundViews,
     nextRoundNumber: (sortedRounds.at(-1)?.roundNumber ?? 0) + 1,
     upcomingDealerId:
-      game.status === "active" && !pendingFinishChoice && !automaticCompletion
-        ? nextDealer(playingPlayerIds)
-        : null,
+      game.status === "active" && gameEndingRound === null ? nextDealer(playingPlayerIds) : null,
     pendingFinishChoice,
     gameEndingRound:
       gameEndingRound ??

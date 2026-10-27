@@ -18,6 +18,7 @@ import {
   deleteEmptyGame,
   deleteGameRecords,
   finalizeGame,
+  reopenGame,
   requirePlayers,
   saveActiveGame,
   withGameTransaction,
@@ -187,6 +188,10 @@ export const gamesApi = {
         phaseSet: { ...game.phaseSet, phases: [first, ...rest] },
       });
     });
+  },
+
+  reopen(id: GameId, version: string): Promise<ActiveGame> {
+    return reopenGame(id, "phase10", version);
   },
 
   finish(id: GameId): Promise<CompletedGame> {

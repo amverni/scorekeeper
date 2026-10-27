@@ -1,5 +1,13 @@
 import type { IDBPTransaction } from "idb";
-import type { ActiveGame, GameId, Player, PlayerId, ScorekeeperId, StoredGame } from "../../types";
+import type {
+  ActiveGame,
+  ActiveGenericGame,
+  GameId,
+  Player,
+  PlayerId,
+  ScorekeeperId,
+  StoredGame,
+} from "../../types";
 import { getDB } from "../db";
 import type { Phase10DB } from "../db/schema";
 
@@ -56,6 +64,51 @@ export async function finalizeGame(
   for (const game of completedGames.slice(19)) {
     await deleteGameRecords(tx, game.id);
   }
+}
+
+export function reopenGame(id: GameId, owner: "phase10", version: string): Promise<ActiveGame>;
+export function reopenGame(
+  id: GameId,
+  owner: "generic",
+  version: string,
+): Promise<ActiveGenericGame>;
+export function reopenGame(
+  id: GameId,
+  owner: ScorekeeperId,
+  version: string,
+): Promise<ActiveGame | ActiveGenericGame> {
+  return withGameTransaction(async (tx) => {
+    const game = await tx.objectStore("games").get(id);
+    if (!game || game.scorekeeper !== owner) {
+      throw new Error(`${owner === "phase10" ? "Phase 10" : "Generic"} Game not found`);
+    }
+    if (game.status !== "completed") throw new Error("Only a Completed Game can be reopened.");
+    if (JSON.stringify(game) !== version) {
+      throw new Error("Game changed. Reload the Game before reopening for correction.");
+    }
+    await requirePlayers(tx, game.players);
+    const {
+      completedAt: _completedAt,
+      completionOrder: _completionOrder,
+      completionType: _completionType,
+      winnerIds: _winnerIds,
+      playerSnapshots: _playerSnapshots,
+      ...saved
+    } = game;
+    const now = Date.now();
+    const active: ActiveGame | ActiveGenericGame =
+      saved.scorekeeper === "phase10"
+        ? {
+            ...saved,
+            status: "active",
+            activePlayers: [...saved.players],
+            deferFinishChoiceUntilSave: true,
+            lastActivityAt: now,
+          }
+        : { ...saved, status: "active", lastActivityAt: now };
+    await tx.objectStore("games").put(active);
+    return active;
+  });
 }
 
 export function requirePlayers(

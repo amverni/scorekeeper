@@ -6,6 +6,7 @@ import {
   genericGameScoreboardOptions,
   useDeleteEmptyGenericGame,
   useFinishGenericGame,
+  useReopenGenericGame,
 } from "../../data/hooks/useGenericGames";
 import type { GameId } from "../../types";
 import { FinishGameMenu } from "../Game/FinishGameMenu";
@@ -24,6 +25,7 @@ export function GenericGame({ gameId }: { gameId: GameId }) {
   const checkedInitialStandingsGameId = useRef<GameId | null>(null);
   const openFinalStandingsAfterFinish = useRef(false);
   const finishGame = useFinishGenericGame();
+  const reopenGame = useReopenGenericGame();
   const deleteGame = useDeleteEmptyGenericGame();
   const navigate = useNavigate();
   const {
@@ -56,6 +58,16 @@ export function GenericGame({ gameId }: { gameId: GameId }) {
               editGameId={
                 view?.game.status === "active" && !isError && !isFetching && !isStale
                   ? gameId
+                  : undefined
+              }
+              onReopenGame={
+                view?.game.status === "completed" && !isError && !isFetching && !isStale
+                  ? async () => {
+                      await reopenGame.mutateAsync({
+                        id: gameId,
+                        version: JSON.stringify(view.game),
+                      });
+                    }
                   : undefined
               }
             />

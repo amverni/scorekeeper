@@ -7,6 +7,7 @@ import {
   gameViewOptions,
   useDeleteEmptyGame,
   useFinishGame,
+  useReopenGame,
 } from "../../data/hooks/useGames";
 import type { GameId } from "../../types";
 import { CardBackground } from "../CardBackground/CardBackground";
@@ -34,6 +35,7 @@ export function Game({ gameId }: GameProps) {
   const [finishOpen, setFinishOpen] = useState(false);
   const openFinalStandingsAfterFinish = useRef(false);
   const finishGame = useFinishGame();
+  const reopenGame = useReopenGame();
   const deleteGame = useDeleteEmptyGame();
   const navigate = useNavigate();
   const checkedInitialStandingsGameId = useRef<GameId | null>(null);
@@ -86,6 +88,16 @@ export function Game({ gameId }: GameProps) {
                 <HomeMenu
                   experience="phaseCompan10n"
                   editGameId={actionReady && game?.status === "active" ? game.id : undefined}
+                  onReopenGame={
+                    actionReady && game?.status === "completed"
+                      ? async () => {
+                          await reopenGame.mutateAsync({
+                            id: game.id,
+                            version: JSON.stringify(game),
+                          });
+                        }
+                      : undefined
+                  }
                 />
               </div>
             </div>

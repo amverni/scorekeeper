@@ -33,6 +33,69 @@ afterAll(async () => {
   await server?.close();
 });
 
+it("reopens a first-finisher result without recovering its old choice and restores the normal choice only after saving a correction", async () => {
+  const page = await browser.newPage({ viewport: { width: 320, height: 844 } });
+  page.setDefaultTimeout(5_000);
+  try {
+    await page.goto(`${appUrl}#/phaseCompan10n/players`);
+    await page.getByText("No players yet", { exact: true }).waitFor();
+    const { game, players } = await seedCompletionGame(page, 1, "roundsWon", 3);
+    await page.evaluate(`(async () => {
+      const { gamesApi } = await import("/scorekeeper/src/data/api/games.ts");
+      const { roundsApi } = await import("/scorekeeper/src/data/api/rounds.ts");
+      const players = ${JSON.stringify(players)};
+      await roundsApi.add({
+        gameId: ${JSON.stringify(game.id)}, roundWinnerId: players[0].id,
+        scores: players.map((player, index) => ({
+          playerId: player.id, phaseStatus: index === 0 ? "completed" : "failed", score: 0,
+        })),
+      });
+      const view = await gamesApi.getView(${JSON.stringify(game.id)});
+      await gamesApi.resolveFinishChoice(view.game.id, "finish", view.pendingFinishChoice.token);
+    })()`);
+    await page.goto(`${appUrl}#/phaseCompan10n/game/${game.id}`);
+    await page.getByRole("tabpanel", { name: "Standings", exact: true }).waitFor();
+    const standings = await openStandings(page);
+    await standings.getByRole("button", { name: "Close", exact: true }).click();
+    await standings.waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Menu", exact: true }).click();
+    await page.getByRole("button", { name: "Reopen for Correction", exact: true }).click();
+    await page.getByRole("navigation").waitFor({ state: "detached" });
+    await page.reload();
+    const firstRound = page.getByRole("button", { name: "Round 1", exact: true });
+    await firstRound.waitFor();
+    expect(await page.getByRole("dialog").count()).toBe(0);
+    expect(await page.getByRole("button", { name: "Add round 2", exact: true }).count()).toBe(0);
+    await firstRound.click();
+    await page
+      .getByRole("button", { name: `Edit Round 1 for ${players[0].name}`, exact: true })
+      .click();
+    const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
+    await editor.getByRole("button", { name: "Failed", exact: true }).click();
+    await editor.getByRole("button", { name: /Round Winner/ }).click();
+    await page.getByRole("option", { name: players[1].name, exact: true }).click();
+    await editor.getByRole("button", { name: "Save round", exact: true }).click();
+    await page
+      .getByRole("dialog", { name: "Edit round", exact: true })
+      .getByRole("button", { name: "Save", exact: true })
+      .click();
+    const choice = page.getByRole("dialog", { name: "Finish Game", exact: true });
+    await choice.getByRole("button", { name: "Keep playing", exact: true }).waitFor();
+    expect(await choice.innerText()).toContain(`${players[1].name} wins.`);
+    await page.reload();
+    await choice.getByRole("button", { name: "Keep playing", exact: true }).waitFor();
+    expect((await readGameView(page, game.id))?.rounds[0].source.roundWinnerId).toBe(players[1].id);
+    await choice.getByRole("button", { name: "Finish", exact: true }).click();
+    await page.getByRole("tabpanel", { name: "Standings", exact: true }).waitFor();
+    expect((await readGameView(page, game.id))?.game).toMatchObject({
+      status: "completed",
+      winnerIds: [players[1].id],
+    });
+  } finally {
+    await page.close();
+  }
+}, 60_000);
+
 it("restores the durable first-finisher choice, continues without finished entries and automatically shows final places", async () => {
   const page = await browser.newPage({ viewport: { width: 320, height: 844 } });
   page.setDefaultTimeout(5_000);

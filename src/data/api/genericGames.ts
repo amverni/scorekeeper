@@ -16,6 +16,7 @@ import {
   deleteEmptyGame,
   deleteGameRecords,
   finalizeGame,
+  reopenGame,
   requirePlayers,
   withGameTransaction,
 } from "./gameLifecycle";
@@ -131,6 +132,10 @@ export const genericGamesApi = {
     );
     await tx.done;
     return views;
+  },
+
+  reopen(id: GameId, version: string): Promise<ActiveGenericGame> {
+    return reopenGame(id, "generic", version);
   },
 
   finish(id: GameId): Promise<CompletedGenericGame> {

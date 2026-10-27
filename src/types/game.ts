@@ -24,6 +24,8 @@ export interface GameSettings {
 
 export interface ActiveGame extends ActiveGameMetadata<"phase10">, PhaseGameFields {
   activePlayers: PlayerId[]; // Players actively playing, allows players to be added/removed mid-game
+  /** Reopening is not an interrupted first-finisher choice; the next save restores normal policy. */
+  deferFinishChoiceUntilSave?: true;
 }
 
 export interface CompletedGame extends CompletedGameMetadata<"phase10">, PhaseGameFields {}

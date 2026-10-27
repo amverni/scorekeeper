@@ -141,6 +141,9 @@ export const roundsApi = {
       if (view.pendingFinishChoice) {
         throw new Error("Choose Keep playing or Finish in Finish Game before adding a Round");
       }
+      if (view.gameEndingRound !== null) {
+        throw new Error("Correct a saved Round before adding a Round to this reopened Game.");
+      }
       const winnerRequirement = getRoundWinnerRequirement(
         game.settings.tiebreaker,
         view.playingPlayers.map(
@@ -200,7 +203,11 @@ export const roundsApi = {
         roundWinnerId: data.roundWinnerId,
       };
 
-      const activeGameWithActivity = { ...game, lastActivityAt: now };
+      const activeGameWithActivity = {
+        ...game,
+        deferFinishChoiceUntilSave: undefined,
+        lastActivityAt: now,
+      };
       const completion = resolveGameCompletion({
         game: activeGameWithActivity,
         players,
@@ -302,9 +309,15 @@ export const roundsApi = {
         }
       }
       const now = Date.now();
-      const completion = resolveGameCompletion({ game, players, rounds, completedAt: now });
+      const activeGame = { ...game, deferFinishChoiceUntilSave: undefined, lastActivityAt: now };
+      const completion = resolveGameCompletion({
+        game: activeGame,
+        players,
+        rounds,
+        completedAt: now,
+      });
       if (completion) await finalizeGame(tx, completion.completedGame);
-      else await tx.objectStore("games").put({ ...game, lastActivityAt: now });
+      else await tx.objectStore("games").put(activeGame);
       return savedRound;
     });
   },
@@ -332,29 +345,36 @@ export const roundsApi = {
         throw new Error("Only the latest round can be deleted");
       }
 
+      const activeGame = {
+        ...game,
+        deferFinishChoiceUntilSave: undefined,
+        ...(game.playerJoins
+          ? {
+              playerJoins: game.playerJoins.map((join) => ({
+                ...join,
+                afterRoundNumber: Math.min(join.afterRoundNumber, roundNumber - 1),
+              })),
+            }
+          : {}),
+        ...(game.playerMembershipChanges
+          ? {
+              playerMembershipChanges: game.playerMembershipChanges.map((change) => ({
+                ...change,
+                afterRoundNumber: Math.min(change.afterRoundNumber, roundNumber - 1),
+              })),
+            }
+          : {}),
+        lastActivityAt: Date.now(),
+      };
+      const completion = resolveGameCompletion({
+        game: activeGame,
+        players: await requirePlayers(tx, game.players),
+        rounds: rounds.filter((candidate) => candidate.roundNumber !== roundNumber),
+        completedAt: activeGame.lastActivityAt,
+      });
       await store.delete([gameId, roundNumber]);
-      if (game.playerJoins || game.playerMembershipChanges) {
-        await tx.objectStore("games").put({
-          ...game,
-          ...(game.playerJoins
-            ? {
-                playerJoins: game.playerJoins.map((join) => ({
-                  ...join,
-                  afterRoundNumber: Math.min(join.afterRoundNumber, roundNumber - 1),
-                })),
-              }
-            : {}),
-          ...(game.playerMembershipChanges
-            ? {
-                playerMembershipChanges: game.playerMembershipChanges.map((change) => ({
-                  ...change,
-                  afterRoundNumber: Math.min(change.afterRoundNumber, roundNumber - 1),
-                })),
-              }
-            : {}),
-          lastActivityAt: Date.now(),
-        });
-      }
+      if (completion) await finalizeGame(tx, completion.completedGame);
+      else await tx.objectStore("games").put(activeGame);
     });
   },
 
@@ -371,23 +391,22 @@ export const roundsApi = {
       const rounds = await store.index("by-game").getAll(gameId);
       assertPhaseRounds(rounds);
       await Promise.all(rounds.map((r) => store.delete([r.gameId, r.roundNumber])));
-      if (game.playerJoins || game.playerMembershipChanges) {
-        await tx.objectStore("games").put({
-          ...game,
-          ...(game.playerJoins
-            ? { playerJoins: game.playerJoins.map((join) => ({ ...join, afterRoundNumber: 0 })) }
-            : {}),
-          ...(game.playerMembershipChanges
-            ? {
-                playerMembershipChanges: game.playerMembershipChanges.map((change) => ({
-                  ...change,
-                  afterRoundNumber: 0,
-                })),
-              }
-            : {}),
-          lastActivityAt: Date.now(),
-        });
-      }
+      await tx.objectStore("games").put({
+        ...game,
+        deferFinishChoiceUntilSave: undefined,
+        ...(game.playerJoins
+          ? { playerJoins: game.playerJoins.map((join) => ({ ...join, afterRoundNumber: 0 })) }
+          : {}),
+        ...(game.playerMembershipChanges
+          ? {
+              playerMembershipChanges: game.playerMembershipChanges.map((change) => ({
+                ...change,
+                afterRoundNumber: 0,
+              })),
+            }
+          : {}),
+        lastActivityAt: Date.now(),
+      });
     });
   },
 };
