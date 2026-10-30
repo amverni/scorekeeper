@@ -634,6 +634,10 @@ it("revalidates a preserved Selected Phase after correction and retains the draf
     expect((await readView(page, gameId)).rounds).toHaveLength(1);
     await save.click();
     await add.waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Add round 3", exact: true }).click();
+    expect((await phase.innerText()).trim()).toBe("Phase 2");
+    await add.getByRole("button", { name: "Close", exact: true }).click();
+    await add.waitFor({ state: "detached" });
     await page.reload();
     await page.getByRole("button", { name: "Add round 3", exact: true }).waitFor();
     const view = await readView(page, gameId);
