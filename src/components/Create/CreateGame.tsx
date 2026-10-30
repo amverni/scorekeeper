@@ -1,7 +1,7 @@
 import { TabPanel } from "@headlessui/react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Play, X } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useCreateGame } from "../../data/hooks/useGames";
 import type { ArrayAtLeastOne, PhaseId, TemporaryPhaseSet } from "../../types";
 import { CardBackground } from "../CardBackground/CardBackground";
@@ -23,9 +23,11 @@ export function CreateGame() {
   const phases = useGamePhases();
   const settings = useGameSettings();
   const canStartGame = players.length >= 2 && phases.length >= 1 && !createGame.isPending;
+  const starting = useRef(false);
 
   async function handleStartGame() {
-    if (!canStartGame) return;
+    if (!canStartGame || starting.current) return;
+    starting.current = true;
 
     setStartError(null);
     const phaseIds = phases.map((phase) => phase.id) as ArrayAtLeastOne<PhaseId>;
@@ -45,6 +47,8 @@ export function CreateGame() {
       await navigate({ to: "/phaseCompan10n/game/$gameId", params: { gameId: game.id } });
     } catch (error) {
       setStartError(error instanceof Error ? error.message : "Unable to start game");
+    } finally {
+      starting.current = false;
     }
   }
 

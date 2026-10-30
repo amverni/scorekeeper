@@ -1,3 +1,4 @@
+import { useForm, useStore } from "@tanstack/react-form";
 import { useQuery } from "@tanstack/react-query";
 import { createContext, type ReactNode, useContext, useEffect, useRef, useState } from "react";
 import { DEFAULT_GAME_SETTINGS } from "../../data/constants/gameSettings";
@@ -22,6 +23,7 @@ interface CreateGameContextValue {
   setPhases: (phases: Phase[]) => void;
   defaultPhaseSetId: PhaseSetId;
   settings: GameSettings;
+  setInOrderPhases: (value: boolean) => void;
   setTiebreaker: (tiebreaker: GameTiebreaker) => void;
   setRoundSkipPenalty: (value: number) => void;
   setSitOutPenalty: (value: number) => void;
@@ -31,9 +33,9 @@ interface CreateGameContextValue {
 const CreateGameContext = createContext<CreateGameContextValue | null>(null);
 
 function resolveDefaultGameSettings(settings?: AppGameDefaults): GameSettings {
-  if (!settings) return DEFAULT_GAME_SETTINGS;
+  if (!settings) return { ...DEFAULT_GAME_SETTINGS, inOrderPhases: true };
   const { tiebreaker, roundSkipPenalty, sitOutPenalty } = settings;
-  return { tiebreaker, roundSkipPenalty, sitOutPenalty };
+  return { tiebreaker, roundSkipPenalty, sitOutPenalty, inOrderPhases: true };
 }
 
 export function CreateGameProvider({ children }: { children: ReactNode }) {
@@ -45,7 +47,10 @@ export function CreateGameProvider({ children }: { children: ReactNode }) {
   });
   const [players, setPlayers] = useState<Player[]>([]);
   const [phases, setGamePhases] = useState<Phase[]>([]);
-  const [settings, setSettings] = useState<GameSettings>(resolveDefaultGameSettings);
+  const settingsForm = useForm({ defaultValues: { settings: resolveDefaultGameSettings() } });
+  const settings = useStore(settingsForm.store, (state) => state.values.settings);
+  const setSettings = (update: GameSettings | ((previous: GameSettings) => GameSettings)) =>
+    settingsForm.setFieldValue("settings", update);
   const initializedSettingsRef = useRef(false);
   const initializedPhasesRef = useRef(false);
   const phasesDirtyRef = useRef(false);
@@ -54,8 +59,8 @@ export function CreateGameProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!appSettings || initializedSettingsRef.current || settingsDirtyRef.current) return;
     initializedSettingsRef.current = true;
-    setSettings(resolveDefaultGameSettings(appSettings.gameDefaults));
-  }, [appSettings]);
+    settingsForm.setFieldValue("settings", resolveDefaultGameSettings(appSettings.gameDefaults));
+  }, [appSettings, settingsForm]);
 
   useEffect(() => {
     if (!defaultPhases || initializedPhasesRef.current || phasesDirtyRef.current) return;
@@ -84,6 +89,10 @@ export function CreateGameProvider({ children }: { children: ReactNode }) {
     },
     defaultPhaseSetId,
     settings,
+    setInOrderPhases: (inOrderPhases) => {
+      settingsDirtyRef.current = true;
+      setSettings((prev) => ({ ...prev, inOrderPhases }));
+    },
     setTiebreaker: (tiebreaker) => {
       settingsDirtyRef.current = true;
       setSettings((prev) => ({ ...prev, tiebreaker }));
@@ -168,6 +177,10 @@ export function useGameSettings(): GameSettings {
 export function useSetTiebreaker(): (tiebreaker: GameTiebreaker) => void {
   const { setTiebreaker } = useCreateGameContext();
   return setTiebreaker;
+}
+
+export function useSetInOrderPhases(): (value: boolean) => void {
+  return useCreateGameContext().setInOrderPhases;
 }
 
 export function useSetRoundSkipPenalty(): (value: number) => void {

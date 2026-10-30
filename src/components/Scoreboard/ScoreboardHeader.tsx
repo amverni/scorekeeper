@@ -53,14 +53,18 @@ export function ScoreboardHeader({
                     ? "Unranked"
                     : completed || player.finishingPlace !== null
                       ? `Place ${player.place}`
-                      : `Current Phase ${player.progress.currentPhase}`}
+                      : player.progress.selectable
+                        ? `${player.progress.selectable.resolvedPhases.length}/${player.progress.selectable.totalPhases} phases`
+                        : `Current Phase ${player.progress.currentPhase}`}
                 </span>
                 <span aria-hidden>
                   {player.place === null
                     ? "\u2014"
                     : completed || player.finishingPlace !== null
                       ? formatPlace(player.place)
-                      : player.progress.currentPhase}
+                      : player.progress.selectable
+                        ? `${player.progress.selectable.resolvedPhases.length}/${player.progress.selectable.totalPhases} phases`
+                        : player.progress.currentPhase}
                 </span>
               </span>
               <span className="text-sm leading-none text-text-secondary tabular-nums">

@@ -75,12 +75,14 @@ export function getPhaseGraphView({
   totalPhases,
   rows = [],
 }: PhaseGraphViewInput): PhaseGraphView {
-  const maxStandingValue = totalPhases + 1;
+  const selectable = series.some((series) => series.points.some((point) => point.selectable));
+  const maxStandingValue = selectable ? totalPhases : totalPhases + 1;
+  const minStandingValue = selectable ? 0 : 1;
   const phaseSpacing = getPhaseSpacing(totalPhases);
   const roundNumbers = getRoundNumbers(series);
   const roundLabelStride = getRoundLabelStride(roundNumbers.length, PHASE_CHART_WIDTH);
   const roundXByNumber = getRoundXByNumber(roundNumbers, PHASE_GRAPH_HORIZONTAL_LAYOUT);
-  const height = GRAPH_TOP + (maxStandingValue - 1) * phaseSpacing + GRAPH_BOTTOM;
+  const height = GRAPH_TOP + (maxStandingValue - minStandingValue) * phaseSpacing + GRAPH_BOTTOM;
   const rowOrder = new Map(rows.map((row, index) => [row.player.id, index]));
   const viewSeries = series.map((graphSeries) => {
     const linePoints = graphSeries.points.map((point) => ({
@@ -106,12 +108,12 @@ export function getPhaseGraphView({
       showLabel: shouldShowRoundLabel(roundNumber, index, roundNumbers.length, roundLabelStride),
       x: roundXByNumber.get(roundNumber) ?? PHASE_GRAPH_LEFT,
     })),
-    phaseLabels: Array.from({ length: maxStandingValue }, (_, index) => {
+    phaseLabels: Array.from({ length: totalPhases + 1 }, (_, index) => {
       const value = maxStandingValue - index;
       return {
         value,
-        label: value > totalPhases ? null : String(value),
-        isFinished: value > totalPhases,
+        label: value === maxStandingValue ? null : String(value),
+        isFinished: value === maxStandingValue,
         y: getY(value, maxStandingValue, phaseSpacing),
       };
     }),
@@ -172,11 +174,13 @@ function getLatestEndpointGroups(
 type PhaseProgressLabelCase = "lower" | "sentence";
 
 export function formatPhaseProgressLabel(
-  point: Pick<PhaseGraphPoint, "currentPhase" | "isFinished">,
+  point: Pick<PhaseGraphPoint, "currentPhase" | "isFinished" | "selectable">,
   labelCase: PhaseProgressLabelCase,
 ): string {
-  const label = point.isFinished
-    ? `finished phase ${point.currentPhase}`
-    : `phase ${point.currentPhase}`;
+  const label = point.selectable
+    ? `${point.selectable.resolvedPhases.length}/${point.selectable.totalPhases} phases${point.isFinished ? ", finished" : ""}`
+    : point.isFinished
+      ? `finished phase ${point.currentPhase}`
+      : `phase ${point.currentPhase}`;
   return labelCase === "sentence" ? `${label[0]?.toUpperCase() ?? ""}${label.slice(1)}` : label;
 }

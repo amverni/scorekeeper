@@ -5,6 +5,7 @@ export interface StandingsDisplayRow {
   place: number | null;
   showPlace: boolean;
   phaseNumber: number;
+  selectableProgress?: string;
   isFinished: boolean;
   tiebreakerText: string;
 }
@@ -15,6 +16,11 @@ export function getStandingsDisplayRows(standings: StandingsDerivation): Standin
     place: row.place,
     showPlace: row.showPlace,
     phaseNumber: row.progress.currentPhase,
+    ...(row.progress.selectable
+      ? {
+          selectableProgress: `${row.progress.selectable.resolvedPhases.length}/${row.progress.selectable.totalPhases} phases`,
+        }
+      : {}),
     isFinished: row.progress.isFinished,
     tiebreakerText: row.formattedTiebreaker,
   }));

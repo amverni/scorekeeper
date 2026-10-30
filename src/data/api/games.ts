@@ -13,6 +13,7 @@ import type {
   StoredGame,
   StoredRound,
 } from "../../types";
+import { formatPhaseDisplayName } from "../../utils";
 import { getDB } from "../db";
 import {
   deleteEmptyGame,
@@ -27,6 +28,7 @@ import { deriveGameReadModel } from "./gameReadModel";
 import { getGamePlayers } from "./gameResults";
 import { phaseGameEdits } from "./phaseGameEdits";
 import { phaseRoundEdits } from "./phaseRoundEdits";
+import { phasesApi } from "./phases";
 import { resolveEarlyGameCompletion, resolveGameCompletion } from "./roundCompletion";
 import { deriveStandings } from "./standings";
 
@@ -107,6 +109,18 @@ export const gamesApi = {
     });
   },
 
+  async getPhaseOptions(id: GameId) {
+    const game = await this.getById(id);
+    if (!game) throw new Error("Game not found.");
+    const phases = await phasesApi.getByIds(game.phaseSet.phases);
+    const byId = new Map(phases.map((phase) => [phase.id, phase]));
+    return game.phaseSet.phases.map((id, index) => {
+      const phase = byId.get(id);
+      if (!phase) throw new Error(`Phase no longer exists: ${id}`);
+      return { phaseNumber: index + 1, objective: formatPhaseDisplayName(phase) };
+    });
+  },
+
   async getPhasePlayers(id: GameId): Promise<PhasesCardPlayerGroups> {
     const db = await getDB();
     const tx = db.transaction(["games", "players", "rounds"]);
@@ -140,9 +154,16 @@ export const gamesApi = {
   },
 
   async create(data: CreateGameInput): Promise<ActiveGame> {
+    if (
+      data.settings.inOrderPhases !== undefined &&
+      typeof data.settings.inOrderPhases !== "boolean"
+    ) {
+      throw new Error("In-order phases must be On or Off.");
+    }
     const now = Date.now();
     const newGame: ActiveGame = {
       ...data,
+      settings: { ...data.settings, inOrderPhases: data.settings.inOrderPhases ?? true },
       scorekeeper: "phase10",
       id: crypto.randomUUID(),
       status: "active",

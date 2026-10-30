@@ -1,5 +1,5 @@
 import type { ActiveGame, CompletedGame, PlayerIdentity, Round } from "../../types";
-import { deriveGameReadModel } from "./gameReadModel";
+import { assertUniquePhaseResolutions, deriveGameReadModel } from "./gameReadModel";
 import { capturePlayerSnapshots } from "./gameResults";
 import { deriveStandings } from "./standings";
 
@@ -18,11 +18,13 @@ export interface GameCompletionResolution {
 export function resolveGameCompletion(
   input: ResolveGameCompletionInput,
 ): GameCompletionResolution | null {
-  const { standings, automaticCompletion } = deriveGameReadModel({
+  const view = deriveGameReadModel({
     game: input.game,
     players: input.players,
     rounds: input.rounds,
   });
+  assertUniquePhaseResolutions(view);
+  const { standings, automaticCompletion } = view;
 
   if (!automaticCompletion || !standings.gameWinner) {
     return null;

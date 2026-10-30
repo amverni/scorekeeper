@@ -13,6 +13,7 @@ import {
   getProgressAfterScore,
   getRoundTiebreakerValue,
   isLowerBetterTiebreaker,
+  phaseStatusAdvances,
   toTiebreakerStandingValue,
 } from "../../utils";
 import { getGamePlayers } from "./gameResults";
@@ -25,6 +26,8 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
   const sortedRounds = rounds.slice().sort((a, b) => a.roundNumber - b.roundNumber);
   const version = JSON.stringify([game, sortedRounds]);
   const totalPhases = game.phaseSet.phases.length;
+  const selectable = game.settings.inOrderPhases === false;
+  const initialProgress = () => getInitialPlayerProgress(selectable ? totalPhases : undefined);
   const joinBoundary = new Map(
     (game.playerJoins ?? []).map(({ playerId, afterRoundNumber }) => [playerId, afterRoundNumber]),
   );
@@ -42,13 +45,11 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
     includedPlayers.map((player) => [
       player.id,
       {
-        progress: getInitialPlayerProgress(),
+        progress: initialProgress(),
         tiebreakerTotal: 0,
         finishingRound: null as number | null,
         mostRecentWin: -1,
-        phasePoints: [
-          { roundNumber: joinBoundary.get(player.id) ?? 0, ...getInitialPlayerProgress() },
-        ],
+        phasePoints: [{ roundNumber: joinBoundary.get(player.id) ?? 0, ...initialProgress() }],
         tiebreakerPoints: [
           {
             roundNumber: joinBoundary.get(player.id) ?? 0,
@@ -135,10 +136,11 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
         !withdrawn.has(player.id) &&
         !state.progress.isFinished &&
         recorded !== undefined;
-      // Phase assignment is derived from counted history, never from an excluded entry.
-      const effectiveScore = entryCounts
-        ? { ...recorded, currentPhase: state.progress.currentPhase }
-        : recorded;
+      // Selectable attempts retain their recorded numbered position through corrections.
+      const effectiveScore =
+        entryCounts && !selectable
+          ? { ...recorded, currentPhase: state.progress.currentPhase }
+          : recorded;
       const sourceTiebreakerValue = getRoundTiebreakerValue(
         round,
         player.id,
@@ -146,6 +148,9 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
         recorded,
       );
       const tiebreakerValue = entryCounts ? sourceTiebreakerValue : 0;
+      const phaseAlreadyResolved =
+        recorded !== undefined &&
+        state.progress.selectable?.resolvedPhases.includes(recorded.currentPhase) === true;
       const wasFinished = state.progress.isFinished;
       if (entryCounts && effectiveScore) {
         state.progress = getProgressAfterScore(effectiveScore, state.progress, totalPhases);
@@ -169,6 +174,7 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
         sourceTiebreakerValue,
         tiebreakerValue,
         runningTiebreakerTotal: state.tiebreakerTotal,
+        ...(selectable ? { phaseAlreadyResolved } : {}),
       };
     });
     roundViews.push({ source: round, dealerId, scores, counted });
@@ -301,6 +307,41 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
       )
       .map((player) => player.id),
   };
+}
+
+export function assertUniquePhaseResolutions(
+  view: GameReadModel,
+  edit?: { before: GameReadModel; roundNumber: number },
+): void {
+  if (view.game.settings.inOrderPhases !== false) return;
+  const resolved = new Map<PlayerId, Set<number>>();
+  for (const round of view.rounds) {
+    for (const entry of round.scores) {
+      if (!entry.counted || !entry.source || !phaseStatusAdvances(entry.source.phaseStatus)) {
+        continue;
+      }
+      const phases = resolved.get(entry.playerId) ?? new Set<number>();
+      const alreadyOwned =
+        edit?.roundNumber === round.source.roundNumber &&
+        edit.before.rounds.some(
+          (previous) =>
+            previous.source.roundNumber !== round.source.roundNumber &&
+            previous.scores.some(
+              (score) =>
+                score.playerId === entry.playerId &&
+                score.counted &&
+                score.source !== undefined &&
+                score.source.currentPhase === entry.source?.currentPhase &&
+                phaseStatusAdvances(score.source.phaseStatus),
+            ),
+        );
+      if (phases.has(entry.source.currentPhase) || alreadyOwned) {
+        throw new Error(`Phase ${entry.source.currentPhase} is already resolved for this Player.`);
+      }
+      phases.add(entry.source.currentPhase);
+      resolved.set(entry.playerId, phases);
+    }
+  }
 }
 
 function compareTiebreakerTotals(

@@ -36,7 +36,7 @@ export function StandingsRow({ row }: StandingsRowProps) {
         {row.player.name}
       </span>
       <span className={phaseScoreClasses}>
-        Ph {row.phaseNumber}
+        {row.selectableProgress ?? `Ph ${row.phaseNumber}`}
         {row.isFinished && (
           <Check className="size-3.5 shrink-0 text-pt-green-500" aria-label="Finished" />
         )}

@@ -52,7 +52,12 @@ export interface RoundScore {
   playerId: PlayerId;
   score: number;
   phaseStatus: PhaseStatus;
+  /** Recorded Selected Phase; sequential counted history may derive a corrected assignment. */
   currentPhase: number;
   /** Remaining cards for a Points entry; absent for penalties, Count Tiebreakers and legacy data. */
   pointsCardBreakdown?: PointsCardBreakdown;
 }
+
+export type AddRoundScoreInput = Omit<RoundScore, "currentPhase"> & {
+  selectedPhase?: number;
+};

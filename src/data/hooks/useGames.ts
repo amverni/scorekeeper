@@ -15,6 +15,7 @@ export const gameKeys = {
   view: (id: GameId) => [...gameKeys.detail(id), "view"] as const,
   editor: (id: GameId) => [...gameKeys.detail(id), "editor"] as const,
   phasePlayers: (id: GameId) => [...gameKeys.detail(id), "phasePlayers"] as const,
+  phaseOptions: (id: GameId) => [...gameKeys.detail(id), "phaseOptions"] as const,
 };
 
 export function gameEditorOptions(id: GameId) {
@@ -47,6 +48,14 @@ export function gamePhasePlayersOptions(id: GameId) {
   return queryOptions({
     queryKey: gameKeys.phasePlayers(id),
     queryFn: () => gamesApi.getPhasePlayers(id),
+    enabled: !!id,
+  });
+}
+
+export function gamePhaseOptionsOptions(id: GameId) {
+  return queryOptions({
+    queryKey: gameKeys.phaseOptions(id),
+    queryFn: () => gamesApi.getPhaseOptions(id),
     enabled: !!id,
   });
 }

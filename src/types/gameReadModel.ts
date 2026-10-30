@@ -42,4 +42,5 @@ export interface GameRoundScoreView {
   runningTiebreakerTotal: number;
   counted: boolean;
   sourceTiebreakerValue: number;
+  phaseAlreadyResolved?: boolean;
 }

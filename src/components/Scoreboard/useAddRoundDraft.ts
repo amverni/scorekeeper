@@ -8,6 +8,7 @@ export interface UseAddRoundDraft {
   selectedPlayerId: PlayerId | null;
   selectPlayer: (playerId: PlayerId | null) => void;
   setResult: (playerId: PlayerId, result: PhaseStatus) => void;
+  setSelectedPhase: (playerId: PlayerId, phase: number) => void;
   setScore: (playerId: PlayerId, score: number) => void;
   incrementQuick: (playerId: PlayerId, button: draftHelpers.PointsQuickButtonId) => void;
   decrementQuick: (playerId: PlayerId, button: draftHelpers.PointsQuickButtonId) => void;
@@ -79,6 +80,15 @@ export function useAddRoundDraft(
     },
     setResult: (playerId, result) => {
       setNextDraft(draftHelpers.applyResult(currentDraft(), playerId, result, settings));
+    },
+    setSelectedPhase: (playerId, selectedPhase) => {
+      const current = currentDraft();
+      setNextDraft({
+        ...current,
+        players: current.players.map((player) =>
+          player.playerId === playerId ? { ...player, selectedPhase } : player,
+        ),
+      });
     },
     setScore: (playerId, score) => {
       setNextDraft(draftHelpers.applyScore(currentDraft(), playerId, score, settings));

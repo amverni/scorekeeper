@@ -17,6 +17,8 @@ export type GameTiebreaker =
   | "roundsWon";
 
 export interface GameSettings {
+  /** Omitted means Sequential Phase Order. Fixed when the Game is created. */
+  inOrderPhases?: boolean;
   tiebreaker: GameTiebreaker;
   roundSkipPenalty: number; // Default 100. Points added when player takes a Round Skip.
   sitOutPenalty: number; // Default 0. Points added when player Sits Out.

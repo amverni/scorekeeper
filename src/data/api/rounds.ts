@@ -1,7 +1,9 @@
 import type {
+  AddRoundScoreInput,
   ArrayAtLeastOne,
   CompletedGame,
   GameId,
+  GameSettings,
   GameTiebreaker,
   PlayerId,
   PlayerIdentity,
@@ -17,11 +19,9 @@ import {
 } from "../../utils";
 import { getDB } from "../db";
 import { finalizeGame, requirePlayers, withGameTransaction } from "./gameLifecycle";
-import { deriveGameReadModel } from "./gameReadModel";
+import { assertUniquePhaseResolutions, deriveGameReadModel } from "./gameReadModel";
 import { assertActivePhaseGame, assertPhaseRounds } from "./games";
 import { resolveGameCompletion } from "./roundCompletion";
-
-type AddRoundScoreInput = Omit<RoundScore, "currentPhase">;
 
 export interface AddRoundAddedResult {
   outcome: "roundAdded";
@@ -95,10 +95,10 @@ export const roundsApi = {
    * Add a new round to a game.
    *
    * The round number is automatically assigned as the next sequential number.
-   * Each player's `currentPhase` is automatically computed based on their
-   * phase status in the previous round — callers do not provide it.
+   * Sequential Phase Numbers are derived from counted history. Selectable Games
+   * require each entry's `selectedPhase`, saved as its recorded `currentPhase`.
    *
-   * @param data - The round data. Scores should omit `currentPhase` (it is computed).
+   * @param data - Round entries and optional history-version guards.
    *   `roundWinnerId` explicitly identifies the player who went out, or is null.
    *   Rounds Won requires a winner unless every Active Player Skips or Sits Out.
    * @returns The newly created round and completion details when this round finishes the game.
@@ -128,6 +128,7 @@ export const roundsApi = {
       }
       for (const score of data.scores) {
         assertPointsCardBreakdown(score, game.settings.tiebreaker, data.roundWinnerId);
+        if (game.settings.inOrderPhases === false) assertConfiguredPenalty(score, game.settings);
       }
       const players = await requirePlayers(tx, game.players);
       const existingRounds = await roundsStore.index("by-game").getAll(data.gameId);
@@ -181,14 +182,27 @@ export const roundsApi = {
         throw new Error("Round history changed. Reload before saving.");
       }
 
-      const scores = data.scores.map((input) => {
+      const scores = data.scores.map(({ selectedPhase, ...input }) => {
         const player = view.players.find((player) => player.id === input.playerId);
         if (!player || player.progress.isFinished) {
           throw new Error("Round entries must belong to Players still playing");
         }
+        const currentPhase =
+          game.settings.inOrderPhases === false ? selectedPhase : player.progress.currentPhase;
+        if (
+          currentPhase === undefined ||
+          !Number.isSafeInteger(currentPhase) ||
+          currentPhase < 1 ||
+          currentPhase > game.phaseSet.phases.length
+        ) {
+          throw new Error("Choose a valid Phase Number.");
+        }
+        if (player.progress.selectable?.resolvedPhases.includes(currentPhase)) {
+          throw new Error(`Phase ${currentPhase} is already resolved. Choose a Remaining Phase.`);
+        }
         return {
           ...input,
-          currentPhase: player.progress.currentPhase,
+          currentPhase,
         };
         // Input guarantees at least one score; .map() preserves length but TS can't infer tuple minimum
       }) as ArrayAtLeastOne<RoundScore>;
@@ -278,6 +292,9 @@ export const roundsApi = {
       const updatedScores = [...round.scores] as ArrayAtLeastOne<RoundScore>;
       updatedScores[scoreIndex] = { ...updatedScores[scoreIndex], ...updates };
       validateScore(updatedScores[scoreIndex]);
+      if (game.settings.inOrderPhases === false) {
+        assertConfiguredPenalty(updatedScores[scoreIndex], game.settings);
+      }
       assertPointsCardBreakdown(
         updatedScores[scoreIndex],
         game.settings.tiebreaker,
@@ -291,6 +308,10 @@ export const roundsApi = {
       assertPhaseRounds(allRounds);
       const rounds = allRounds.map((r) => (r.roundNumber === roundNumber ? updatedRound : r));
       const view = deriveGameReadModel({ game, players, rounds });
+      assertUniquePhaseResolutions(view, {
+        before: deriveGameReadModel({ game, players, rounds: allRounds }),
+        roundNumber,
+      });
       for (const interpreted of view.rounds) {
         const source = interpreted.source;
         const scores = source.scores.map((score) => {
@@ -410,6 +431,18 @@ export const roundsApi = {
     });
   },
 };
+
+export function assertConfiguredPenalty(score: AddRoundScoreInput, settings: GameSettings): void {
+  if (score.phaseStatus !== "skipped" && score.phaseStatus !== "satOut") return;
+  const expected = isPointsTiebreaker(settings.tiebreaker)
+    ? score.phaseStatus === "skipped"
+      ? settings.roundSkipPenalty
+      : settings.sitOutPenalty
+    : 0;
+  if (score.score !== expected) {
+    throw new Error("Round Skip and Sit Out must use the Game's configured penalty.");
+  }
+}
 
 export function validateScore(score: AddRoundScoreInput) {
   if (!["completed", "failed", "skipped", "satOut"].includes(score.phaseStatus)) {

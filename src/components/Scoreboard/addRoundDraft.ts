@@ -1,4 +1,5 @@
 import type {
+  AddRoundScoreInput,
   ArrayAtLeastOne,
   GameSettings,
   GameTiebreaker,
@@ -6,8 +7,8 @@ import type {
   PhaseStatus,
   PlayerId,
   PlayerIdentity,
+  PlayerProgress,
   PointsCardBreakdown,
-  RoundScore,
 } from "../../types";
 import {
   getPointsCardCount,
@@ -41,6 +42,7 @@ export interface ScoreEntryCompletion {
 /** Per-player draft state. `result === null` means the user hasn't picked yet — submission blocked. */
 export interface PlayerDraft {
   playerId: PlayerId;
+  selectedPhase?: number;
   result: PhaseStatus | null;
   /** Polymorphic numeric value (semantics depend on tiebreaker — see addRound.md). */
   score: number;
@@ -359,10 +361,13 @@ function updatePlayer(
   };
 }
 
-export function createInitialDraft(players: PlayerIdentity[]): AddRoundDraft {
+export function createInitialDraft(
+  players: Array<PlayerIdentity & { progress?: PlayerProgress }>,
+): AddRoundDraft {
   return {
     players: players.map((p) => ({
       playerId: p.id,
+      ...(p.progress?.selectable ? { selectedPhase: p.progress.currentPhase } : {}),
       result: null,
       score: 0,
       lastManualScore: 0,
@@ -385,6 +390,9 @@ export function createEditRoundDraft(editor: PhaseRoundEditor): AddRoundDraft {
       const quickCounts = { ...(source.pointsCardBreakdown ?? ZERO_QUICK_COUNTS) };
       return {
         ...player,
+        ...(editor.game.settings.inOrderPhases === false
+          ? { selectedPhase: source.currentPhase }
+          : {}),
         result: source.phaseStatus,
         score: source.score,
         lastManualScore: isManualResult(source.phaseStatus) ? source.score : 0,
@@ -804,18 +812,18 @@ export function isDraftComplete(
 }
 
 /**
- * Build the array of `Omit<RoundScore, "currentPhase">` for `roundsApi.add` from the draft.
+ * Build the new Round command from the draft, including any Selected Phases.
  * Throws if !isDraftComplete(draft). The `score.score` field is the polymorphic value
  * (points / wilds / skip-card-count) chosen by the wheel; for tiebreaker = "roundsWon"
  * the value is ignored by the scoreboard reader but we still write it (preserves the polymorphic contract).
  *
- * NOTE: `currentPhase` is omitted because `roundsApi.add` computes it.
+ * Sequential Phase Numbers are derived by the API.
  */
 export function toRoundScores(
   draft: AddRoundDraft,
   tiebreaker: GameTiebreaker,
   countedPlayerIds?: readonly PlayerId[],
-): ArrayAtLeastOne<Omit<RoundScore, "currentPhase">> {
+): ArrayAtLeastOne<AddRoundScoreInput> {
   if (!isDraftComplete(draft, tiebreaker, countedPlayerIds)) {
     throw new Error("Cannot build round scores from an incomplete draft.");
   }
@@ -824,8 +832,9 @@ export function toRoundScores(
     playerId: player.playerId,
     score: player.score,
     phaseStatus: player.result,
+    ...(player.selectedPhase !== undefined ? { selectedPhase: player.selectedPhase } : {}),
     ...(isPointsTiebreaker(tiebreaker) && isManualResult(player.result)
       ? { pointsCardBreakdown: { ...player.quickCounts } }
       : {}),
-  })) as ArrayAtLeastOne<Omit<RoundScore, "currentPhase">>;
+  })) as ArrayAtLeastOne<AddRoundScoreInput>;
 }

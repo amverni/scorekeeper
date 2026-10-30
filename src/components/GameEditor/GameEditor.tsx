@@ -104,7 +104,7 @@ export function PhaseGameEditorPage({ gameId }: { gameId: GameId }) {
         settings={
           <SettingsReference
             rows={[
-              ["In-order phases", "On"],
+              ["In-order phases", editor.game.settings.inOrderPhases === false ? "Off" : "On"],
               ["Tiebreaker", TIEBREAKER_LABELS[editor.game.settings.tiebreaker]],
               ["Round Skip Penalty", String(editor.game.settings.roundSkipPenalty)],
               ["Sit Out Penalty", String(editor.game.settings.sitOutPenalty)],

@@ -1,5 +1,6 @@
 import { queryOptions, useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
+  AddRoundScoreInput,
   ArrayAtLeastOne,
   CompletedGame,
   DeletePhaseRoundInput,
@@ -7,15 +8,12 @@ import type {
   GameId,
   PlayerId,
   Round,
-  RoundScore,
 } from "../../types";
 import { gamesApi } from "../api/games";
 import { roundsApi } from "../api/rounds";
 import { gameKeys } from "./useGames";
 import { phaseSetKeys } from "./usePhaseSets";
 import { phaseKeys } from "./usePhases";
-
-type AddRoundScoreInput = Omit<RoundScore, "currentPhase">;
 
 export const roundKeys = {
   all: ["rounds"] as const,

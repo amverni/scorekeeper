@@ -1,13 +1,21 @@
 import { DialogTitle, Tab, TabGroup, TabPanel } from "@headlessui/react";
+import { useQuery } from "@tanstack/react-query";
 import { Check, Loader2, Minus, Redo, Trash2, Trophy, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { gamePhaseOptionsOptions } from "../../data/hooks/useGames";
 import {
   useAddRound,
   useDeletePhaseRound,
   useEditPhaseRound,
   usePreviewPhaseRoundEdit,
 } from "../../data/hooks/useRounds";
-import type { EditPhaseRoundInput, Game, PhaseRoundEditor, PlayerIdentity } from "../../types";
+import type {
+  EditPhaseRoundInput,
+  Game,
+  PhaseRoundEditor,
+  PlayerIdentity,
+  PlayerProgress,
+} from "../../types";
 import { PlayerAvatar } from "../PlayerAvatar/PlayerAvatar";
 import {
   Button,
@@ -38,7 +46,7 @@ interface AddRoundDialogProps {
   onClose: (open: boolean) => void;
   game: Game;
   nextRoundNumber: number;
-  players: PlayerIdentity[];
+  players: Array<PlayerIdentity & { progress?: PlayerProgress }>;
   draft: UseAddRoundDraft;
   onGameCompleted?: () => void;
   afterLeave?: () => void;
@@ -113,6 +121,28 @@ export function AddRoundDialog({
   const canSave = progress.ready && !unavailableWinner && !locked;
   const showTiebreakerEntry = game.settings.tiebreaker !== "roundsWon";
   const playerTabColumnCount = Math.max(players.length, 1);
+  const selectable = game.settings.inOrderPhases === false;
+  const phases = useQuery({
+    ...gamePhaseOptionsOptions(game.id),
+    enabled: open && selectable && editor === undefined,
+  });
+  const invalidPhasePlayers =
+    selectable && !editor
+      ? players.filter((player) => {
+          const selected = draft.draft.players.find(
+            (entry) => entry.playerId === player.id,
+          )?.selectedPhase;
+          return (
+            selected === undefined ||
+            !Number.isSafeInteger(selected) ||
+            selected < 1 ||
+            selected > game.phaseSet.phases.length ||
+            player.progress?.selectable?.resolvedPhases.includes(selected)
+          );
+        })
+      : [];
+  const phasesReady = !selectable || editor !== undefined || phases.isSuccess;
+  const selectionValid = invalidPhasePlayers.length === 0 && phasesReady;
 
   const runSave = async (operation: () => Promise<void>, action = "save") => {
     if (saving.current) return;
@@ -139,7 +169,7 @@ export function AddRoundDialog({
   };
 
   const handleSave = () => {
-    if (!canSave) return;
+    if (!canSave || !selectionValid) return;
     return runSave(async () => {
       const scores = toRoundScores(draft.draft, game.settings.tiebreaker, editor?.countedPlayerIds);
       const roundWinnerId = draft.draft.roundWinnerId;
@@ -253,7 +283,7 @@ export function AddRoundDialog({
                 variant="ready"
                 aria-label="Save round"
                 onClick={handleSave}
-                disabled={!canSave}
+                disabled={!canSave || !selectionValid}
                 className="glass relative inline-flex size-10 cursor-pointer items-center justify-center rounded-full hover:brightness-110 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
               >
                 {isPending ? (
@@ -404,6 +434,22 @@ export function AddRoundDialog({
             {unavailableWinner && (
               <InlineError message="The selected Round Winner is no longer playing. Choose or clear the Round Winner before saving." />
             )}
+            {invalidPhasePlayers.length > 0 && (
+              <InlineError
+                message={`${invalidPhasePlayers.map((player) => player.name).join(", ")}: the selected Phase is no longer available. Choose a Remaining Phase.`}
+              />
+            )}
+            {selectable &&
+              !editor &&
+              !phasesReady &&
+              (phases.isPending ? (
+                <output>Loading Phases...</output>
+              ) : (
+                <InlineError
+                  message={phases.error?.message ?? "The Game's Phase objectives are unavailable."}
+                  onRetry={() => phases.refetch()}
+                />
+              ))}
 
             {/* Body */}
             <div className="relative flex min-h-0 flex-1">
@@ -422,6 +468,48 @@ export function AddRoundDialog({
                   return (
                     <TabPanel key={player.id} className="flex flex-col px-3 pb-3">
                       <List rowVariant="content">
+                        {selectable &&
+                          (editor ? (
+                            <SettingListRow key="phase" label="Phase">
+                              <span>Phase {playerDraft.selectedPhase}</span>
+                            </SettingListRow>
+                          ) : (
+                            <Listbox
+                              key="phase"
+                              value={playerDraft.selectedPhase}
+                              onChange={(phase) => {
+                                if (phase !== undefined) draft.setSelectedPhase(player.id, phase);
+                              }}
+                              disabled={locked || !phasesReady}
+                              className="w-full min-w-0"
+                            >
+                              <SettingListRow label={<ListboxLabel>Phase</ListboxLabel>}>
+                                <ListboxButton variant="plain">
+                                  Phase {playerDraft.selectedPhase}
+                                </ListboxButton>
+                                <ListboxOptions
+                                  align="right"
+                                  anchor={{ to: "bottom end", gap: "0.25rem", padding: "1rem" }}
+                                  transformOrigin="top-right"
+                                  className="max-w-[min(24rem,calc(100vw-2rem))]"
+                                >
+                                  {phases.data?.map(({ phaseNumber, objective }) => (
+                                    <ListboxOption
+                                      key={phaseNumber}
+                                      value={phaseNumber}
+                                      disabled={player.progress?.selectable?.resolvedPhases.includes(
+                                        phaseNumber,
+                                      )}
+                                    >
+                                      <span className="whitespace-normal">
+                                        Phase {phaseNumber}: {objective}
+                                      </span>
+                                    </ListboxOption>
+                                  ))}
+                                </ListboxOptions>
+                              </SettingListRow>
+                            </Listbox>
+                          ))}
                         <RoundResultSection
                           key="round-result"
                           value={playerDraft.result}

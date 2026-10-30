@@ -27,9 +27,11 @@ export interface StandingsRow<TPlayer extends PlayerIdentity = PlayerIdentity> {
 }
 
 export interface PlayerProgress {
+  /** Next sequential Phase, or the default lowest Remaining Phase for selectable play. */
   currentPhase: number;
   isFinished: boolean;
   standingValue: number;
+  selectable?: { resolvedPhases: number[]; totalPhases: number };
 }
 
 export interface PhaseGraphSeries {

@@ -14,10 +14,10 @@ import {
   requirePlayers,
   withGameTransaction,
 } from "./gameLifecycle";
-import { deriveGameReadModel } from "./gameReadModel";
+import { assertUniquePhaseResolutions, deriveGameReadModel } from "./gameReadModel";
 import { assertActivePhaseGame, assertPhaseRounds } from "./games";
 import { resolveGameCompletion } from "./roundCompletion";
-import { assertPointsCardBreakdown, validateScore } from "./rounds";
+import { assertConfiguredPenalty, assertPointsCardBreakdown, validateScore } from "./rounds";
 
 export const phaseRoundEdits = {
   delete(input: DeletePhaseRoundInput) {
@@ -183,15 +183,7 @@ async function evaluateEdit(tx: GameLifecycleTransaction, input: EditPhaseRoundI
     if (!score) throw new Error("Round entries must match the recorded Players.");
     validateScore(score);
     assertPointsCardBreakdown(score, game.settings.tiebreaker, input.roundWinnerId);
-    if (score.phaseStatus === "skipped" || score.phaseStatus === "satOut") {
-      const expected = isPointsTiebreaker(game.settings.tiebreaker)
-        ? score.phaseStatus === "skipped"
-          ? game.settings.roundSkipPenalty
-          : game.settings.sitOutPenalty
-        : 0;
-      if (score.score !== expected)
-        throw new Error("Round Skip and Sit Out must use the Game's configured penalty.");
-    }
+    assertConfiguredPenalty(score, game.settings);
     if (
       isPointsTiebreaker(game.settings.tiebreaker) &&
       (score.phaseStatus === "completed" || score.phaseStatus === "failed") &&
@@ -221,6 +213,7 @@ async function evaluateEdit(tx: GameLifecycleTransaction, input: EditPhaseRoundI
     existing.roundNumber === round.roundNumber ? round : existing,
   );
   const after = deriveGameReadModel({ game, players, rounds: updatedRounds });
+  assertUniquePhaseResolutions(after, { before: view, roundNumber: input.roundNumber });
   const interpreted = after.rounds.find((entry) => entry.source.roundNumber === round.roundNumber);
   if (!interpreted) throw new Error("Round not found.");
   const winner = interpreted.scores.find((entry) => entry.playerId === input.roundWinnerId);
@@ -262,6 +255,7 @@ function consequences(view: GameReadModel) {
     players: view.players.map((player) => [
       player.id,
       player.progress.currentPhase,
+      player.progress.selectable?.resolvedPhases,
       player.finishingRound,
       player.place,
     ]),
@@ -273,6 +267,7 @@ function consequences(view: GameReadModel) {
         score.playerId,
         score.counted,
         score.counted ? score.phaseNumber : null,
+        score.counted ? score.phaseAlreadyResolved : null,
       ]),
     ]),
   });
