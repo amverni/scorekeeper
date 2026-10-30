@@ -539,7 +539,7 @@ it("creates selectable play, preserves per-Player Phase drafts, and reloads numb
     await page.getByRole("button", { name: "Round 1", exact: true }).click();
     await page.getByRole("button", { name: "Edit Round 1 for Amy", exact: true }).click();
     const edit = page.getByRole("dialog", { name: "Edit Round", exact: true });
-    expect(await edit.getByText("Phase 10", { exact: true }).count()).toBe(1);
+    await edit.getByText("Phase 10", { exact: true }).waitFor();
     expect(await edit.getByRole("button", { name: /^Phase\b/ }).count()).toBe(0);
   } finally {
     await page.close();
