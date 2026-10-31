@@ -103,6 +103,7 @@ export type {
   PhaseRound,
   PhaseRoundEditor,
   PhaseRoundId,
+  PhaseSelectionAvailability,
   PhaseStatus,
   PointsCardBreakdown,
   Round,

@@ -13,9 +13,11 @@ import type {
   EditPhaseRoundInput,
   Game,
   PhaseRoundEditor,
+  PhaseSelectionAvailability,
   PlayerIdentity,
   PlayerProgress,
 } from "../../types";
+import { getSelectedPhaseError } from "../../utils";
 import { PlayerAvatar } from "../PlayerAvatar/PlayerAvatar";
 import {
   Button,
@@ -46,7 +48,12 @@ interface AddRoundDialogProps {
   onClose: (open: boolean) => void;
   game: Game;
   nextRoundNumber: number;
-  players: Array<PlayerIdentity & { progress?: PlayerProgress }>;
+  players: Array<
+    PlayerIdentity & {
+      progress?: PlayerProgress;
+      phaseAvailability?: PhaseSelectionAvailability;
+    }
+  >;
   draft: UseAddRoundDraft;
   onGameCompleted?: () => void;
   afterLeave?: () => void;
@@ -124,25 +131,32 @@ export function AddRoundDialog({
   const selectable = game.settings.inOrderPhases === false;
   const phases = useQuery({
     ...gamePhaseOptionsOptions(game.id),
-    enabled: open && selectable && editor === undefined,
+    enabled: open && selectable,
   });
-  const invalidPhasePlayers =
-    selectable && !editor
-      ? players.filter((player) => {
-          const selected = draft.draft.players.find(
-            (entry) => entry.playerId === player.id,
-          )?.selectedPhase;
-          return (
-            selected === undefined ||
-            !Number.isSafeInteger(selected) ||
-            selected < 1 ||
-            selected > game.phaseSet.phases.length ||
-            player.progress?.selectable?.resolvedPhases.includes(selected)
-          );
-        })
-      : [];
-  const phasesReady = !selectable || editor !== undefined || phases.isSuccess;
-  const selectionValid = invalidPhasePlayers.length === 0 && phasesReady;
+  const phaseError = (player: (typeof players)[number], selectedPhase: number | undefined) => {
+    const resolved = player.progress?.selectable?.resolvedPhases ?? [];
+    return getSelectedPhaseError({
+      selectedPhase,
+      result: draft.draft.players.find((entry) => entry.playerId === player.id)?.result ?? null,
+      totalPhases: game.phaseSet.phases.length,
+      availability: player.phaseAvailability ?? {
+        resolvedBeforeRound: resolved,
+        resolvedElsewhere: resolved,
+      },
+      counted: editor === undefined || editor.countedPlayerIds.includes(player.id),
+    });
+  };
+  const phaseErrors = selectable
+    ? players.flatMap((player) => {
+        const selected = draft.draft.players.find(
+          (entry) => entry.playerId === player.id,
+        )?.selectedPhase;
+        const error = phaseError(player, selected);
+        return error ? [`${player.name}: ${error}`] : [];
+      })
+    : [];
+  const phasesReady = !selectable || phases.isSuccess;
+  const selectionValid = phaseErrors.length === 0 && phasesReady;
 
   const runSave = async (operation: () => Promise<void>, action = "save") => {
     if (saving.current) return;
@@ -434,13 +448,8 @@ export function AddRoundDialog({
             {unavailableWinner && (
               <InlineError message="The selected Round Winner is no longer playing. Choose or clear the Round Winner before saving." />
             )}
-            {invalidPhasePlayers.length > 0 && (
-              <InlineError
-                message={`${invalidPhasePlayers.map((player) => player.name).join(", ")}: the selected Phase is no longer available. Choose a Remaining Phase.`}
-              />
-            )}
+            {phaseErrors.length > 0 && <InlineError message={phaseErrors.join(" ")} />}
             {selectable &&
-              !editor &&
               !phasesReady &&
               (phases.isPending ? (
                 <output>Loading Phases...</output>
@@ -468,48 +477,41 @@ export function AddRoundDialog({
                   return (
                     <TabPanel key={player.id} className="flex flex-col px-3 pb-3">
                       <List rowVariant="content">
-                        {selectable &&
-                          (editor ? (
-                            <SettingListRow key="phase" label="Phase">
-                              <span>Phase {playerDraft.selectedPhase}</span>
+                        {selectable && (
+                          <Listbox
+                            key="phase"
+                            value={playerDraft.selectedPhase}
+                            onChange={(phase) => {
+                              if (phase !== undefined) draft.setSelectedPhase(player.id, phase);
+                            }}
+                            disabled={locked || !phasesReady}
+                            className="w-full min-w-0"
+                          >
+                            <SettingListRow label={<ListboxLabel>Phase</ListboxLabel>}>
+                              <ListboxButton variant="plain">
+                                Phase {playerDraft.selectedPhase}
+                              </ListboxButton>
+                              <ListboxOptions
+                                align="right"
+                                anchor={{ to: "bottom end", gap: "0.25rem", padding: "1rem" }}
+                                transformOrigin="top-right"
+                                className="max-w-[min(24rem,calc(100vw-2rem))]"
+                              >
+                                {phases.data?.map(({ phaseNumber, objective }) => (
+                                  <ListboxOption
+                                    key={phaseNumber}
+                                    value={phaseNumber}
+                                    disabled={phaseError(player, phaseNumber) !== null}
+                                  >
+                                    <span className="whitespace-normal">
+                                      Phase {phaseNumber}: {objective}
+                                    </span>
+                                  </ListboxOption>
+                                ))}
+                              </ListboxOptions>
                             </SettingListRow>
-                          ) : (
-                            <Listbox
-                              key="phase"
-                              value={playerDraft.selectedPhase}
-                              onChange={(phase) => {
-                                if (phase !== undefined) draft.setSelectedPhase(player.id, phase);
-                              }}
-                              disabled={locked || !phasesReady}
-                              className="w-full min-w-0"
-                            >
-                              <SettingListRow label={<ListboxLabel>Phase</ListboxLabel>}>
-                                <ListboxButton variant="plain">
-                                  Phase {playerDraft.selectedPhase}
-                                </ListboxButton>
-                                <ListboxOptions
-                                  align="right"
-                                  anchor={{ to: "bottom end", gap: "0.25rem", padding: "1rem" }}
-                                  transformOrigin="top-right"
-                                  className="max-w-[min(24rem,calc(100vw-2rem))]"
-                                >
-                                  {phases.data?.map(({ phaseNumber, objective }) => (
-                                    <ListboxOption
-                                      key={phaseNumber}
-                                      value={phaseNumber}
-                                      disabled={player.progress?.selectable?.resolvedPhases.includes(
-                                        phaseNumber,
-                                      )}
-                                    >
-                                      <span className="whitespace-normal">
-                                        Phase {phaseNumber}: {objective}
-                                      </span>
-                                    </ListboxOption>
-                                  ))}
-                                </ListboxOptions>
-                              </SettingListRow>
-                            </Listbox>
-                          ))}
+                          </Listbox>
+                        )}
                         <RoundResultSection
                           key="round-result"
                           value={playerDraft.result}

@@ -115,6 +115,7 @@ it.each([
         editor.getByRole("tab", { name: "Bob", exact: true }).getAttribute("aria-selected"),
       )
       .toBe("true");
+    expect(await editor.getByRole("button", { name: /^Phase\b/ }).count()).toBe(0);
     await expect
       .poll(() =>
         editor
@@ -539,8 +540,13 @@ it("creates selectable play, preserves per-Player Phase drafts, and reloads numb
     await page.getByRole("button", { name: "Round 1", exact: true }).click();
     await page.getByRole("button", { name: "Edit Round 1 for Amy", exact: true }).click();
     const edit = page.getByRole("dialog", { name: "Edit Round", exact: true });
-    await edit.getByText("Phase 10", { exact: true }).waitFor();
-    expect(await edit.getByRole("button", { name: /^Phase\b/ }).count()).toBe(0);
+    const recordedPhase = edit.getByRole("button", { name: /^Phase\b/ });
+    await recordedPhase.waitFor();
+    expect((await recordedPhase.innerText()).trim()).toBe("Phase 10");
+    await recordedPhase.click();
+    expect(
+      await page.getByRole("option", { name: /^Phase 10\b/ }).getAttribute("aria-disabled"),
+    ).not.toBe("true");
   } finally {
     await page.close();
   }
@@ -567,18 +573,20 @@ it("revalidates a preserved Selected Phase after correction and retains the draf
           settings: { inOrderPhases: false, tiebreaker: "fewestWilds",
             roundSkipPenalty: 100, sitOutPenalty: 0 }
         });
-        await roundsApi.add({
-          gameId: game.id, roundWinnerId: null,
-          scores: players.map((player, index) => ({
-            playerId: player.id, selectedPhase: index === 0 ? 3 : 1,
-            phaseStatus: "failed", score: 1
-          }))
-        });
+        for (const score of [1, 4]) {
+          await roundsApi.add({
+            gameId: game.id, roundWinnerId: null,
+            scores: players.map((player, index) => ({
+              playerId: player.id, selectedPhase: index === 0 ? 3 : 1,
+              phaseStatus: "failed", score
+            }))
+          });
+        }
         return game.id;
       })()
     `);
     await page.goto(`${appUrl}#/phaseCompan10n/game/${gameId}`);
-    await page.getByRole("button", { name: "Add round 2", exact: true }).click();
+    await page.getByRole("button", { name: "Add round 3", exact: true }).click();
     const add = page.getByRole("dialog", { name: "Add Round", exact: true });
     const phase = add.getByRole("button", { name: /^Phase\b/ });
     await phase.click();
@@ -600,7 +608,25 @@ it("revalidates a preserved Selected Phase after correction and retains the draf
       .getByRole("button", { name: "Save", exact: true })
       .click();
     await edit.waitFor({ state: "detached" });
-    await page.getByRole("button", { name: "Add round 2", exact: true }).click();
+    const corrected = await readView(page, gameId);
+    expect(corrected.rounds[1].scores[0]).toMatchObject({
+      counted: true,
+      phaseAlreadyResolved: true,
+      phaseNumber: 3,
+      tiebreakerValue: 4,
+      source: { currentPhase: 3, phaseStatus: "failed", score: 4 },
+    });
+    expect(corrected.players[0].tiebreakerTotal).toBe(5);
+    await page.getByRole("button", { name: "Round 2", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 2 for Amy", exact: true }).click();
+    const historicalPhase = edit.getByRole("button", { name: /^Phase\b/ });
+    await historicalPhase.waitFor();
+    expect((await historicalPhase.innerText()).trim()).toBe("Phase 3");
+    expect(await edit.getByRole("alert").count()).toBe(0);
+    await edit.getByRole("button", { name: "Save round", exact: true }).click();
+    await edit.waitFor({ state: "detached" });
+    expect(await page.getByRole("dialog", { name: "Edit round", exact: true }).count()).toBe(0);
+    await page.getByRole("button", { name: "Add round 3", exact: true }).click();
     await add.getByRole("tab", { name: "Amy", exact: true }).click();
     expect(await add.getByRole("alert").innerText()).toContain("Choose a Remaining Phase");
     const save = add.getByRole("button", { name: "Save round", exact: true });
@@ -631,18 +657,108 @@ it("revalidates a preserved Selected Phase after correction and retains the draf
     await releaseRoundStorage(page);
     await add.getByText(/Selectable write failed/).waitFor();
     expect((await phase.innerText()).trim()).toBe("Phase 1");
-    expect((await readView(page, gameId)).rounds).toHaveLength(1);
+    expect((await readView(page, gameId)).rounds).toHaveLength(2);
     await save.click();
     await add.waitFor({ state: "detached" });
-    await page.getByRole("button", { name: "Add round 3", exact: true }).click();
+    await page.getByRole("button", { name: "Add round 4", exact: true }).click();
     expect((await phase.innerText()).trim()).toBe("Phase 2");
     await add.getByRole("button", { name: "Close", exact: true }).click();
     await add.waitFor({ state: "detached" });
     await page.reload();
-    await page.getByRole("button", { name: "Add round 3", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Add round 4", exact: true }).waitFor();
     const view = await readView(page, gameId);
-    expect(view.rounds.map((round) => round.scores[0].phaseNumber)).toEqual([3, 1]);
+    expect(view.rounds.map((round) => round.scores[0].phaseNumber)).toEqual([3, 3, 1]);
     expect(view.players[0].progress.selectable?.resolvedPhases).toEqual([1, 3]);
+  } finally {
+    await page.close();
+  }
+}, 60_000);
+
+it("uses historical Phase availability, blocks duplicate outcomes, and reloads an edited Failed selection", async () => {
+  const page = await browser.newPage({ viewport: { width: 320, height: 844 } });
+  page.setDefaultTimeout(5_000);
+  try {
+    await page.goto(`${appUrl}#/phaseCompan10n/players`);
+    await page.getByText("No players yet", { exact: true }).waitFor();
+    const gameId = await page.evaluate<string>(`
+      (async () => {
+        const { playersApi } = await import("/scorekeeper/src/data/api/players.ts");
+        const { gamesApi } = await import("/scorekeeper/src/data/api/games.ts");
+        const { roundsApi } = await import("/scorekeeper/src/data/api/rounds.ts");
+        const players = await Promise.all(["Amy", "Bob", "Cam"].map((name) =>
+          playersApi.create({ name, color: "Jam", isFavorite: 0 })
+        ));
+        const game = await gamesApi.create({
+          players: players.map((player) => player.id),
+          phaseSet: { id: "short", type: "temporary", name: "Short",
+            phases: ["classic-1", "classic-1", "classic-3"] },
+          settings: { inOrderPhases: false, tiebreaker: "fewestWilds",
+            roundSkipPenalty: 100, sitOutPenalty: 0 }
+        });
+        for (const [phase, result] of [[2, "completed"], [1, "failed"], [3, "completed"]]) {
+          await roundsApi.add({
+            gameId: game.id, roundWinnerId: null,
+            scores: players.map((player, index) => ({
+              playerId: player.id, selectedPhase: index === 0 ? phase : 1,
+              phaseStatus: index === 0 ? result : "failed", score: 1
+            }))
+          });
+        }
+        return game.id;
+      })()
+    `);
+    const before = await readView(page, gameId);
+    await page.goto(`${appUrl}#/phaseCompan10n/game/${gameId}`);
+    await page.getByRole("button", { name: "Round 2", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 2 for Amy", exact: true }).click();
+    const edit = page.getByRole("dialog", { name: "Edit Round", exact: true });
+    const phase = edit.getByRole("button", { name: /^Phase\b/ });
+    await phase.waitFor();
+    expect((await phase.innerText()).trim()).toBe("Phase 1");
+    const phaseBox = await phase.boundingBox();
+    const resultBox = await edit.getByRole("button", { name: "Failed", exact: true }).boundingBox();
+    expect(phaseBox?.y).toBeLessThan(resultBox?.y ?? 0);
+    await phase.press("ArrowDown");
+    const resolvedBefore = page.getByRole("option", { name: /^Phase 2\b/ });
+    expect(await resolvedBefore.getAttribute("aria-disabled")).toBe("true");
+    expect(
+      await page.getByRole("option", { name: /^Phase 3\b/ }).getAttribute("aria-disabled"),
+    ).not.toBe("true");
+    await page.getByRole("listbox").press("End");
+    await page.getByRole("listbox").press("Enter");
+    expect((await phase.innerText()).trim()).toBe("Phase 3");
+    const save = edit.getByRole("button", { name: "Save round", exact: true });
+    await edit.getByRole("button", { name: "Show extra options", exact: true }).click();
+    for (const outcome of ["Passed", "Skipped"]) {
+      await edit.getByRole("button", { name: outcome, exact: true }).click();
+      expect(await edit.getByRole("alert").innerText()).toContain(
+        "Phase 3 is already resolved in another Round",
+      );
+      expect(await save.isDisabled()).toBe(true);
+      expect(await page.getByRole("dialog", { name: "Edit round", exact: true }).count()).toBe(0);
+    }
+    expect(await readView(page, gameId)).toEqual(before);
+    await edit.getByRole("button", { name: "Failed", exact: true }).click();
+    expect(await edit.getByRole("alert").count()).toBe(0);
+    await save.click();
+    const impact = page.getByRole("dialog", { name: "Edit round", exact: true });
+    await impact.getByRole("button", { name: "Edit", exact: true }).click();
+    await impact.waitFor({ state: "detached" });
+    expect((await phase.innerText()).trim()).toBe("Phase 3");
+    await save.click();
+    await impact.getByRole("button", { name: "Save", exact: true }).click();
+    await edit.waitFor({ state: "detached" });
+    await page.reload();
+    await page.getByRole("button", { name: "Round 2", exact: true }).waitFor();
+    const reloaded = await readView(page, gameId);
+    expect(reloaded.rounds[1].scores[0]).toMatchObject({
+      counted: true,
+      phaseNumber: 3,
+      source: { currentPhase: 3, phaseStatus: "failed", score: 1 },
+    });
+    expect(reloaded.players[0].tiebreakerTotal).toBe(3);
+    expect(reloaded.rounds[0].source).toEqual(before.rounds[0].source);
+    expect(reloaded.rounds[2].source).toEqual(before.rounds[2].source);
   } finally {
     await page.close();
   }

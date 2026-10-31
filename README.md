@@ -196,6 +196,23 @@ alone do not require this confirmation. Failed saves retain the correction and
 display the error. Completed Games remain read-only; legacy Points Rounds
 without original counters are readable but cannot be edited.
 
+Selectable Round editors prefill the recorded Phase and expose numbered objectives
+above Round Result. `getRoundEditor()` supplies each Player's historical Phase
+availability: counted resolutions before that Round and in other Rounds, excluding
+the Round's own resolution. `editRound()` accepts `selectedPhase` and preserves it
+as the recorded `currentPhase`. New selections cannot use a Phase resolved earlier;
+an earlier Failed attempt can select a Phase resolved later. Passed and Round Skip
+cannot duplicate another counted resolution, even if the proposed correction would
+exclude it. Specific validation errors block Save and cannot be overridden by impact
+confirmation.
+
+An unchanged historical selection remains displayable and editable after a correction
+makes it inconsistent. Resolving a Phase earlier requires impact confirmation when it
+affects later attempts, but retains a later Failed attempt's Phase, outcome, and counted
+Tiebreaker contribution. This does not override finish, Withdrawal, or Game-ending
+exclusion. The independent next-Round Phase choice is preserved and revalidated, not
+silently replaced with another Remaining Phase.
+
 The independent next-Round draft retains entered values through corrections,
 including temporarily ineligible Players' values. An unavailable selected Round
 Winner is preserved, clearly flagged, and blocks saving until explicitly
@@ -210,7 +227,7 @@ The bottom **Edit game** action in an Active Game's menu opens
 hash navigation. These full-page routes reuse creation's `GameSetupTabs` and
 load saved configuration through `gamesApi.getEditor()` or
 `genericGamesApi.getEditor()`, not app defaults. Settings and ordered Phase
-references are static; current Phase Games use Sequential Phase Order.
+references and the saved Phase Order are static.
 Unlike long-lived local view caches, editor queries reread on every entry and
 are released on unmount so reopening never reuses stale editor configuration.
 Completed, missing, wrong-Scorekeeper and unavailable-reference Games cannot

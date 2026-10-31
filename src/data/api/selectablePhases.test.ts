@@ -358,13 +358,112 @@ it("retains a later Failed attempt and its tiebreaker contribution when an earli
     version: later.version,
     roundWinnerId: null,
     scores: later.round.scores.map((score) =>
-      score.playerId === amy.id ? { ...score, score: 5 } : score,
+      score.playerId === amy.id ? { ...score, selectedPhase: score.currentPhase, score: 5 } : score,
     ),
   };
   expect(await gamesApi.previewRoundEdit(numericEdit)).toEqual({ requiresConfirmation: false });
   await gamesApi.editRound(numericEdit);
   closeDB();
   expect((await gamesApi.getView(game.id))?.players[0].tiebreakerTotal).toBe(6);
+});
+
+it("changes an earlier Failed attempt to a Phase resolved later and reloads the recorded selection", async () => {
+  const { game, amy, bob, cam } = await setup();
+  for (const [phase, result, score] of [
+    [1, "failed", 1],
+    [3, "completed", 4],
+  ] as const) {
+    await roundsApi.add({
+      gameId: game.id,
+      roundWinnerId: null,
+      scores: [
+        { playerId: amy.id, selectedPhase: phase, phaseStatus: result, score },
+        { playerId: bob.id, selectedPhase: 1, phaseStatus: "failed", score: 2 },
+        { playerId: cam.id, selectedPhase: 2, phaseStatus: "failed", score: 3 },
+      ],
+    });
+  }
+  const editor = await gamesApi.getRoundEditor(game.id, 1);
+  const input = {
+    gameId: game.id,
+    roundNumber: 1,
+    version: editor.version,
+    roundWinnerId: null,
+    confirmImpact: true,
+    scores: editor.round.scores.map((score) => ({
+      ...score,
+      selectedPhase: score.playerId === amy.id ? 3 : score.currentPhase,
+    })),
+  };
+  const before = await gamesApi.getView(game.id);
+  for (const phaseStatus of ["completed", "skipped"] as const) {
+    const duplicate = {
+      ...input,
+      scores: input.scores.map((score) =>
+        score.playerId === amy.id ? { ...score, phaseStatus, score: 0 } : score,
+      ),
+    };
+    await expect(gamesApi.previewRoundEdit(duplicate)).rejects.toThrow("already resolved");
+    await expect(gamesApi.editRound(duplicate)).rejects.toThrow("already resolved");
+    closeDB();
+    expect(await gamesApi.getView(game.id)).toEqual(before);
+  }
+  const outcomes = await Promise.allSettled([gamesApi.editRound(input), gamesApi.editRound(input)]);
+  expect(outcomes.map((outcome) => outcome.status).sort()).toEqual(["fulfilled", "rejected"]);
+  closeDB();
+  const reloaded = await gamesApi.getView(game.id);
+  expect(reloaded?.rounds[0].scores[0]).toMatchObject({
+    counted: true,
+    phaseNumber: 3,
+    source: { currentPhase: 3, phaseStatus: "failed", score: 1 },
+  });
+  expect(reloaded?.players[0]).toMatchObject({
+    tiebreakerTotal: 5,
+    progress: { selectable: { resolvedPhases: [3] } },
+  });
+  expect((await gamesApi.getRoundEditor(game.id, 1)).round.scores[0].currentPhase).toBe(3);
+});
+
+it("rejects a newly selected Phase resolved before the edited Round without partially saving", async () => {
+  const { game, amy, bob, cam } = await setup();
+  for (const [phase, result] of [
+    [2, "completed"],
+    [1, "failed"],
+  ] as const) {
+    await roundsApi.add({
+      gameId: game.id,
+      roundWinnerId: null,
+      scores: [
+        { playerId: amy.id, selectedPhase: phase, phaseStatus: result, score: 1 },
+        { playerId: bob.id, selectedPhase: 1, phaseStatus: "failed", score: 2 },
+        { playerId: cam.id, selectedPhase: 2, phaseStatus: "failed", score: 3 },
+      ],
+    });
+  }
+  const editor = await gamesApi.getRoundEditor(game.id, 2);
+  const before = await gamesApi.getView(game.id);
+  for (const selectedPhase of [2, 0, 4, 1.5, Number.NaN]) {
+    const input = {
+      gameId: game.id,
+      roundNumber: 2,
+      version: editor.version,
+      roundWinnerId: null,
+      confirmImpact: true,
+      scores: editor.round.scores.map((score) => ({
+        ...score,
+        score: 5,
+        selectedPhase: score.playerId === amy.id ? selectedPhase : score.currentPhase,
+      })),
+    };
+    await expect(gamesApi.previewRoundEdit(input)).rejects.toThrow(
+      selectedPhase === 2 ? "resolved before this Round" : "valid Phase Number",
+    );
+    await expect(gamesApi.editRound(input)).rejects.toThrow(
+      selectedPhase === 2 ? "resolved before this Round" : "valid Phase Number",
+    );
+    closeDB();
+    expect(await gamesApi.getView(game.id)).toEqual(before);
+  }
 });
 
 it("blocks an earlier duplicate even if the proposed finish would exclude the later resolution", async () => {

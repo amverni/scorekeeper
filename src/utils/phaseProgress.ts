@@ -1,4 +1,4 @@
-import type { PhaseStatus, PlayerProgress, RoundScore } from "../types";
+import type { PhaseSelectionAvailability, PhaseStatus, PlayerProgress, RoundScore } from "../types";
 
 export function getInitialPlayerProgress(selectableTotalPhases?: number): PlayerProgress {
   return {
@@ -13,6 +13,44 @@ export function getInitialPlayerProgress(selectableTotalPhases?: number): Player
 
 export function phaseStatusAdvances(phaseStatus: PhaseStatus): boolean {
   return phaseStatus === "completed" || phaseStatus === "skipped";
+}
+
+export function getSelectedPhaseError({
+  selectedPhase,
+  result,
+  totalPhases,
+  availability,
+  counted = true,
+}: {
+  selectedPhase: number | undefined;
+  result: PhaseStatus | null;
+  totalPhases: number;
+  availability: PhaseSelectionAvailability;
+  counted?: boolean;
+}): string | null {
+  if (
+    selectedPhase === undefined ||
+    !Number.isSafeInteger(selectedPhase) ||
+    selectedPhase < 1 ||
+    selectedPhase > totalPhases
+  ) {
+    return "Choose a valid Phase Number.";
+  }
+  if (
+    counted &&
+    result !== null &&
+    phaseStatusAdvances(result) &&
+    availability.resolvedElsewhere.includes(selectedPhase)
+  ) {
+    return `Phase ${selectedPhase} is already resolved in another Round. Choose a Remaining Phase.`;
+  }
+  if (
+    selectedPhase !== availability.recordedPhase &&
+    availability.resolvedBeforeRound.includes(selectedPhase)
+  ) {
+    return `Phase ${selectedPhase} was resolved before this Round. Choose a Remaining Phase.`;
+  }
+  return null;
 }
 
 export function getNextCurrentPhase(

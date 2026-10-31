@@ -12,6 +12,7 @@ export {
   getInitialPlayerProgress,
   getNextCurrentPhase,
   getProgressAfterScore,
+  getSelectedPhaseError,
   phaseStatusAdvances,
 } from "./phaseProgress";
 export {

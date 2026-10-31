@@ -4,10 +4,17 @@ import type {
   GameId,
   GameReadModel,
   PhaseRoundEditor,
+  PhaseSelectionAvailability,
+  PlayerId,
   Round,
   RoundScore,
 } from "../../types";
-import { getRoundWinnerRequirement, isPointsTiebreaker } from "../../utils";
+import {
+  getRoundWinnerRequirement,
+  getSelectedPhaseError,
+  isPointsTiebreaker,
+  phaseStatusAdvances,
+} from "../../utils";
 import {
   finalizeGame,
   type GameLifecycleTransaction,
@@ -85,9 +92,14 @@ export const phaseRoundEdits = {
       return {
         game,
         round,
-        players: players.filter((player) =>
-          round.scores.some((score) => score.playerId === player.id),
-        ),
+        players: players
+          .filter((player) => round.scores.some((score) => score.playerId === player.id))
+          .map((player) => ({
+            ...player,
+            ...(game.settings.inOrderPhases === false
+              ? { phaseAvailability: getPhaseAvailability(view, player.id, roundNumber) }
+              : {}),
+          })),
         countedPlayerIds: roundView.scores
           .filter((entry) => entry.counted)
           .map((entry) => entry.playerId),
@@ -160,6 +172,33 @@ async function loadEditor(tx: GameLifecycleTransaction, gameId: GameId, roundNum
   return { game, players, rounds, round: { ...round, id: round.id }, view, roundView };
 }
 
+function getPhaseAvailability(
+  view: GameReadModel,
+  playerId: PlayerId,
+  roundNumber: number,
+): PhaseSelectionAvailability {
+  const resolvedBeforeRound = new Set<number>();
+  const resolvedElsewhere = new Set<number>();
+  for (const round of view.rounds) {
+    if (round.source.roundNumber === roundNumber) continue;
+    const entry = round.scores.find((score) => score.playerId === playerId);
+    if (!entry?.counted || !entry.source || !phaseStatusAdvances(entry.source.phaseStatus)) {
+      continue;
+    }
+    resolvedElsewhere.add(entry.source.currentPhase);
+    if (round.source.roundNumber < roundNumber) {
+      resolvedBeforeRound.add(entry.source.currentPhase);
+    }
+  }
+  return {
+    resolvedBeforeRound: [...resolvedBeforeRound],
+    resolvedElsewhere: [...resolvedElsewhere],
+    recordedPhase: view.rounds
+      .find((round) => round.source.roundNumber === roundNumber)
+      ?.scores.find((score) => score.playerId === playerId)?.source?.currentPhase,
+  };
+}
+
 async function evaluateEdit(tx: GameLifecycleTransaction, input: EditPhaseRoundInput) {
   const {
     game,
@@ -167,6 +206,7 @@ async function evaluateEdit(tx: GameLifecycleTransaction, input: EditPhaseRoundI
     rounds,
     round: saved,
     view,
+    roundView,
   } = await loadEditor(tx, input.gameId, input.roundNumber);
   if (input.version !== view.version) {
     throw new Error("Game history changed. Close and reopen Edit Round to load the saved values.");
@@ -191,11 +231,27 @@ async function evaluateEdit(tx: GameLifecycleTransaction, input: EditPhaseRoundI
     ) {
       throw new Error("Points entries require their original card counts.");
     }
+    const currentPhase =
+      game.settings.inOrderPhases === false && score.selectedPhase !== undefined
+        ? score.selectedPhase
+        : previous.currentPhase;
+    if (game.settings.inOrderPhases === false) {
+      const error = getSelectedPhaseError({
+        selectedPhase: currentPhase,
+        result: score.phaseStatus,
+        totalPhases: game.phaseSet.phases.length,
+        availability: getPhaseAvailability(view, score.playerId, input.roundNumber),
+        counted: roundView.scores.some(
+          (entry) => entry.playerId === score.playerId && entry.counted,
+        ),
+      });
+      if (error) throw new Error(error);
+    }
     return {
       playerId: score.playerId,
       phaseStatus: score.phaseStatus,
       score: score.score,
-      currentPhase: previous.currentPhase,
+      currentPhase,
       ...(score.pointsCardBreakdown !== undefined
         ? { pointsCardBreakdown: score.pointsCardBreakdown }
         : {}),

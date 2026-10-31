@@ -24,7 +24,7 @@ One scoring cycle within a Game. The Game's rules determine which scores or outc
 _Avoid_: Hand, turn cycle
 
 **Round Edit**:
-A correction to the recorded scores or outcomes of an existing Round in an Active Game, rather than the recording of a new Round. Any saved Round may be edited.
+A correction to the recorded scores, outcomes, or selectable Selected Phases of an existing Round in an Active Game, rather than the recording of a new Round. Any saved Round may be edited.
 Holding a saved scorecard cell opens the full Round editor at that Player or control; holding its Round number opens the whole Round. Normal taps expand details, with a visible Edit action for keyboard and non-gesture access. Scrolling cancels a pending hold.
 
 **Round Deletion**:
@@ -169,6 +169,8 @@ Choosing a Remaining Phase for each Player's Round rather than following Phase S
 
 **Selected Phase**:
 The Phase Number recorded for a Player in a particular Round, derived in Sequential Phase Order and chosen in Selectable Phase Order.
+Round Edits start with that recorded selection. A new selection must have been remaining before the edited Round; a Failed attempt can select a Phase resolved later, but Passed and Round Skip cannot duplicate another counted resolution.
+An unchanged historical attempt remains editable even if an earlier correction resolved its Phase. A later Failed attempt on that Phase retains its outcome and counted Tiebreaker contribution; it is not an Excluded Entry merely because the Phase was already resolved.
 
 **Resolved Phase**:
 A numbered Phase that a Player has Passed or taken a Round Skip for in counted history. A Phase cannot be resolved a second time.
