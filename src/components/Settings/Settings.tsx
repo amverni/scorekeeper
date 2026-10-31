@@ -5,6 +5,7 @@ import { appSettingsOptions } from "../../data/hooks/useSettings";
 import { CardBackground } from "../CardBackground/CardBackground";
 import { HeaderLogo } from "../Logo/HeaderLogo";
 import { Button, InlineError, List } from "../ui";
+import { DefaultInOrderPhasesSetting } from "./DefaultInOrderPhasesSetting";
 import { DefaultPhaseSetSetting } from "./DefaultPhaseSetSetting";
 import { DefaultRoundSkipPenaltySetting } from "./DefaultRoundSkipPenaltySetting";
 import { DefaultSitOutPenaltySetting } from "./DefaultSitOutPenaltySetting";
@@ -29,9 +30,13 @@ export function Settings() {
           {isError ? (
             <InlineError message="Unable to load settings." onRetry={() => refetch()} />
           ) : (
-            <List allowOverflow isLoading={isLoading} shimmerRows={2}>
+            <List allowOverflow rowVariant="compact-content" isLoading={isLoading} shimmerRows={2}>
               {settings
                 ? [
+                    <DefaultInOrderPhasesSetting
+                      key="default-in-order-phases"
+                      value={settings.gameDefaults.inOrderPhases !== false}
+                    />,
                     <DefaultTiebreakerSetting
                       key="default-tiebreaker"
                       value={settings.gameDefaults.tiebreaker}

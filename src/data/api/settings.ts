@@ -16,22 +16,27 @@ export const settingsApi = {
 
   async updateGameDefaults(updates: Partial<AppGameDefaults>): Promise<AppSettings> {
     const db = await getDB();
-    const current = await withSettingsDefaults(await db.get("settings", APP_SETTINGS_ID));
     const nextUpdates = await withValidGameDefaultUpdates(updates);
+    const tx = db.transaction("settings", "readwrite");
+    const current = await tx.store.get(APP_SETTINGS_ID);
     const updated: AppSettings = {
-      ...current,
+      id: APP_SETTINGS_ID,
       gameDefaults: {
-        ...current.gameDefaults,
+        ...resolveGameDefaults(current),
         ...nextUpdates,
       },
     };
 
-    await db.put("settings", updated);
+    await Promise.all([tx.store.put(updated), tx.done]);
     return updated;
   },
 
   setDefaultTiebreaker(tiebreaker: GameTiebreaker): Promise<AppSettings> {
     return this.updateGameDefaults({ tiebreaker });
+  },
+
+  setDefaultInOrderPhases(inOrderPhases: boolean): Promise<AppSettings> {
+    return this.updateGameDefaults({ inOrderPhases });
   },
 
   setDefaultPhaseSetId(phaseSetId: PhaseSetId): Promise<AppSettings> {
@@ -55,12 +60,7 @@ export const settingsApi = {
 };
 
 async function withSettingsDefaults(settings?: AppSettings): Promise<AppSettings> {
-  const normalizedGameSettings = normalizeGameSettings(settings?.gameDefaults);
-  const gameDefaults: AppGameDefaults = {
-    ...DEFAULT_APP_SETTINGS.gameDefaults,
-    ...normalizedGameSettings,
-    phaseSetId: settings?.gameDefaults?.phaseSetId ?? DEFAULT_APP_SETTINGS.gameDefaults.phaseSetId,
-  };
+  const gameDefaults = resolveGameDefaults(settings);
   const phaseSet = await phaseSetsApi.getById(gameDefaults.phaseSetId);
 
   return {
@@ -72,9 +72,22 @@ async function withSettingsDefaults(settings?: AppSettings): Promise<AppSettings
   };
 }
 
+function resolveGameDefaults(settings?: AppSettings): AppGameDefaults {
+  const normalizedGameSettings = normalizeGameSettings(settings?.gameDefaults);
+  return {
+    ...DEFAULT_APP_SETTINGS.gameDefaults,
+    ...normalizedGameSettings,
+    phaseSetId: settings?.gameDefaults?.phaseSetId ?? DEFAULT_APP_SETTINGS.gameDefaults.phaseSetId,
+  };
+}
+
 async function withValidGameDefaultUpdates(
   updates: Partial<AppGameDefaults>,
 ): Promise<Partial<AppGameDefaults>> {
+  if (updates.inOrderPhases !== undefined && typeof updates.inOrderPhases !== "boolean") {
+    throw new Error("In-order phases must be On or Off.");
+  }
+
   const nextUpdates: Partial<AppGameDefaults> = {
     ...updates,
   };

@@ -6,8 +6,8 @@ import { useCreateGame } from "../../data/hooks/useGames";
 import type { ArrayAtLeastOne, PhaseId, TemporaryPhaseSet } from "../../types";
 import { CardBackground } from "../CardBackground/CardBackground";
 import { HeaderLogo } from "../Logo/HeaderLogo";
-import { Button, ScrollFade } from "../ui";
-import { useGamePhases, useGameSettings } from "./CreateGameContext";
+import { Button, InlineError, ScrollFade } from "../ui";
+import { useGameDefaultsStatus, useGamePhases, useGameSettings } from "./CreateGameContext";
 import { GameSetupTabs } from "./GameSetupTabs";
 import { Phases } from "./Phases";
 import { useGamePlayers } from "./PlayerSelectionContext";
@@ -22,7 +22,9 @@ export function CreateGame() {
   const players = useGamePlayers();
   const phases = useGamePhases();
   const settings = useGameSettings();
-  const canStartGame = players.length >= 2 && phases.length >= 1 && !createGame.isPending;
+  const defaultsStatus = useGameDefaultsStatus();
+  const canStartGame =
+    defaultsStatus.isReady && players.length >= 2 && phases.length >= 1 && !createGame.isPending;
   const starting = useRef(false);
 
   async function handleStartGame() {
@@ -65,14 +67,28 @@ export function CreateGame() {
           selectedIndex={selectedIndex}
           onChange={setSelectedIndex}
           error={
-            startError && (
-              <p
-                className="content-container mb-2 rounded-xl bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300"
-                role="alert"
-              >
-                {startError}
-              </p>
-            )
+            <>
+              {defaultsStatus.error ? (
+                <div className="content-container mb-2">
+                  <InlineError
+                    message={`Unable to load game defaults: ${defaultsStatus.error.message}`}
+                    onRetry={defaultsStatus.retry}
+                  />
+                </div>
+              ) : !defaultsStatus.isReady ? (
+                <output className="content-container mb-2 block text-sm text-text-secondary">
+                  Loading game defaults...
+                </output>
+              ) : null}
+              {startError && (
+                <p
+                  className="content-container mb-2 rounded-xl bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300"
+                  role="alert"
+                >
+                  {startError}
+                </p>
+              )}
+            </>
           }
         >
           <TabPanel className="h-full px-4">

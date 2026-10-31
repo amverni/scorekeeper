@@ -160,6 +160,7 @@ A Phase's numbered position within a Game's Phase Set. Repeated objectives at di
 
 **Phase Order**:
 The Game's choice, fixed at creation, between resolving Phases sequentially and allowing a separate Phase selection for each Round.
+The **In-order phases** toggle is On for Sequential Phase Order and Off for Selectable Phase Order. Its app default starts On and applies only to new Phase 10 Games, where it can be overridden. Resetting app defaults restores On; resetting creation settings restores the configured app default. Existing Games retain their saved Phase Order.
 
 **Sequential Phase Order**:
 Resolving the Phases in Phase Set order.

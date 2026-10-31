@@ -10,6 +10,7 @@ export const TIEBREAKER_VALUES = [
 ] as const satisfies ReadonlyArray<GameTiebreaker>;
 
 export const DEFAULT_GAME_SETTINGS: GameSettings = {
+  inOrderPhases: true,
   tiebreaker: "lowestPoints",
   roundSkipPenalty: 100,
   sitOutPenalty: 0,
@@ -39,6 +40,7 @@ function isGameTiebreaker(value: string | undefined): value is GameTiebreaker {
 
 export function normalizeGameSettings(settings?: Partial<GameSettings>): GameSettings {
   return {
+    inOrderPhases: settings?.inOrderPhases !== false,
     tiebreaker: isGameTiebreaker(settings?.tiebreaker)
       ? settings.tiebreaker
       : DEFAULT_GAME_SETTINGS.tiebreaker,

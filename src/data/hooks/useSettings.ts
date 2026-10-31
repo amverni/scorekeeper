@@ -17,7 +17,17 @@ export function appSettingsOptions() {
 export function useSetDefaultTiebreaker() {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: settingsKeys.all,
     mutationFn: (tiebreaker: GameTiebreaker) => settingsApi.setDefaultTiebreaker(tiebreaker),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: settingsKeys.all }),
+  });
+}
+
+export function useSetDefaultInOrderPhases() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: settingsKeys.all,
+    mutationFn: (inOrderPhases: boolean) => settingsApi.setDefaultInOrderPhases(inOrderPhases),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: settingsKeys.all }),
   });
 }
@@ -25,6 +35,7 @@ export function useSetDefaultTiebreaker() {
 export function useSetDefaultPhaseSetId() {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: settingsKeys.all,
     mutationFn: (phaseSetId: PhaseSetId) => settingsApi.setDefaultPhaseSetId(phaseSetId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: settingsKeys.all }),
   });
@@ -33,6 +44,7 @@ export function useSetDefaultPhaseSetId() {
 export function useSetDefaultRoundSkipPenalty() {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: settingsKeys.all,
     mutationFn: (value: number) => settingsApi.setDefaultRoundSkipPenalty(value),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: settingsKeys.all }),
   });
@@ -41,6 +53,7 @@ export function useSetDefaultRoundSkipPenalty() {
 export function useSetDefaultSitOutPenalty() {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: settingsKeys.all,
     mutationFn: (value: number) => settingsApi.setDefaultSitOutPenalty(value),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: settingsKeys.all }),
   });
@@ -49,6 +62,7 @@ export function useSetDefaultSitOutPenalty() {
 export function useResetSettings() {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: settingsKeys.all,
     mutationFn: () => settingsApi.reset(),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: settingsKeys.all }),
   });
