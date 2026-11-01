@@ -15,6 +15,7 @@ export { InlineError } from "./InlineError/InlineError";
 export { Input } from "./Input/Input";
 export type { ListProps, ListRowVariant, SortableItem } from "./List/List";
 export { List } from "./List/List";
+export { ListRowButton } from "./List/ListRowButton";
 export { FilterListbox } from "./Listbox/FilterListbox";
 export {
   Listbox,

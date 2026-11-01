@@ -10,10 +10,8 @@ import type {
 } from "../../types";
 import { GameSetupTabs } from "../Create/GameSetupTabs";
 import { PlayerSelectionProvider } from "../Create/PlayerSelectionContext";
-import { AddPlayerButton } from "../Create/Players/AddPlayerButton";
-import { FavoritePlayers } from "../Create/Players/FavoritePlayers";
-import { EditImpactDialog, InlineError, List, ScrollFade } from "../ui";
-import { GameMembershipPlayers } from "./GameMembershipPlayers";
+import { Players } from "../Create/Players";
+import { EditImpactDialog, InlineError, ScrollFade } from "../ui";
 import { StagedGameEditor } from "./StagedGameEditor";
 
 export function GameMembershipEditor({
@@ -156,25 +154,23 @@ export function GameMembershipEditor({
                           },
                         }}
                       >
-                        <div className="flex flex-col gap-6 py-4" inert={isPending || isSubmitting}>
-                          <GameMembershipPlayers
-                            lockedPlayerIds={game.players}
-                            withdrawnPlayers={withdrawnPlayers}
-                            finishedPlayers={
-                              "finishedPlayers" in editor ? editor.finishedPlayers : []
-                            }
-                            onRejoin={rejoin}
-                          />
-                          {invalid && (
-                            <output className="text-sm text-text-secondary">
-                              Withdrawal must leave at least two eligible Players.
-                            </output>
-                          )}
-                          <List>
-                            <AddPlayerButton key="add-player" />
-                          </List>
-                          <FavoritePlayers />
-                        </div>
+                        <Players
+                          isPending={isPending || isSubmitting}
+                          membership={{
+                            lockedPlayerIds: game.players,
+                            withdrawnPlayers,
+                            finishedPlayers:
+                              "finishedPlayers" in editor ? editor.finishedPlayers : [],
+                            onRejoin: rejoin,
+                          }}
+                          error={
+                            invalid && (
+                              <output className="text-sm text-text-secondary">
+                                Withdrawal must leave at least two eligible Players.
+                              </output>
+                            )
+                          }
+                        />
                       </PlayerSelectionProvider>
                     )}
                   </form.Field>

@@ -157,7 +157,7 @@ it.each([
     await openEditor(page);
     const seating = page.getByRole("list", { name: "Seating Order", exact: true });
     const save = page.getByRole("button", { name: "Save", exact: true });
-    await page.getByRole("button", { name: "Withdraw Bob", exact: true }).click();
+    await page.getByRole("button", { name: "Withdraw Bob", exact: true }).tap();
     expect(await seating.getByRole("listitem").count()).toBe(3);
     expect(await save.isEnabled()).toBe(true);
     await page.getByRole("button", { name: "Withdraw Amy", exact: true }).click();
@@ -323,11 +323,14 @@ it("withdraws and rejoins a Phase 10 Player with gray unranked history, recovera
       .getByRole("list", { name: "Seating Order", exact: true })
       .getByRole("listitem")
       .filter({ hasText: "Bob" });
-    expect(
-      await bobRow
-        .locator(":scope > span[aria-hidden]")
-        .evaluate((element) => element.getBoundingClientRect().width),
-    ).toBe(44);
+    const reservedAction = await bobRow.locator(":scope > span[aria-hidden]").boundingBox();
+    const availableAction = await page
+      .getByRole("button", { name: "Withdraw Cam", exact: true })
+      .boundingBox();
+    expect(reservedAction).not.toBeNull();
+    expect(availableAction).not.toBeNull();
+    expect(reservedAction?.x).toBe(availableAction?.x);
+    expect(reservedAction?.width).toBe(availableAction?.width);
     await page.getByRole("button", { name: "Withdraw Cam", exact: true }).click();
     expect(await page.getByRole("button", { name: "Save", exact: true }).isEnabled()).toBe(true);
     await page.getByRole("button", { name: "Save", exact: true }).click();
@@ -463,8 +466,14 @@ it.each([
 }, 60_000);
 
 it.each([
-  320, 390,
-])("positions only new seats with keyboard and pointer at %spx, then locks them on Save", async (width) => {
+  { owner: "generic", width: 320 },
+  { owner: "generic", width: 390 },
+  { owner: "phase10", width: 320 },
+  { owner: "phase10", width: 390 },
+] as const)("positions only new $owner seats with keyboard and pointer at $width px, then locks them on Save", async ({
+  owner,
+  width,
+}) => {
   const page = await newPage(width, 844);
   const rowOrder = () =>
     page.getByRole("listitem").evaluateAll((rows) =>
@@ -476,12 +485,12 @@ it.each([
       }),
     );
   try {
-    const game = await seed(page, "generic");
+    const game = await seed(page, owner);
     const cam = await page.evaluate<Player>(`(async () => {
       const { playersApi } = await import("/scorekeeper/src/data/api/players.ts");
       return playersApi.create({ name: "Cam", color: "Lime", isFavorite: 1 });
     })()`);
-    await page.goto(`${appUrl}#/scorekeeper/game/${game.id}`);
+    await page.goto(`${appUrl}#${home(owner)}/game/${game.id}`);
     await openEditor(page);
     await page.getByRole("button", { name: "Cam", exact: true }).click();
     await expect.poll(rowOrder).toEqual(["Bob", "Amy", "Cam"]);
@@ -555,12 +564,16 @@ it.each([
       Promise.allSettled(document.getAnimations().map((animation) => animation.finished)),
     );
     await page.getByRole("button", { name: "Save", exact: true }).click();
-    await page.getByRole("columnheader").filter({ hasText: "Cam" }).waitFor();
+    const savedCam =
+      owner === "phase10"
+        ? page.getByRole("button", { name: "Cam: Show all Player names", exact: true })
+        : page.getByRole("columnheader").filter({ hasText: "Cam" });
+    await savedCam.waitFor();
     await page.reload();
-    await page.getByRole("columnheader").filter({ hasText: "Cam" }).waitFor();
+    await savedCam.waitFor();
     const saved = await page.evaluate<StoredGame>(`(async () => {
-      const { genericGamesApi } = await import("/scorekeeper/src/data/api/genericGames.ts");
-      return genericGamesApi.getById(${JSON.stringify(game.id)});
+      ${apiImport(owner)}
+      return api.getById(${JSON.stringify(game.id)});
     })()`);
     expect(saved.players).toEqual([cam.id, ...game.players]);
     await openEditor(page);

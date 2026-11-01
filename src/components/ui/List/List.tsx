@@ -16,7 +16,6 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Button } from "@headlessui/react";
 import { ChevronsUpDown, Minus } from "lucide-react";
 import {
   type AriaRole,
@@ -28,6 +27,7 @@ import {
   useState,
 } from "react";
 import "./List.css";
+import { ListRowButton } from "./ListRowButton";
 
 const COMPACT_ROW_HEIGHT = "h-10";
 const LIST_ANIMATION_MS = 220;
@@ -87,14 +87,9 @@ function RowDivider() {
 
 function RemoveButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <Button
-      type="button"
-      className="cursor-pointer rounded-full p-1 hover:bg-black/5 dark:hover:bg-white/10"
-      onClick={onClick}
-      aria-label={label}
-    >
-      <Minus className="h-5 w-5 shrink-0 text-text-secondary" />
-    </Button>
+    <ListRowButton onClick={onClick} aria-label={label}>
+      <Minus className="size-5" aria-hidden />
+    </ListRowButton>
   );
 }
 
@@ -157,17 +152,16 @@ function SortableRow({
           <RemoveButton label={`Remove ${label}`} onClick={() => onRemove(id)} />
         )}
         {reorderable ? (
-          <Button
-            type="button"
+          <ListRowButton
             ref={setActivatorNodeRef}
             data-swipe-navigation-ignore=""
-            className="touch-none cursor-grab rounded-full p-1 text-text-secondary hover:bg-black/5 active:cursor-grabbing dark:hover:bg-white/10"
+            className="touch-none cursor-grab! active:cursor-grabbing!"
             aria-label={`Reorder ${label}`}
             {...attributes}
             {...listeners}
           >
             <ChevronsUpDown className="h-5 w-5 shrink-0" aria-hidden />
-          </Button>
+          </ListRowButton>
         ) : (
           <span className="size-7 shrink-0" aria-hidden />
         )}
