@@ -1806,6 +1806,7 @@ function seedCompletionGame(
           phases: ${JSON.stringify(Array.from({ length: phaseCount }, (_, index) => `phase-${index + 1}`))}
         },
         players: players.map((player) => player.id),
+        firstDealer: { type: "player", playerId: players[0].id },
         settings: { tiebreaker: ${JSON.stringify(tiebreaker)}, roundSkipPenalty: 100, sitOutPenalty: 0 }
       });
       return { game, players };
