@@ -394,6 +394,7 @@ describe.each(["light", "dark"] as const)("Standings name space in %s mode", (co
     page.setDefaultNavigationTimeout(30_000);
     try {
       const activeGame: GenericGame = {
+        firstDealerId: null,
         id: "generic-space",
         scorekeeper: "generic",
         status: "active",

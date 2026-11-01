@@ -5,10 +5,12 @@ import {
   ListboxOption as HeadlessListboxOption,
   ListboxOptions as HeadlessListboxOptions,
   type ListboxOptionsProps as HeadlessListboxOptionsProps,
+  type ListboxButtonProps,
   type ListboxProps,
 } from "@headlessui/react";
 import { Check, ChevronDown } from "lucide-react";
 import type { ReactNode } from "react";
+import { Button } from "../Button/Button";
 import { mergeClassName } from "../mergeClassName";
 import { interactiveClasses } from "../sharedClasses";
 import "./Listbox.css";
@@ -43,16 +45,24 @@ export function ListboxButton({
   children,
   className,
   variant = "default",
-}: {
+  ...props
+}: Omit<ListboxButtonProps<"button">, "className" | "children"> & {
   children: ReactNode;
   className?: string;
-  variant?: "default" | "plain";
+  variant?: "default" | "plain" | "icon";
 }) {
+  if (variant === "icon") {
+    return (
+      <HeadlessListboxButton {...props} as={Button} className={className}>
+        {children}
+      </HeadlessListboxButton>
+    );
+  }
   const merged = [variant === "plain" ? plainButtonClasses : buttonClasses, className]
     .filter(Boolean)
     .join(" ");
   return (
-    <HeadlessListboxButton className={merged}>
+    <HeadlessListboxButton {...props} className={merged}>
       <span className="inline-flex min-w-0 items-center gap-1.5">{children}</span>
       <span className="inline-flex shrink-0">
         <ChevronDown className="size-3.5 text-text-secondary" aria-hidden />

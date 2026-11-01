@@ -42,6 +42,7 @@ async function openGame(page: Page, kind: "generic" | "phase10", playerCount = 2
     const game = ${JSON.stringify(kind)} === "generic"
       ? await genericGamesApi.create({
           players: players.map(player => player.id),
+          firstDealer: { type: "player", playerId: players[0].id },
           settings: { mode: "points", pointsDirection: "high", tiebreaker: null, dealer: true },
         })
       : await gamesApi.create({

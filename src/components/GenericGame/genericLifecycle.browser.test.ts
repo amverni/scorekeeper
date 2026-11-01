@@ -163,6 +163,7 @@ async function seedGame(page: Page, names = ["Maya", "Rowan"], dealer = false) {
     }
     return genericGamesApi.create({
       players: players.map(player => player.id),
+      firstDealer: { type: "player", playerId: players[0].id },
       settings: { mode: "points", pointsDirection: "high", tiebreaker: null, dealer: ${dealer} },
     });
   })()`);

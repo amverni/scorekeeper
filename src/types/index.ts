@@ -1,4 +1,5 @@
 export type { ColorEntry } from "./color";
+export type { FirstDealerSelection } from "./dealer";
 export type {
   ActiveGame,
   CompletedGame,

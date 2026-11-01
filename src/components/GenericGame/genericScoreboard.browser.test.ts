@@ -265,7 +265,10 @@ async function openGame(
     for (const name of ${JSON.stringify(names)}) {
       players.push((await playersApi.create({ name, color: "#16A34A", isFavorite: 0 })).id);
     }
-    return (await genericGamesApi.create({ players, settings: ${JSON.stringify(settings)} })).id;
+    return (await genericGamesApi.create({
+      players, firstDealer: { type: "player", playerId: players[0] },
+      settings: ${JSON.stringify(settings)},
+    })).id;
   })()`);
   await page.goto(`${appUrl}#/scorekeeper/game/${id}`);
   await page.getByRole("region", { name: "Scoreboard", exact: true }).waitFor();

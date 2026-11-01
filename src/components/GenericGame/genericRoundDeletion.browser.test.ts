@@ -238,7 +238,9 @@ async function openGame(page: Page, settings: GenericGameSettings) {
     const maya = await playersApi.create({ name: "Maya", color: "Jam", isFavorite: 0 });
     const rowan = await playersApi.create({ name: "Rowan", color: "Azure", isFavorite: 0 });
     const settings = ${JSON.stringify(settings)};
-    const game = await genericGamesApi.create({ players: [maya.id, rowan.id], settings });
+    const game = await genericGamesApi.create({
+      players: [maya.id, rowan.id], firstDealer: { type: "player", playerId: maya.id }, settings,
+    });
     for (const first of [true, false]) {
       await genericRoundsApi.add({
         gameId: game.id, mode: settings.mode,

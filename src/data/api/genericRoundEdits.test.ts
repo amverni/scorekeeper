@@ -18,6 +18,7 @@ async function pointsGame(settings?: GenericPointsSettings) {
   const rowan = await playersApi.create({ name: "Rowan", color: "#abcdef", isFavorite: 0 });
   const game = await genericGamesApi.create({
     players: [maya.id, rowan.id],
+    firstDealer: { type: "player", playerId: rowan.id },
     settings: settings ?? {
       mode: "points",
       pointsDirection: "high",
@@ -302,8 +303,8 @@ it.each([
       { player: { id: maya.id }, place: 1 },
       { player: { id: rowan.id }, place: 2 },
     ],
-    rounds: [{ dealerId: maya.id }, { dealerId: rowan.id }],
-    upcomingDealerId: maya.id,
+    rounds: [{ dealerId: rowan.id }, { dealerId: maya.id }],
+    upcomingDealerId: rowan.id,
   });
 });
 

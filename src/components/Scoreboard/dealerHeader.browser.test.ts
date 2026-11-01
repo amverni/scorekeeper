@@ -175,6 +175,7 @@ async function openGame(page: Page, mode: TestMode, dealer = true) {
     }
     const { genericGamesApi } = await import("/scorekeeper/src/data/api/genericGames.ts");
     return (await genericGamesApi.create({ players,
+      firstDealer: { type: "player", playerId: players[0] },
       settings: { mode: ${JSON.stringify(mode)}, dealer: ${dealer}, tiebreaker: null,
         ...(${JSON.stringify(mode)} === "points" ? { pointsDirection: "low" } : {}) }
     })).id;

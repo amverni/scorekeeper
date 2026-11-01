@@ -30,6 +30,7 @@ async function createWinnerGame(names = ["Zed", "Amy", "Bob"], dealer = true) {
   }
   const game = await genericGamesApi.create({
     players: players.map((player) => player.id),
+    firstDealer: { type: "player", playerId: players[0].id },
     settings: { mode: "singleRoundWinner", tiebreaker: null, dealer },
   });
   return { game, players };
@@ -537,6 +538,7 @@ it("fixes Single Round Winner settings and Game Creation Order before awaiting c
   } = await createWinnerGame(["Zed", "Amy"]);
   const input: CreateGenericGameInput = {
     players: [amy.id, zed.id],
+    firstDealer: { type: "player", playerId: amy.id },
     settings: { mode: "singleRoundWinner", tiebreaker: null, dealer: true },
   };
   const creating = genericGamesApi.create(input);

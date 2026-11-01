@@ -287,6 +287,7 @@ async function createPassFailGame(count = 3, dealer = false) {
   );
   const game = await genericGamesApi.create({
     players: players.map((player) => player.id),
+    firstDealer: { type: "player", playerId: players[0].id },
     settings: { mode: "passFail", tiebreaker: null, dealer },
   });
   return { game, players };

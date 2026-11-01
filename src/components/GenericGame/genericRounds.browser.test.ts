@@ -360,6 +360,7 @@ async function openGame(page: Page, names = ["Maya", "Rowan"], dealer = false) {
     }
     const game = await genericGamesApi.create({
       players: players.map((player) => player.id),
+      firstDealer: { type: "player", playerId: players[0].id },
       settings: { mode: "points", pointsDirection: "high", tiebreaker: null, dealer: ${dealer} },
     });
     return game.id;

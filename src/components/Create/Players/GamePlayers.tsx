@@ -5,6 +5,7 @@ import type { SortableItem } from "../../ui";
 import { List, ListRowButton } from "../../ui";
 import { useGamePlayers, useRemovePlayer, useReorderPlayers } from "../PlayerSelectionContext";
 import { AddPlayerButton } from "./AddPlayerButton";
+import { FirstDealerSelect, type FirstDealerSelectProps } from "./FirstDealerSelect";
 import { PlayerRow } from "./PlayerRow";
 import { ShufflePlayersButton } from "./ShufflePlayersButton";
 
@@ -15,7 +16,13 @@ export interface GamePlayersMembership {
   onRejoin: (id: PlayerId) => void;
 }
 
-export function GamePlayers({ membership }: { membership?: GamePlayersMembership }) {
+export function GamePlayers({
+  membership,
+  firstDealer,
+}: {
+  membership?: GamePlayersMembership;
+  firstDealer?: FirstDealerSelectProps;
+}) {
   const players = useGamePlayers();
   const removePlayer = useRemovePlayer();
   const reorderPlayers = useReorderPlayers();
@@ -45,8 +52,9 @@ export function GamePlayers({ membership }: { membership?: GamePlayersMembership
   return (
     <section>
       {!membership && (
-        <div className="flex items-center justify-end pb-2">
+        <div className="flex items-center justify-end gap-2 pb-2">
           <ShufflePlayersButton onClick={handleShuffle} disabled={players.length < 2} />
+          {firstDealer && <FirstDealerSelect {...firstDealer} />}
         </div>
       )}
       <List
@@ -69,7 +77,12 @@ export function GamePlayers({ membership }: { membership?: GamePlayersMembership
                   withdrawn ? "grayscale text-text-secondary" : "",
                 ].join(" ")}
               >
-                <PlayerRow player={player} />
+                <PlayerRow
+                  player={player}
+                  firstDealer={
+                    firstDealer?.value.type === "player" && firstDealer.value.playerId === player.id
+                  }
+                />
               </div>
               {finished ? (
                 <span className="size-7 shrink-0" aria-hidden />

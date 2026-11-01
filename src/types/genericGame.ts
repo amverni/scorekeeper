@@ -1,3 +1,4 @@
+import type { FirstDealerSelection } from "./dealer";
 import type { EditGamePlayersInput } from "./gameEditor";
 import type { ActiveGameMetadata, CompletedGameMetadata } from "./gameLifecycle";
 import type { GenericRoundId } from "./genericRound";
@@ -41,6 +42,7 @@ interface GenericGameFields {
   scorekeeper: "generic";
   name?: string;
   settings: GenericGameSettings;
+  firstDealerId: PlayerId | null;
   playerJoins?: Array<{ playerId: PlayerId; afterRoundNumber: number }>;
   playerMembershipChanges?: Array<{
     playerId: PlayerId;
@@ -60,6 +62,7 @@ export type GenericGame = ActiveGenericGame | CompletedGenericGame;
 export interface CreateGenericGameInput {
   name?: string;
   players: PlayerId[];
+  firstDealer?: FirstDealerSelection;
   settings: GenericGameSettings;
 }
 

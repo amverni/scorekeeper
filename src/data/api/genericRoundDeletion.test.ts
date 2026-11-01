@@ -27,6 +27,7 @@ async function createGame(
   const game = await genericGamesApi.create({
     name: "Keep this Game",
     players: [maya.id, rowan.id],
+    firstDealer: { type: "player", playerId: rowan.id },
     settings,
   });
   return { game, maya, rowan };
@@ -68,10 +69,10 @@ it("deletes only a middle Points Round and reloads renumbered history, totals, S
       { id: rowan.id, totalPoints: 0, totalTiebreaker: 2 },
     ],
     rounds: [
-      { roundNumber: 1, dealerId: maya.id },
+      { roundNumber: 1, dealerId: rowan.id },
       {
         roundNumber: 2,
-        dealerId: rowan.id,
+        dealerId: maya.id,
         scores: [
           { totalPoints: 0, totalTiebreaker: 3 },
           { totalPoints: 0, totalTiebreaker: 2 },
@@ -82,7 +83,7 @@ it("deletes only a middle Points Round and reloads renumbered history, totals, S
       { player: { id: rowan.id }, place: 1 },
       { player: { id: maya.id }, place: 2 },
     ],
-    upcomingDealerId: maya.id,
+    upcomingDealerId: rowan.id,
     primaryGraph: {
       series: [
         {
@@ -189,8 +190,8 @@ it.each([
       { id: rowan.id, [total]: 2 },
     ],
     rounds: [
-      { roundNumber: 1, dealerId: maya.id, scores: [{ [total]: 0 }, { [total]: 1 }] },
-      { roundNumber: 2, dealerId: rowan.id, scores: [{ [total]: 0 }, { [total]: 2 }] },
+      { roundNumber: 1, dealerId: rowan.id, scores: [{ [total]: 0 }, { [total]: 1 }] },
+      { roundNumber: 2, dealerId: maya.id, scores: [{ [total]: 0 }, { [total]: 2 }] },
     ],
     standings: [
       { player: { id: rowan.id }, place: 1 },
@@ -215,7 +216,7 @@ it.each([
       ],
     },
     tiebreakerGraph: null,
-    upcomingDealerId: maya.id,
+    upcomingDealerId: rowan.id,
   });
   expect(await addRound(game)).toMatchObject({ roundNumber: 3 });
 });

@@ -4,7 +4,12 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { Play, X } from "lucide-react";
 import { useState } from "react";
 import { useCreateGenericGame } from "../../data/hooks/useGenericGames";
-import type { GenericGameSettings, GenericPointsSettings, Player } from "../../types";
+import type {
+  FirstDealerSelection,
+  GenericGameSettings,
+  GenericPointsSettings,
+  Player,
+} from "../../types";
 import { GameSetupTabs } from "../Create/GameSetupTabs";
 import { PlayerSelectionProvider } from "../Create/PlayerSelectionContext";
 import { Players } from "../Create/Players";
@@ -44,6 +49,7 @@ export function GenericCreateGame() {
     tiebreakerEnabled: boolean;
     tiebreakerDirection: GenericPointsSettings["pointsDirection"];
     dealer: boolean;
+    firstDealer: FirstDealerSelection;
   } = {
     name: "",
     players: [],
@@ -52,6 +58,7 @@ export function GenericCreateGame() {
     tiebreakerEnabled: false,
     tiebreakerDirection: "high",
     dealer: false,
+    firstDealer: { type: "random" },
   };
   const form = useForm({
     defaultValues,
@@ -59,6 +66,7 @@ export function GenericCreateGame() {
       const game = await createGame.mutateAsync({
         name: value.name,
         players: value.players.map((player) => player.id),
+        firstDealer: value.firstDealer,
         settings:
           value.mode === "points"
             ? {
@@ -104,28 +112,51 @@ export function GenericCreateGame() {
           >
             <TabPanel className="h-full px-4">
               <ScrollFade className="h-full -mx-6 px-6 pb-4">
-                <form.Field name="players">
-                  {(field) => (
-                    <PlayerSelectionProvider
-                      value={{
-                        players: field.state.value,
-                        addPlayer: (player) =>
-                          field.handleChange((players) =>
-                            players.some((selected) => selected.id === player.id)
-                              ? players
-                              : [...players, player],
-                          ),
-                        removePlayer: (id) =>
-                          field.handleChange((players) =>
-                            players.filter((player) => player.id !== id),
-                          ),
-                        reorderPlayers: field.handleChange,
-                      }}
-                    >
-                      <Players />
-                    </PlayerSelectionProvider>
+                <form.Subscribe
+                  selector={(state) => ({
+                    dealer: state.values.dealer,
+                    firstDealer: state.values.firstDealer,
+                  })}
+                >
+                  {({ dealer, firstDealer }) => (
+                    <form.Field name="players">
+                      {(field) => (
+                        <PlayerSelectionProvider
+                          value={{
+                            players: field.state.value,
+                            addPlayer: (player) =>
+                              field.handleChange((players) =>
+                                players.some((selected) => selected.id === player.id)
+                                  ? players
+                                  : [...players, player],
+                              ),
+                            removePlayer: (id) => {
+                              const choice = form.getFieldValue("firstDealer");
+                              if (choice.type === "player" && choice.playerId === id) {
+                                form.setFieldValue("firstDealer", { type: "random" });
+                              }
+                              field.handleChange((players) =>
+                                players.filter((player) => player.id !== id),
+                              );
+                            },
+                            reorderPlayers: field.handleChange,
+                          }}
+                        >
+                          <Players
+                            firstDealer={
+                              dealer
+                                ? {
+                                    value: firstDealer,
+                                    onChange: (choice) => form.setFieldValue("firstDealer", choice),
+                                  }
+                                : undefined
+                            }
+                          />
+                        </PlayerSelectionProvider>
+                      )}
+                    </form.Field>
                   )}
-                </form.Field>
+                </form.Subscribe>
               </ScrollFade>
             </TabPanel>
             <TabPanel className="h-full px-4">

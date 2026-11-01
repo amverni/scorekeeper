@@ -86,6 +86,9 @@ _Avoid_: Game Creation Order, setup order
 The Player assigned to deal for a specific Round, rotating through Seating Order among Players eligible to play that Round. Tracking a Dealer is optional in a Generic Game.
 _Avoid_: Host, starter
 
+**First Dealer**:
+The Player assigned to deal the first Round of a Game. Choosing the First Dealer does not change Seating Order.
+
 **Favorite**:
 A pinned item prioritized for quick selection: a shared Player, or a Phase or Phase Set within Phase Compan10n.
 _Avoid_: Bookmark

@@ -86,7 +86,7 @@ async function openGame(
     const phaseGame = ${JSON.stringify(makePhaseGraphGame({ settings: { tiebreaker: "fewestSkips", roundSkipPenalty: 0, sitOutPenalty: 0 } }))};
     phaseGame.phaseSet.phases = Array(${roundCount + 3}).fill((await phasesApi.getAll())[0].id);
     const game = settings
-      ? await genericGamesApi.create({ players: ids, settings })
+      ? await genericGamesApi.create({ players: ids, settings, firstDealer: { type: "player", playerId: ids[0] } })
       : await gamesApi.create({
           phaseSet: phaseGame.phaseSet,
           settings: phaseGame.settings,

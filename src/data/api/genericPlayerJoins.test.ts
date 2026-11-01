@@ -22,6 +22,7 @@ async function setup(settings: GenericGameSettings, withCam = false) {
   const cam = await playersApi.create({ name: "Cam", color: "Lime", isFavorite: 0 });
   const game = await genericGamesApi.create({
     players: withCam ? [amy.id, bob.id, cam.id] : [amy.id, bob.id],
+    firstDealer: { type: "player", playerId: amy.id },
     settings,
   });
   return { game, amy, bob, cam };
@@ -49,6 +50,7 @@ it("withdraws and rejoins a saved member before any Round without losing their s
   });
   const game = await genericGamesApi.create({
     players: [amy.id, bob.id, cam.id],
+    firstDealer: { type: "player", playerId: amy.id },
     settings: { mode: "points", pointsDirection: "high", tiebreaker: null, dealer: true },
   });
   const editor = await genericGamesApi.getEditor(game.id);
@@ -453,7 +455,7 @@ it("inserts new seats among saved Players and locks them before any Round is rec
     { playerId: cam.id, afterRoundNumber: 0 },
     { playerId: dora.id, afterRoundNumber: 0 },
   ]);
-  expect((await genericGamesApi.getScoreboard(game.id))?.upcomingDealerId).toBe(cam.id);
+  expect((await genericGamesApi.getScoreboard(game.id))?.upcomingDealerId).toBe(amy.id);
   expect((await genericGamesApi.getScoreboard(game.id))?.players.map(({ id }) => id)).toEqual(
     input.players,
   );

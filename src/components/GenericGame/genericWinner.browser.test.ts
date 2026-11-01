@@ -73,6 +73,9 @@ it("selects the mode in fresh setup and records one winner with reselection, ret
     expect(await page.getByRole("radiogroup", { name: "Points Direction" }).count()).toBe(0);
     expect(await page.getByText(/Tiebreaker/).count()).toBe(0);
     expect(await page.getByRole("switch", { name: "Dealer", exact: true }).isChecked()).toBe(true);
+    await page.getByRole("tab", { name: "Players", exact: true }).click();
+    await page.getByRole("button", { name: "Choose First Dealer", exact: true }).click();
+    await page.getByRole("option", { name: "Zed", exact: true }).click();
     await page.getByRole("button", { name: "Start", exact: true }).click();
     await page.getByRole("table", { name: "Rounds Won scoreboard" }).waitFor();
     const add = page.getByRole("button", { name: "Add Round", exact: true });

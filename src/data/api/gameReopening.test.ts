@@ -28,6 +28,7 @@ it.each<GenericGameSettings>([
   const bob = await playersApi.create({ name: "Bob", color: "Ocean", isFavorite: 0 });
   const game = await genericGamesApi.create({
     players: [amy.id, bob.id],
+    firstDealer: { type: "player", playerId: bob.id },
     settings,
   });
   const round = await genericRoundsApi.add(
@@ -60,6 +61,7 @@ it.each<GenericGameSettings>([
   );
   if (!round.id) throw new Error("Missing saved Round identity");
   const completed = await genericGamesApi.finish(game.id);
+  expect(completed.firstDealerId).toBe(bob.id);
   const renamed = await playersApi.update(amy.id, { name: "Amelia", color: "Lime" });
   expect((await genericGamesApi.getDetail(game.id))?.players[0]).toEqual({
     id: amy.id,
@@ -70,6 +72,11 @@ it.each<GenericGameSettings>([
   closeDB();
   const active = await genericGamesApi.getDetail(game.id);
   expect(active?.game).toMatchObject({ id: game.id, status: "active", createdAt: game.createdAt });
+  expect(await genericGamesApi.getScoreboard(game.id)).toMatchObject({
+    game: { firstDealerId: bob.id },
+    rounds: [{ dealerId: bob.id }],
+    upcomingDealerId: amy.id,
+  });
   expect(active?.players).toEqual([renamed, bob]);
   expect(active?.game).not.toHaveProperty("winnerIds");
   expect(active?.game).not.toHaveProperty("playerSnapshots");
@@ -117,6 +124,7 @@ it.each<GenericGameSettings>([
   closeDB();
   expect(await genericGamesApi.getById(game.id)).toMatchObject({
     id: game.id,
+    firstDealerId: bob.id,
     status: "completed",
     winnerIds: [bob.id],
     playerSnapshots: [

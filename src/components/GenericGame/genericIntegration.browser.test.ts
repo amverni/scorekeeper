@@ -45,6 +45,7 @@ it("keeps every completed surface frozen across shared Player edits and deletion
       for (const mode of ["points", "singleRoundWinner", "passFail"]) {
         const game = await genericGamesApi.create({
           players,
+          firstDealer: { type: "player", playerId: players[0] },
           settings: mode === "points"
             ? { mode, pointsDirection: "low", tiebreaker: { direction: "high" }, dealer: true }
             : { mode, tiebreaker: null, dealer: true },
@@ -395,6 +396,7 @@ it.each(
       }
       const game = await genericGamesApi.create({
         players: players.map(player => player.id),
+        firstDealer: { type: "player", playerId: players[0].id },
         settings: { mode: "points", pointsDirection: "low", tiebreaker: ${tiebreaker ? '{ direction: "high" }' : "null"}, dealer: true },
       });
       for (let index = 0; index < 12; index++) {

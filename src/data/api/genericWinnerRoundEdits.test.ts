@@ -18,6 +18,7 @@ async function winnerGame() {
   const rowan = await playersApi.create({ name: "Rowan", color: "Azure", isFavorite: 0 });
   const game = await genericGamesApi.create({
     players: [maya.id, rowan.id],
+    firstDealer: { type: "player", playerId: maya.id },
     settings: { mode: "singleRoundWinner", tiebreaker: null, dealer: true },
   });
   const round = await genericRoundsApi.add({

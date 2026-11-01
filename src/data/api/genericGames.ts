@@ -62,6 +62,15 @@ export const genericGamesApi = {
     }
     const { settings } = input;
     assertGenericSettings(settings);
+    const firstDealer =
+      input.firstDealer === undefined ? { type: "random" as const } : input.firstDealer;
+    if (
+      !firstDealer ||
+      (firstDealer.type !== "random" && firstDealer.type !== "player") ||
+      (firstDealer.type === "player" && !input.players.includes(firstDealer.playerId))
+    ) {
+      throw new Error("First Dealer must be Random or a selected Player.");
+    }
     const now = Date.now();
     const game: ActiveGenericGame = {
       id: crypto.randomUUID(),
@@ -69,6 +78,11 @@ export const genericGamesApi = {
       name: input.name?.trim() || undefined,
       status: "active",
       players: [...input.players],
+      firstDealerId: settings.dealer
+        ? firstDealer.type === "player"
+          ? firstDealer.playerId
+          : input.players[Math.floor(Math.random() * input.players.length)]
+        : null,
       settings:
         settings.mode === "points"
           ? {

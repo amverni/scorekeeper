@@ -88,9 +88,14 @@ export function genericRoundPlayerIds(game: GenericGame, roundNumber: number): P
 }
 
 function nextDealer(game: GenericGame, previous: PlayerId | null, eligible: PlayerId[]) {
-  const previousIndex = previous === null ? -1 : game.players.indexOf(previous);
-  for (let offset = 1; offset <= game.players.length; offset++) {
-    const candidate = game.players[(previousIndex + offset) % game.players.length];
+  if (game.firstDealerId === null) throw new Error("A Round needs a saved First Dealer.");
+  const startIndex =
+    previous === null
+      ? game.players.indexOf(game.firstDealerId)
+      : (game.players.indexOf(previous) + 1) % game.players.length;
+  if (startIndex < 0) throw new Error("First Dealer must be a saved Game member.");
+  for (let offset = 0; offset < game.players.length; offset++) {
+    const candidate = game.players[(startIndex + offset) % game.players.length];
     if (eligible.includes(candidate)) return candidate;
   }
   throw new Error("A Round needs an eligible Dealer.");

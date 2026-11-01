@@ -18,6 +18,7 @@ async function passFailGame(suffix = "") {
   const lee = await playersApi.create({ name: `Lee${suffix}`, color: "Mint", isFavorite: 0 });
   const game = await genericGamesApi.create({
     players: [maya.id, rowan.id, lee.id],
+    firstDealer: { type: "player", playerId: maya.id },
     settings: { mode: "passFail", tiebreaker: null, dealer: true },
   });
   const round = await genericRoundsApi.add({
