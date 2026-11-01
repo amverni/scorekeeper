@@ -11,6 +11,7 @@ export function makePhaseGraphGame(overrides: Partial<ActiveGame> = {}): ActiveG
     id: "game-1",
     scorekeeper: "phase10",
     status: "active",
+    firstDealerId: overrides.players?.[0] ?? phaseGraphPlayers.amy.id,
     players: [phaseGraphPlayers.amy.id, phaseGraphPlayers.bob.id, phaseGraphPlayers.cam.id],
     activePlayers: [phaseGraphPlayers.amy.id, phaseGraphPlayers.bob.id, phaseGraphPlayers.cam.id],
     phaseSet: {

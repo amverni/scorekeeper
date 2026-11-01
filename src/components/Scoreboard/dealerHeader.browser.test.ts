@@ -20,6 +20,8 @@ beforeAll(async () => {
   const address = server.httpServer?.address();
   if (!address || typeof address === "string") throw new Error("Missing test server address");
   appUrl = `http://127.0.0.1:${address.port}/scorekeeper/`;
+  await server.environments.client.warmupRequest("/src/main.tsx");
+  await server.environments.client.waitForRequestsIdle();
   browser = await webkit.launch();
 }, 60_000);
 
@@ -168,6 +170,7 @@ async function openGame(page: Page, mode: TestMode, dealer = true) {
       const { gamesApi } = await import("/scorekeeper/src/data/api/games.ts");
       return (await gamesApi.create({
         scorekeeper: "phase10", players,
+        firstDealer: { type: "player", playerId: players[0] },
         phaseSet: { id: "dealer-phases", type: "temporary", name: "Dealer phases",
           phases: Array.from({ length: 10 }, (_, index) => "phase-" + (index + 1)) },
         settings: { tiebreaker: "lowestPoints", roundSkipPenalty: 100, sitOutPenalty: 0 }

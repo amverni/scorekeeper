@@ -21,6 +21,7 @@ async function setup(tiebreaker: GameTiebreaker = "fewestWilds") {
   const cam = await playersApi.create({ name: "Cam", color: "Lime", isFavorite: 0 });
   const game = await gamesApi.create({
     players: [amy.id, bob.id, cam.id],
+    firstDealer: { type: "player", playerId: amy.id },
     phaseSet: {
       id: "repeated",
       type: "temporary",

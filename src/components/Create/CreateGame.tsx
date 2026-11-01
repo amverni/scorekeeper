@@ -7,7 +7,12 @@ import type { ArrayAtLeastOne, PhaseId, TemporaryPhaseSet } from "../../types";
 import { CardBackground } from "../CardBackground/CardBackground";
 import { HeaderLogo } from "../Logo/HeaderLogo";
 import { Button, InlineError, ScrollFade } from "../ui";
-import { useGameDefaultsStatus, useGamePhases, useGameSettings } from "./CreateGameContext";
+import {
+  useGameDefaultsStatus,
+  useGameFirstDealer,
+  useGamePhases,
+  useGameSettings,
+} from "./CreateGameContext";
 import { GameSetupTabs } from "./GameSetupTabs";
 import { Phases } from "./Phases";
 import { useGamePlayers } from "./PlayerSelectionContext";
@@ -22,6 +27,7 @@ export function CreateGame() {
   const players = useGamePlayers();
   const phases = useGamePhases();
   const settings = useGameSettings();
+  const firstDealer = useGameFirstDealer();
   const defaultsStatus = useGameDefaultsStatus();
   const canStartGame =
     defaultsStatus.isReady && players.length >= 2 && phases.length >= 1 && !createGame.isPending;
@@ -45,6 +51,7 @@ export function CreateGame() {
         players: players.map((player) => player.id),
         phaseSet,
         settings,
+        firstDealer: firstDealer.value,
       });
       await navigate({ to: "/phaseCompan10n/game/$gameId", params: { gameId: game.id } });
     } catch (error) {
@@ -93,7 +100,7 @@ export function CreateGame() {
         >
           <TabPanel className="h-full px-4">
             <ScrollFade className="h-full -mx-6 px-6 pb-(--slant)">
-              <Players />
+              <Players firstDealer={firstDealer} />
             </ScrollFade>
           </TabPanel>
 

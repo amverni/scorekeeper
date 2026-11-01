@@ -1,3 +1,4 @@
+import type { FirstDealerSelection } from "./dealer";
 import type { ActiveGameMetadata, CompletedGameMetadata } from "./gameLifecycle";
 import type { GenericGame } from "./genericGame";
 import type { TemporaryPhaseSet } from "./phaseSet";
@@ -34,6 +35,7 @@ export interface CompletedGame extends CompletedGameMetadata<"phase10">, PhaseGa
 
 interface PhaseGameFields {
   scorekeeper: "phase10";
+  firstDealerId: PlayerId;
   phaseSet: TemporaryPhaseSet;
   settings: GameSettings;
   continuation?: boolean;
@@ -45,4 +47,6 @@ interface PhaseGameFields {
   }>;
 }
 
-export type CreateGameInput = Pick<ActiveGame, "players" | "phaseSet" | "settings">;
+export type CreateGameInput = Pick<ActiveGame, "players" | "phaseSet" | "settings"> & {
+  firstDealer?: FirstDealerSelection;
+};

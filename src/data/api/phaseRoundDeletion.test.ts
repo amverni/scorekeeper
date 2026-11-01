@@ -14,7 +14,7 @@ afterEach(async () => {
 });
 
 it("deletes the latest and sole Rounds while retaining the same empty Active Game and initial progress", async () => {
-  const { game, amy, bob } = await createHistory();
+  const { game, amy, bob } = await createHistory(1);
   const configured = await gamesApi.getById(game.id);
   for (const roundNumber of [3, 2, 1]) {
     const editor = await gamesApi.getRoundEditor(game.id, roundNumber);
@@ -32,9 +32,9 @@ it("deletes the latest and sole Rounds while retaining the same empty Active Gam
     lastActivityAt: expect.any(Number),
   });
   expect(await gamesApi.getView(game.id)).toMatchObject({
-    game: { id: game.id, status: "active", activePlayers: [amy.id, bob.id] },
+    game: { id: game.id, firstDealerId: bob.id, status: "active", activePlayers: [amy.id, bob.id] },
     nextRoundNumber: 1,
-    upcomingDealerId: amy.id,
+    upcomingDealerId: bob.id,
     pendingFinishChoice: null,
     gameEndingRound: null,
     automaticCompletion: false,
@@ -143,7 +143,7 @@ it("rolls back deletion and renumbering on storage failure and accepts the same 
   expect((await gamesApi.getView(game.id))?.rounds).toHaveLength(2);
 });
 
-async function continuedHistory(tiebreaker: GameTiebreaker = "roundsWon") {
+async function continuedHistory(tiebreaker: GameTiebreaker = "roundsWon", firstDealerSeat = 0) {
   const players = await Promise.all(
     ["Amy", "Bob", "Cam", "Dan"].map((name) =>
       playersApi.create({ name, color: "Jam", isFavorite: 0 }),
@@ -152,6 +152,7 @@ async function continuedHistory(tiebreaker: GameTiebreaker = "roundsWon") {
   const [amy, bob, cam, dan] = players;
   const game = await gamesApi.create({
     players: [amy.id, bob.id, cam.id, dan.id],
+    firstDealer: { type: "player", playerId: players[firstDealerSeat].id },
     phaseSet: {
       id: "two",
       type: "temporary",
@@ -180,6 +181,58 @@ async function continuedHistory(tiebreaker: GameTiebreaker = "roundsWon") {
   }
   return { game, amy, bob, cam, dan };
 }
+
+it("recalculates from a non-first-seat First Dealer after a corrected finish and reanchors deleted Round 1", async () => {
+  const { game, amy, bob, cam, dan } = await continuedHistory("roundsWon", 1);
+  expect((await gamesApi.getView(game.id))?.rounds.map(({ dealerId }) => dealerId)).toEqual([
+    bob.id,
+    cam.id,
+    dan.id,
+    bob.id,
+  ]);
+  const editor = await gamesApi.getRoundEditor(game.id, 2);
+  await gamesApi.editRound({
+    gameId: game.id,
+    roundNumber: 2,
+    version: editor.version,
+    roundWinnerId: amy.id,
+    scores: editor.round.scores.map((score) =>
+      score.playerId === bob.id ? { ...score, phaseStatus: "completed" } : score,
+    ),
+    confirmImpact: true,
+  });
+  closeDB();
+  const corrected = await gamesApi.getView(game.id);
+  expect(corrected?.game).toMatchObject({ firstDealerId: bob.id, continuation: true });
+  expect(corrected?.rounds.map(({ dealerId }) => dealerId)).toEqual([
+    bob.id,
+    cam.id,
+    dan.id,
+    cam.id,
+  ]);
+  expect(corrected?.upcomingDealerId).toBe(dan.id);
+  expect(corrected?.players.map(({ id, finishingPlace }) => [id, finishingPlace])).toEqual([
+    [amy.id, 2],
+    [bob.id, 1],
+    [cam.id, null],
+    [dan.id, null],
+  ]);
+  const first = await gamesApi.getRoundEditor(game.id, 1);
+  await gamesApi.deleteRound({
+    gameId: game.id,
+    roundId: first.round.id,
+    version: first.version,
+  });
+  closeDB();
+  const deleted = await gamesApi.getView(game.id);
+  expect(deleted?.game).toMatchObject({ firstDealerId: bob.id, players: game.players });
+  expect(deleted?.rounds.map(({ dealerId }) => dealerId)).toEqual([bob.id, cam.id, dan.id]);
+  expect(deleted?.upcomingDealerId).toBe(bob.id);
+  expect(deleted?.players.map(({ id }) => id)).toEqual(game.players);
+  expect(deleted?.rounds.map(({ source }) => source)).toEqual(
+    corrected?.rounds.slice(1).map(({ source }, index) => ({ ...source, roundNumber: index + 1 })),
+  );
+});
 
 it("recalculates counted wins, finishing places and dealers while keeping actual participation gaps", async () => {
   const { game, amy, bob, cam } = await continuedHistory();
@@ -503,11 +556,12 @@ it("retains an unplayed Join and the current roster when deleting the sole remai
   });
 });
 
-async function createHistory() {
+async function createHistory(firstDealerSeat = 0) {
   const amy = await playersApi.create({ name: "Amy", color: "Jam", isFavorite: 0 });
   const bob = await playersApi.create({ name: "Bob", color: "Ocean", isFavorite: 0 });
   const game = await gamesApi.create({
     players: [amy.id, bob.id],
+    firstDealer: { type: "player", playerId: [amy.id, bob.id][firstDealerSeat] },
     phaseSet: {
       id: "three",
       type: "temporary",

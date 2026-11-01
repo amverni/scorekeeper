@@ -1,7 +1,7 @@
 import "fake-indexeddb/auto";
 import { deleteDB } from "idb";
-import { afterEach, beforeEach, expect, it } from "vitest";
-import type { GameTiebreaker } from "../../types";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import type { CreateGameInput, GameTiebreaker } from "../../types";
 import { closeDB } from "../db";
 import { gamesApi } from "./games";
 import { playersApi } from "./players";
@@ -10,11 +10,86 @@ import { roundsApi } from "./rounds";
 beforeEach(resetDatabase);
 afterEach(resetDatabase);
 
+it.each([
+  true,
+  false,
+])("persists a non-first-seat First Dealer and wraps without changing seats or results (in-order: %s)", async (inOrderPhases) => {
+  const [amy, bob, cam] = await Promise.all(
+    ["Amy", "Bob", "Cam"].map((name) => playersApi.create({ name, color: "Jam", isFavorite: 0 })),
+  );
+  const game = await gamesApi.create({
+    players: [amy.id, bob.id, cam.id],
+    firstDealer: { type: "player", playerId: bob.id },
+    phaseSet: { id: "short", type: "temporary", name: "Short", phases: ["classic-1"] },
+    settings: { inOrderPhases, tiebreaker: "fewestWilds", roundSkipPenalty: 0, sitOutPenalty: 0 },
+  });
+  expect(await gamesApi.getView(game.id)).toMatchObject({
+    game: { firstDealerId: bob.id },
+    upcomingDealerId: bob.id,
+  });
+  for (const upcomingDealerId of [cam.id, amy.id, bob.id, cam.id]) {
+    await roundsApi.add({
+      gameId: game.id,
+      roundWinnerId: null,
+      scores: [
+        { playerId: amy.id, selectedPhase: 1, phaseStatus: "failed", score: 2 },
+        { playerId: bob.id, selectedPhase: 1, phaseStatus: "failed", score: 1 },
+        { playerId: cam.id, selectedPhase: 1, phaseStatus: "failed", score: 3 },
+      ],
+    });
+    closeDB();
+    expect(await gamesApi.getView(game.id)).toMatchObject({ upcomingDealerId });
+  }
+  const view = await gamesApi.getView(game.id);
+  expect(view?.game).toMatchObject({ firstDealerId: bob.id, players: game.players });
+  expect(view?.players.map(({ id }) => id)).toEqual(game.players);
+  expect(view?.rounds.map(({ dealerId }) => dealerId)).toEqual([bob.id, cam.id, amy.id, bob.id]);
+  expect(
+    view?.standings.rows.map(({ player, tiebreakerTotal }) => [player.id, tiebreakerTotal]),
+  ).toEqual([
+    [bob.id, 4],
+    [amy.id, 8],
+    [cam.id, 12],
+  ]);
+  await roundsApi.add({
+    gameId: game.id,
+    roundWinnerId: null,
+    scores: [
+      { playerId: amy.id, selectedPhase: 1, phaseStatus: "completed", score: 0 },
+      { playerId: bob.id, selectedPhase: 1, phaseStatus: "completed", score: 4 },
+      { playerId: cam.id, selectedPhase: 1, phaseStatus: "completed", score: 0 },
+    ],
+  });
+  expect(await gamesApi.getView(game.id)).toMatchObject({
+    game: { firstDealerId: bob.id, status: "completed", winnerIds: [amy.id] },
+    players: [
+      { id: amy.id, finishingPlace: 1 },
+      { id: bob.id, finishingPlace: 2 },
+      { id: cam.id, finishingPlace: 3 },
+    ],
+  });
+  const completed = await gamesApi.getById(game.id);
+  if (!completed) throw new Error("Missing completed Game");
+  await gamesApi.reopen(game.id, JSON.stringify(completed));
+  closeDB();
+  expect(await gamesApi.getView(game.id)).toMatchObject({
+    game: { firstDealerId: bob.id, status: "active", players: game.players },
+    rounds: [
+      { dealerId: bob.id },
+      { dealerId: cam.id },
+      { dealerId: amy.id },
+      { dealerId: bob.id },
+      { dealerId: cam.id },
+    ],
+  });
+});
+
 it("reads saved Round inputs, scorecard running values, Standings and graphs together after reload", async () => {
   const amy = await playersApi.create({ name: "Amy", color: "Jam", isFavorite: 0 });
   const bob = await playersApi.create({ name: "Bob", color: "Ocean", isFavorite: 0 });
   const game = await gamesApi.create({
     players: [bob.id, amy.id],
+    firstDealer: { type: "player", playerId: bob.id },
     phaseSet: {
       id: "short",
       type: "temporary",
@@ -551,6 +626,7 @@ async function createGame(tiebreaker: GameTiebreaker, phaseCount: number) {
   const bob = await playersApi.create({ name: "Bob", color: "Ocean", isFavorite: 0 });
   const game = await gamesApi.create({
     players: [amy.id, bob.id],
+    firstDealer: { type: "player", playerId: amy.id },
     phaseSet: {
       id: "short",
       type: "temporary",
@@ -563,6 +639,83 @@ async function createGame(tiebreaker: GameTiebreaker, phaseCount: number) {
 }
 
 async function resetDatabase() {
+  vi.restoreAllMocks();
   closeDB();
   await deleteDB("phase10-db");
 }
+
+it.each([
+  2, 3,
+])("resolves Random once from the final %s-Player roster, then persists it through reload and Manual Finish", async (count) => {
+  const players = await Promise.all(
+    ["Amy", "Bob", "Cam"]
+      .slice(0, count)
+      .map((name) => playersApi.create({ name, color: "Jam", isFavorite: 0 })),
+  );
+  const ids = players.map(({ id }) => id);
+  const random = vi.spyOn(Math, "random");
+  for (const [index, playerId] of ids.entries()) {
+    random.mockReturnValue((index + 0.5) / count);
+    const game = await gamesApi.create({
+      players: ids,
+      ...(index === 0 ? {} : { firstDealer: { type: "random" as const } }),
+      phaseSet: { id: "short", type: "temporary", name: "Short", phases: ["classic-1"] },
+      settings: { tiebreaker: "fewestWilds", roundSkipPenalty: 0, sitOutPenalty: 0 },
+    });
+    expect(game.firstDealerId).toBe(playerId);
+    random.mockImplementation(() => {
+      throw new Error("Existing Games must not draw another First Dealer");
+    });
+    closeDB();
+    expect(await gamesApi.getView(game.id)).toMatchObject({
+      game: { firstDealerId: playerId, players: ids },
+      upcomingDealerId: playerId,
+    });
+    const [first, ...rest] = ids.map((playerId) => ({
+      playerId,
+      phaseStatus: "failed" as const,
+      score: 0,
+    }));
+    await roundsApi.add({ gameId: game.id, roundWinnerId: null, scores: [first, ...rest] });
+    const completed = await gamesApi.finish(game.id);
+    expect(completed.firstDealerId).toBe(playerId);
+    await gamesApi.reopen(game.id, JSON.stringify(completed));
+    closeDB();
+    expect(await gamesApi.getView(game.id)).toMatchObject({
+      game: { firstDealerId: playerId, status: "active", players: ids },
+      rounds: [{ dealerId: playerId }],
+      upcomingDealerId: ids[(index + 1) % count],
+    });
+  }
+});
+
+it("rejects invalid First Dealer choices without saving, and never draws for a named choice", async () => {
+  const { amy, bob, game } = await createGame("fewestWilds", 1);
+  const input: CreateGameInput = {
+    players: [amy.id, bob.id],
+    phaseSet: game.phaseSet,
+    settings: game.settings,
+  };
+  for (const firstDealer of [
+    { type: "player", playerId: "outside-roster" },
+    { type: "player", playerId: "" },
+    { type: "unsupported" },
+    null,
+  ]) {
+    const invalid = { ...input };
+    Object.assign(invalid, { firstDealer });
+    await expect(gamesApi.create(invalid)).rejects.toThrow("First Dealer");
+  }
+  await expect(gamesApi.create({ ...input, players: [] })).rejects.toThrow("First Dealer");
+  await expect(gamesApi.create({ ...input, players: [amy.id, amy.id] })).rejects.toThrow("unique");
+  expect(await gamesApi.getAll()).toEqual([game]);
+  vi.spyOn(Math, "random").mockImplementation(() => {
+    throw new Error("Named choice must not draw");
+  });
+  expect(
+    await gamesApi.create({
+      ...input,
+      firstDealer: { type: "player", playerId: bob.id },
+    }),
+  ).toMatchObject({ firstDealerId: bob.id });
+});

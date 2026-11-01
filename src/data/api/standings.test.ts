@@ -449,6 +449,7 @@ function makePlayer(id: string, name: string, index: number): Player {
 
 function makeActiveGame(overrides: Partial<ActiveGame> = {}): ActiveGame {
   return {
+    firstDealerId: overrides.players?.[0] ?? players.amy.id,
     scorekeeper: "phase10",
     id: "game-1",
     status: "active",
@@ -473,6 +474,7 @@ function makeActiveGame(overrides: Partial<ActiveGame> = {}): ActiveGame {
 
 function makeCompletedGame(overrides: Partial<CompletedGame> = {}): CompletedGame {
   return {
+    firstDealerId: overrides.players?.[0] ?? players.amy.id,
     scorekeeper: "phase10",
     id: "game-1",
     status: "completed",

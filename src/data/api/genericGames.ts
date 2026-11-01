@@ -12,6 +12,7 @@ import type {
   StoredGame,
 } from "../../types";
 import { getDB } from "../db";
+import { resolveFirstDealer } from "./firstDealer";
 import {
   deleteEmptyGame,
   deleteGameRecords,
@@ -62,15 +63,7 @@ export const genericGamesApi = {
     }
     const { settings } = input;
     assertGenericSettings(settings);
-    const firstDealer =
-      input.firstDealer === undefined ? { type: "random" as const } : input.firstDealer;
-    if (
-      !firstDealer ||
-      (firstDealer.type !== "random" && firstDealer.type !== "player") ||
-      (firstDealer.type === "player" && !input.players.includes(firstDealer.playerId))
-    ) {
-      throw new Error("First Dealer must be Random or a selected Player.");
-    }
+    const firstDealerId = resolveFirstDealer(input.players, input.firstDealer, settings.dealer);
     const now = Date.now();
     const game: ActiveGenericGame = {
       id: crypto.randomUUID(),
@@ -78,11 +71,7 @@ export const genericGamesApi = {
       name: input.name?.trim() || undefined,
       status: "active",
       players: [...input.players],
-      firstDealerId: settings.dealer
-        ? firstDealer.type === "player"
-          ? firstDealer.playerId
-          : input.players[Math.floor(Math.random() * input.players.length)]
-        : null,
+      firstDealerId,
       settings:
         settings.mode === "points"
           ? {

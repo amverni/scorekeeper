@@ -47,6 +47,7 @@ async function openGame(page: Page, kind: "generic" | "phase10", playerCount = 2
         })
       : await gamesApi.create({
           players: players.map(player => player.id),
+          firstDealer: { type: "player", playerId: players[0].id },
           phaseSet: { id: "short", type: "temporary", name: "Short", phases: Array(10).fill("classic-1") },
           settings: { tiebreaker: "lowestPoints", roundSkipPenalty: 100, sitOutPenalty: 0 },
         });

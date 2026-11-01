@@ -80,10 +80,10 @@ it("treats zero selected Players as normal setup and can start a Generic Game af
   }
 }, 90_000);
 
-async function openSetup(page: Page) {
+async function openSetup(page: Page, experience = "scorekeeper") {
   page.setDefaultTimeout(5_000);
   page.setDefaultNavigationTimeout(60_000);
-  await page.goto(`${appUrl}#/scorekeeper`);
+  await page.goto(`${appUrl}#/${experience}`);
   await page.getByRole("link", { name: "Create Game", exact: true }).waitFor();
   await page.evaluate(`(async () => {
     const { playersApi } = await import("/scorekeeper/src/data/api/players.ts");
@@ -100,13 +100,18 @@ async function enableDealer(page: Page) {
   await page.getByRole("tab", { name: "Players", exact: true }).click();
 }
 
-it("keeps the First Dealer choice tied to Player identity through keyboard selection, reorder, shuffle and removal", async () => {
+it.each([
+  "scorekeeper",
+  "phaseCompan10n",
+])("keeps the %s First Dealer choice tied to Player identity through keyboard selection, reorder, shuffle and removal", async (experience) => {
   const page = await browser.newPage({ reducedMotion: "reduce" });
   try {
-    await openSetup(page);
+    await openSetup(page, experience);
     const dealer = page.getByRole("button", { name: "Choose First Dealer", exact: true });
-    expect(await dealer.count()).toBe(0);
-    await enableDealer(page);
+    if (experience === "scorekeeper") {
+      expect(await dealer.count()).toBe(0);
+      await enableDealer(page);
+    }
     const start = page.getByRole("button", { name: "Start", exact: true });
     expect(await start.isDisabled()).toBe(true);
     await dealer.click();
@@ -155,7 +160,9 @@ it("keeps the First Dealer choice tied to Player identity through keyboard selec
     await page.keyboard.press("Space");
     await page.evaluate(() => new Promise(requestAnimationFrame));
     await page.keyboard.press("ArrowUp");
-    await expect.poll(() => page.locator("[aria-live]").innerText()).toContain("position 1 of 2");
+    await expect
+      .poll(() => page.locator("[aria-live]").allTextContents())
+      .toContain("Bob moved to position 1 of 2.");
     await page.keyboard.press("Space");
     await dealer.click();
     expect(await options.allTextContents()).toEqual(["Random", "Bob", "Amy"]);
@@ -184,8 +191,10 @@ it("keeps the First Dealer choice tied to Player identity through keyboard selec
       await page.getByRole("option", { name: "Random", exact: true }).getAttribute("aria-selected"),
     ).toBe("true");
     await page.keyboard.press("Escape");
-    await enableDealer(page);
-    expect(await dealer.count()).toBe(0);
+    if (experience === "scorekeeper") {
+      await enableDealer(page);
+      expect(await dealer.count()).toBe(0);
+    }
     expect(await roster.getByText("D", { exact: true }).count()).toBe(0);
     expect(await start.isEnabled()).toBe(true);
   } finally {
@@ -194,27 +203,34 @@ it("keeps the First Dealer choice tied to Player identity through keyboard selec
 }, 60_000);
 
 it.each([
-  1, 3,
-])("resolves the default Random choice from the final %s-Player roster only on Start", async (count) => {
+  { experience: "scorekeeper", count: 1 },
+  { experience: "scorekeeper", count: 3 },
+  { experience: "phaseCompan10n", count: 2 },
+  { experience: "phaseCompan10n", count: 3 },
+])("resolves the default Random choice from the final $count-Player $experience roster only on Start", async ({
+  experience,
+  count,
+}) => {
   const page = await browser.newPage({
     viewport: { width: 390, height: 844 },
     hasTouch: true,
     reducedMotion: "reduce",
   });
   try {
-    await openSetup(page);
-    await enableDealer(page);
+    await openSetup(page, experience);
+    if (experience === "scorekeeper") await enableDealer(page);
     await page.getByRole("button", { name: "Amy", exact: true }).tap();
+    expect(await page.getByRole("button", { name: "Start", exact: true }).isDisabled()).toBe(
+      experience === "phaseCompan10n",
+    );
     const trigger = page.getByRole("button", { name: "Choose First Dealer", exact: true });
     await trigger.tap();
     expect(
       await page.getByRole("option", { name: "Random", exact: true }).getAttribute("aria-selected"),
     ).toBe("true");
     await page.getByRole("option", { name: "Random", exact: true }).tap();
-    if (count === 3) {
-      for (const name of ["Bob", "Cam"]) {
-        await page.getByRole("button", { name, exact: true }).tap();
-      }
+    for (const name of ["Bob", "Cam"].slice(0, count - 1)) {
+      await page.getByRole("button", { name, exact: true }).tap();
     }
     expect(
       await page
@@ -226,18 +242,57 @@ it.each([
       Math.random = () => 0.999999;
     });
     await page.getByRole("button", { name: "Start", exact: true }).tap();
-    await page.waitForURL(/#\/scorekeeper\/game\/[^/]+$/);
-    const name = count === 3 ? "Cam" : "Amy";
-    await page
-      .getByRole("cell", { name: `${name}, upcoming Round: Dealer`, exact: true })
-      .waitFor();
+    await page.waitForURL(new RegExp(`#/${experience}/game/[^/]+$`));
+    const name = ["Amy", "Bob", "Cam"][count - 1];
+    const dealer =
+      experience === "scorekeeper"
+        ? page.getByRole("cell", { name: `${name}, upcoming Round: Dealer`, exact: true })
+        : page.getByText(`Upcoming Round Dealer: ${name}`, { exact: true });
+    await dealer.waitFor({ state: "attached" });
     await page.reload();
+    await dealer.waitFor({ state: "attached" });
+  } finally {
+    await page.close();
+  }
+}, 60_000);
+
+it("retains the Phase 10 First Dealer choice after a creation storage failure and retries directly onto its scoreboard", async () => {
+  const page = await browser.newPage({
+    viewport: { width: 320, height: 844 },
+    hasTouch: true,
+    reducedMotion: "reduce",
+  });
+  try {
+    await openSetup(page, "phaseCompan10n");
+    for (const name of ["Amy", "Bob"]) {
+      await page.getByRole("button", { name, exact: true }).tap();
+    }
+    await page.getByRole("button", { name: "Choose First Dealer", exact: true }).tap();
+    await page.getByRole("option", { name: "Bob", exact: true }).tap();
+    await page.evaluate(() => {
+      const add = IDBObjectStore.prototype.add;
+      IDBObjectStore.prototype.add = function (value, key) {
+        if (this.name === "games") {
+          IDBObjectStore.prototype.add = add;
+          throw new DOMException("Game storage unavailable", "QuotaExceededError");
+        }
+        return add.call(this, value, key);
+      };
+    });
+    const start = page.getByRole("button", { name: "Start", exact: true });
+    await start.tap();
+    await page.getByRole("alert").filter({ hasText: "Game storage unavailable" }).waitFor();
     await page
-      .getByRole("cell", { name: `${name}, upcoming Round: Dealer`, exact: true })
+      .getByRole("list", { name: "Seating Order", exact: true })
+      .getByRole("listitem")
+      .filter({ hasText: "Bob" })
+      .getByText("D", { exact: true })
       .waitFor();
-    await page.goto(`${appUrl}#/phaseCompan10n/create`);
-    await page.getByRole("button", { name: "Shuffle player order", exact: true }).waitFor();
-    expect(await trigger.count()).toBe(0);
+    expect(page.url()).toContain("#/phaseCompan10n/create");
+    await start.tap();
+    await page
+      .getByText("Upcoming Round Dealer: Bob", { exact: true })
+      .waitFor({ state: "attached" });
   } finally {
     await page.close();
   }
@@ -247,6 +302,7 @@ it.each([
   "Points",
   "Single Round Winner",
   "Pass/Fail",
+  "Phase 10",
 ])("starts a touch %s Game with the chosen First Dealer without changing seats", async (mode) => {
   const page = await browser.newPage({
     viewport: { width: 390, height: 844 },
@@ -254,12 +310,13 @@ it.each([
     reducedMotion: "reduce",
   });
   try {
-    await openSetup(page);
+    const phase10 = mode === "Phase 10";
+    await openSetup(page, phase10 ? "phaseCompan10n" : "scorekeeper");
     for (const name of ["Amy", "Bob"]) {
       await page.getByRole("button", { name, exact: true }).tap();
     }
-    await enableDealer(page);
-    if (mode !== "Points") {
+    if (!phase10) await enableDealer(page);
+    if (!phase10 && mode !== "Points") {
       await page.getByRole("tab", { name: "Settings", exact: true }).tap();
       await page.getByLabel("Scoring Mode", { exact: true }).tap();
       await page.getByRole("option", { name: mode, exact: true }).tap();
@@ -268,18 +325,29 @@ it.each([
     await page.getByRole("button", { name: "Choose First Dealer", exact: true }).tap();
     await page.getByRole("option", { name: "Bob", exact: true }).tap();
     await page.getByRole("button", { name: "Start", exact: true }).tap();
-    await page.waitForURL(/#\/scorekeeper\/game\/[^/]+$/);
-    const dealer = page.getByRole("cell", { name: "Bob, upcoming Round: Dealer", exact: true });
-    await dealer.waitFor();
-    const headers = page.getByRole("columnheader");
-    expect(await headers.count()).toBe(3);
-    expect(await headers.nth(1).getByText("Amy", { exact: true }).count()).toBe(1);
-    expect(await headers.nth(2).getByText("Bob", { exact: true }).count()).toBe(1);
+    await page.waitForURL(/#\/(scorekeeper|phaseCompan10n)\/game\/[^/]+$/);
+    const dealer = phase10
+      ? page.getByText("Upcoming Round Dealer: Bob", { exact: true })
+      : page.getByRole("cell", { name: "Bob, upcoming Round: Dealer", exact: true });
+    await dealer.waitFor({ state: "attached" });
+    const headers = phase10
+      ? page.locator(".scoreboard-cell--sticky-top")
+      : page.getByRole("columnheader");
+    const offset = phase10 ? 0 : 1;
+    expect(await headers.count()).toBe(2 + offset);
+    expect(await headers.nth(offset).getByText("Amy", { exact: true }).count()).toBe(1);
+    expect(
+      await headers
+        .nth(offset + 1)
+        .getByText("Bob", { exact: true })
+        .count(),
+    ).toBe(1);
     expect(
       await page.getByRole("button", { name: "Choose First Dealer", exact: true }).count(),
     ).toBe(0);
     await page.reload();
-    await dealer.waitFor();
+    await dealer.waitFor({ state: "attached" });
+    if (phase10) return;
     await page.getByRole("button", { name: "Finish Game", exact: true }).tap();
     await page
       .getByRole("dialog", { name: "Finish Game", exact: true })

@@ -408,14 +408,8 @@ it.each([
   );
 });
 
-it("does not complete an empty or unfinished solo roster, while preserving a solo Player's actual finish", async () => {
-  const { game: empty } = await createGame(1, "lowestPoints", 0);
-  expect(await gamesApi.getView(empty.id)).toMatchObject({
-    automaticCompletion: false,
-    pendingFinishChoice: null,
-    standings: { gameWinner: null },
-  });
-  await expect(gamesApi.finish(empty.id)).rejects.toThrow();
+it("rejects an empty roster and does not complete an unfinished solo roster, while preserving a solo Player's actual finish", async () => {
+  await expect(createGame(1, "lowestPoints", 0)).rejects.toThrow("First Dealer");
   const {
     game: solo,
     players: [amy],
@@ -440,7 +434,6 @@ it("does not complete an empty or unfinished solo roster, while preserving a sol
     status: "completed",
     winnerIds: [amy.id],
   });
-  expect((await gamesApi.getView(empty.id))?.game.status).toBe("active");
 });
 
 it("rejects a new-Round draft after a correction changes phase assignments without changing its Round number", async () => {
@@ -657,6 +650,7 @@ async function createGame(
   );
   const game = await gamesApi.create({
     players: players.map((player) => player.id),
+    firstDealer: players[0] ? { type: "player", playerId: players[0].id } : { type: "random" },
     phaseSet: {
       id: "short",
       type: "temporary",
