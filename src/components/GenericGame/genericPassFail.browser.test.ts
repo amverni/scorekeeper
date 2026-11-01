@@ -307,14 +307,16 @@ it("saves all-fail, mixed, and all-pass full rosters with pass totals and rotati
       ).toContain(`Total Passes: ${total}`);
     }
     await page.getByRole("button", { name: "Expand Round 2", exact: true }).click();
-    expect(
-      await page.getByRole("cell", { name: "Maya, Round 2: Passed", exact: true }).innerText(),
-    ).toContain("Accumulated Passes: 1");
-    expect(
-      await page
-        .getByRole("cell", { name: "Rowan, Round 2: Failed, Dealer", exact: true })
-        .innerText(),
-    ).toContain("Accumulated Passes: 0");
+    await expect
+      .poll(() =>
+        page.getByRole("cell", { name: "Maya, Round 2: Passed", exact: true }).innerText(),
+      )
+      .toContain("Accumulated Passes: 1");
+    await expect
+      .poll(() =>
+        page.getByRole("cell", { name: "Rowan, Round 2: Failed, Dealer", exact: true }).innerText(),
+      )
+      .toContain("Accumulated Passes: 0");
     const view = await readScoreboard(page, game.id);
     expect(
       view.standings.map(({ player, place, ...total }) => ({ id: player.id, ...total, place })),
@@ -381,9 +383,11 @@ it("finishes tied Passes with competition places and preserves completed snapsho
     expect(await page.getByRole("button", { name: "Add Round", exact: true }).count()).toBe(0);
     expect(await page.getByRole("button", { name: "Finish Game", exact: true }).count()).toBe(0);
     await page.getByRole("button", { name: "Expand Round 1", exact: true }).click();
-    expect(
-      await page.getByRole("cell", { name: "Rowan, Round 1: Passed", exact: true }).innerText(),
-    ).toContain("Accumulated Passes: 1");
+    await expect
+      .poll(() =>
+        page.getByRole("cell", { name: "Rowan, Round 1: Passed", exact: true }).innerText(),
+      )
+      .toContain("Accumulated Passes: 1");
     expect(await standings.count()).toBe(0);
     await returnToDashboard(page);
     await page.getByText("No active games yet", { exact: true }).waitFor();
@@ -491,7 +495,7 @@ it.each([
     const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
     const confirmation = page.getByRole("dialog", { name: "Edit round", exact: true });
     const toggleNames = passed ? ["Rowan", "Lee"] : ["Maya"];
-    await edit.click();
+    await edit.press("Enter");
     await editor.getByRole("group", { name: "Players who passed", exact: true }).waitFor();
     await expectOutcome(editor.getByRole("button", { name: "Maya", exact: true }), true);
     await expectOutcome(editor.getByRole("button", { name: "Rowan", exact: true }), false);
@@ -519,7 +523,7 @@ it.each([
 
     await editor.getByRole("button", { name: "Close", exact: true }).click();
     await editor.waitFor({ state: "detached" });
-    await edit.click();
+    await edit.press("Enter");
     await expectOutcome(editor.getByRole("button", { name: "Maya", exact: true }), true);
     await expectOutcome(editor.getByRole("button", { name: "Rowan", exact: true }), false);
     for (const name of toggleNames) await editor.getByRole("button", { name, exact: true }).click();
@@ -556,7 +560,7 @@ it("blocks duplicate pending Pass/Fail edits and retains outcomes after a failed
     await saveRound(page, ["Maya"]);
     await saveRound(page, ["Maya"]);
     await page.getByRole("button", { name: "Expand Round 1", exact: true }).click();
-    await page.getByRole("button", { name: "Edit Round 1 for Maya", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 1 for Maya", exact: true }).press("Enter");
     const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
     const maya = editor.getByRole("button", { name: "Maya", exact: true });
     await maya.click();
@@ -621,7 +625,7 @@ it("surfaces stale Pass/Fail history without overwriting it or discarding the ed
     const saved = await readRounds(page, game.id);
     await page.getByRole("button", { name: "Expand Round 1", exact: true }).click();
     const edit = page.getByRole("button", { name: "Edit Round 1 for Maya", exact: true });
-    await edit.click();
+    await edit.press("Enter");
     const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
     await editor.getByRole("button", { name: "Maya", exact: true }).click();
     await page.evaluate(`(async () => {
@@ -637,7 +641,7 @@ it("surfaces stale Pass/Fail history without overwriting it or discarding the ed
     expect((await readRounds(page, game.id))[0]).toEqual(saved[0]);
     await editor.getByRole("button", { name: "Close", exact: true }).click();
     await editor.waitFor({ state: "detached" });
-    await edit.click();
+    await edit.press("Enter");
     await expectOutcome(editor.getByRole("button", { name: "Maya", exact: true }), true);
   } finally {
     await page.close();

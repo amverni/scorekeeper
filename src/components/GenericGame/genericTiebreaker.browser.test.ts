@@ -316,7 +316,7 @@ it("targets two independent numeric fields with one keypad and preserves the dra
     const header = page.getByRole("columnheader").filter({ hasText: "Maya" });
     expect(await header.innerText()).toContain("Total Tiebreaker: -2");
     await page.getByRole("button", { name: "Expand Round 1", exact: true }).click();
-    expect(await mayaCell.innerText()).toContain("Accumulated Tiebreaker: -2");
+    await expect.poll(() => mayaCell.innerText()).toContain("Accumulated Tiebreaker: -2");
     await page.getByRole("button", { name: "Open Standings", exact: true }).click();
     const standings = page.getByRole("dialog", { name: "Standings", exact: true });
     const rows = standings.getByRole("listitem");

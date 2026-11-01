@@ -334,11 +334,13 @@ it.each([
     expect(await page.getByRole("button", { name: "Expand Round 2", exact: true }).count()).toBe(0);
     expect(await page.getByRole("cell", { name: /upcoming Round/ }).count()).toBe(0);
     await page.getByRole("button", { name: "Expand Round 1", exact: true }).click();
-    expect(
-      await page
-        .getByRole("cell", { name: "Maya, Round 1: 5 Points, Dealer", exact: true })
-        .innerText(),
-    ).toContain("Accumulated Points: 5");
+    await expect
+      .poll(() =>
+        page
+          .getByRole("cell", { name: "Maya, Round 1: 5 Points, Dealer", exact: true })
+          .innerText(),
+      )
+      .toContain("Accumulated Points: 5");
     expect(await standings.count()).toBe(0);
     await page.getByRole("button", { name: "Open Standings", exact: true }).click();
     await places.waitFor();

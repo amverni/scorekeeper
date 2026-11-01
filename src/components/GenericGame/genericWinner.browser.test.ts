@@ -120,12 +120,14 @@ it("selects the mode in fresh setup and records one winner with reselection, ret
     await save.click();
     await dialog.waitFor({ state: "hidden" });
     await page.getByRole("button", { name: "Expand Round 1", exact: true }).click();
-    expect(
-      await page.getByRole("cell", { name: "Amy, Round 1: Won", exact: true }).innerText(),
-    ).toContain("Accumulated Wins: 1");
-    expect(
-      await page.getByRole("cell", { name: "Zed, Round 1: Lost, Dealer", exact: true }).innerText(),
-    ).toContain("Accumulated Wins: 0");
+    await expect
+      .poll(() => page.getByRole("cell", { name: "Amy, Round 1: Won", exact: true }).innerText())
+      .toContain("Accumulated Wins: 1");
+    await expect
+      .poll(() =>
+        page.getByRole("cell", { name: "Zed, Round 1: Lost, Dealer", exact: true }).innerText(),
+      )
+      .toContain("Accumulated Wins: 0");
     await page.getByRole("button", { name: "Open Standings", exact: true }).click();
     const standings = page.getByRole("dialog", { name: "Standings", exact: true });
     expect(await standings.getByRole("listitem").allTextContents()).toEqual([
@@ -163,12 +165,14 @@ it("selects the mode in fresh setup and records one winner with reselection, ret
     await standings.waitFor({ state: "hidden" });
     expect(await page.getByRole("button", { name: /Add Round|Finish Game|Edit/ }).count()).toBe(0);
     await page.getByRole("button", { name: "Expand Round 2", exact: true }).click();
-    expect(
-      await page.getByRole("cell", { name: "Zed, Round 2: Won", exact: true }).innerText(),
-    ).toContain("Accumulated Wins: 1");
-    expect(
-      await page.getByRole("cell", { name: "Amy, Round 2: Lost, Dealer", exact: true }).innerText(),
-    ).toContain("Accumulated Wins: 1");
+    await expect
+      .poll(() => page.getByRole("cell", { name: "Zed, Round 2: Won", exact: true }).innerText())
+      .toContain("Accumulated Wins: 1");
+    await expect
+      .poll(() =>
+        page.getByRole("cell", { name: "Amy, Round 2: Lost, Dealer", exact: true }).innerText(),
+      )
+      .toContain("Accumulated Wins: 1");
     expect(await page.getByRole("columnheader", { name: /Renamed/ }).count()).toBe(0);
     await returnToDashboard(page);
     expect(await page.getByRole("link", { name: /Continue game with/ }).count()).toBe(0);

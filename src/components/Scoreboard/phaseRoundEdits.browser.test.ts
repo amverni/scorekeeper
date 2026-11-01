@@ -177,7 +177,7 @@ it("preserves consequential drafts through safe dismissal and failed saves, then
     await addFailedRound(page, game.id, players);
     await page.goto(`${appUrl}#/phaseCompan10n/game/${game.id}`);
     await page.getByRole("button", { name: "Round 2", exact: true }).click();
-    await page.getByRole("button", { name: "Edit Round 2 for Amy", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 2 for Amy", exact: true }).press("Enter");
     const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
     await editor.getByRole("button", { name: /Round Winner/ }).click();
     await page.getByRole("option", { name: "Amy", exact: true }).click();
@@ -251,7 +251,7 @@ it("preserves consequential drafts through safe dismissal and failed saves, then
     await choice.getByRole("button", { name: "Keep playing", exact: true }).click();
     await choice.waitFor({ state: "detached" });
     await page.getByRole("button", { name: "Round 2", exact: true }).click();
-    await page.getByRole("button", { name: "Edit Round 2 for Bob", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 2 for Bob", exact: true }).press("Enter");
     await editor.getByRole("button", { name: /Round Winner/ }).click();
     await page.getByRole("option", { name: "Bob", exact: true }).click();
     await editor.getByRole("button", { name: "Save round", exact: true }).click();
@@ -287,7 +287,7 @@ it("mutes retained entries and revalidates an ineligible draft winner without lo
     await add.waitFor({ state: "detached" });
 
     await page.getByRole("button", { name: "Round 2", exact: true }).click();
-    await page.getByRole("button", { name: "Edit Round 2 for Amy", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 2 for Amy", exact: true }).press("Enter");
     const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
     await editor.getByRole("button", { name: /Round Winner/ }).click();
     await page.getByRole("option", { name: "Amy", exact: true }).click();
@@ -326,7 +326,7 @@ it("mutes retained entries and revalidates an ineligible draft winner without lo
     await add.waitFor({ state: "detached" });
 
     await page.getByRole("button", { name: "Round 2", exact: true }).click();
-    await page.getByRole("button", { name: "Edit Round 2 for Amy", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 2 for Amy", exact: true }).press("Enter");
     await editor.getByRole("button", { name: "Failed", exact: true }).click();
     await editor.getByRole("button", { name: "Save round", exact: true }).click();
     await page
@@ -397,7 +397,7 @@ it("allows correcting an excluded Rounds Won entry without inventing a winner fo
     `);
     await page.goto(`${appUrl}#/phaseCompan10n/game/${gameId}`);
     await page.getByRole("button", { name: "Round 3", exact: true }).click();
-    await page.getByRole("button", { name: "Edit Round 3 for Amy", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 3 for Amy", exact: true }).press("Enter");
     const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
     await editor.getByRole("button", { name: "Failed", exact: true }).click();
     await editor.getByRole("tab", { name: "Bob", exact: true }).click();
@@ -538,7 +538,7 @@ it("creates selectable play, preserves per-Player Phase drafts, and reloads numb
     await add.getByRole("button", { name: "Close", exact: true }).click();
     await add.waitFor({ state: "detached" });
     await page.getByRole("button", { name: "Round 1", exact: true }).click();
-    await page.getByRole("button", { name: "Edit Round 1 for Amy", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 1 for Amy", exact: true }).press("Enter");
     const edit = page.getByRole("dialog", { name: "Edit Round", exact: true });
     const recordedPhase = edit.getByRole("button", { name: /^Phase\b/ });
     await recordedPhase.waitFor();
@@ -599,7 +599,7 @@ it("revalidates a preserved Selected Phase after correction and retains the draf
     await add.getByRole("button", { name: "Close", exact: true }).click();
     await add.waitFor({ state: "detached" });
     await page.getByRole("button", { name: "Round 1", exact: true }).click();
-    await page.getByRole("button", { name: "Edit Round 1 for Amy", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 1 for Amy", exact: true }).press("Enter");
     const edit = page.getByRole("dialog", { name: "Edit Round", exact: true });
     await edit.getByRole("button", { name: "Passed", exact: true }).click();
     await edit.getByRole("button", { name: "Save round", exact: true }).click();
@@ -618,7 +618,7 @@ it("revalidates a preserved Selected Phase after correction and retains the draf
     });
     expect(corrected.players[0].tiebreakerTotal).toBe(5);
     await page.getByRole("button", { name: "Round 2", exact: true }).click();
-    await page.getByRole("button", { name: "Edit Round 2 for Amy", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 2 for Amy", exact: true }).press("Enter");
     const historicalPhase = edit.getByRole("button", { name: /^Phase\b/ });
     await historicalPhase.waitFor();
     expect((await historicalPhase.innerText()).trim()).toBe("Phase 3");
@@ -710,7 +710,7 @@ it("uses historical Phase availability, blocks duplicate outcomes, and reloads a
     const before = await readView(page, gameId);
     await page.goto(`${appUrl}#/phaseCompan10n/game/${gameId}`);
     await page.getByRole("button", { name: "Round 2", exact: true }).click();
-    await page.getByRole("button", { name: "Edit Round 2 for Amy", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 2 for Amy", exact: true }).press("Enter");
     const edit = page.getByRole("dialog", { name: "Edit Round", exact: true });
     const phase = edit.getByRole("button", { name: /^Phase\b/ });
     await phase.waitFor();
@@ -826,7 +826,7 @@ it("confirms middle-Round deletion once, preserves canceled and failed editor dr
     const before = await readView(page, game.id);
     await page.goto(`${appUrl}#/phaseCompan10n/game/${game.id}`);
     await page.getByRole("button", { name: "Round 2", exact: true }).click();
-    await page.getByRole("button", { name: "Edit Round 2 for Amy", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 2 for Amy", exact: true }).press("Enter");
     const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
     await editor.getByRole("button", { name: "Passed", exact: true }).click();
     const remove = editor.getByRole("button", { name: "Delete Round", exact: true });
@@ -929,7 +929,7 @@ it("deletes the only saved Round without deleting its Game and reloads an empty 
     const { game } = await seedGame(page);
     await page.goto(`${appUrl}#/phaseCompan10n/game/${game.id}`);
     await page.getByRole("button", { name: "Round 1", exact: true }).click();
-    await page.getByRole("button", { name: "Edit Round 1 for Amy", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 1 for Amy", exact: true }).press("Enter");
     await page
       .getByRole("dialog", { name: "Edit Round", exact: true })
       .getByRole("button", { name: "Delete Round", exact: true })

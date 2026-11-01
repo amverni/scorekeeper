@@ -69,7 +69,7 @@ it("reopens a first-finisher result without recovering its old choice and restor
     await firstRound.click();
     await page
       .getByRole("button", { name: `Edit Round 1 for ${players[0].name}`, exact: true })
-      .click();
+      .press("Enter");
     const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
     await editor.getByRole("button", { name: "Failed", exact: true }).click();
     await editor.getByRole("button", { name: /Round Winner/ }).click();

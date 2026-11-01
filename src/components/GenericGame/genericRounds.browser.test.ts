@@ -416,7 +416,9 @@ it("rotates visible saved and upcoming Dealer markers, including expanded and re
       name: "Rowan, Round 1: -9007199254740991 Points, Dealer",
       exact: true,
     });
-    expect(await firstDealer.innerText()).toContain("Accumulated Points: -9007199254740991");
+    await expect
+      .poll(() => firstDealer.innerText())
+      .toContain("Accumulated Points: -9007199254740991");
     expect(await firstDealer.getByText("D", { exact: true }).count()).toBe(1);
     await page.reload();
     await firstDealer.waitFor();
@@ -545,9 +547,11 @@ it("shows cumulative headers, editable Round details, and shared competition pla
     expect(await headers.nth(1).innerText()).toContain("Total Points: 5");
     expect(await headers.nth(2).innerText()).toContain("Total Points: -2");
     await page.getByRole("button", { name: "Expand Round 1", exact: true }).click();
-    expect(
-      await page.getByRole("cell", { name: "Maya, Round 1: -10 Points", exact: true }).innerText(),
-    ).toContain("Accumulated Points: -10");
+    await expect
+      .poll(() =>
+        page.getByRole("cell", { name: "Maya, Round 1: -10 Points", exact: true }).innerText(),
+      )
+      .toContain("Accumulated Points: -10");
     expect(await page.getByRole("button", { name: /^Edit Round 1 for / }).count()).toBe(3);
     expect(await page.getByRole("button", { name: /Delete/ }).count()).toBe(0);
     await page.getByRole("button", { name: "Open Standings", exact: true }).click();

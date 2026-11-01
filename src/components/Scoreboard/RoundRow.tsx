@@ -1,4 +1,3 @@
-import { Pencil } from "lucide-react";
 import type { GameRoundView, GameTiebreaker, PlayerId, PlayerIdentity } from "../../types";
 import { formatTiebreakerValue } from "../../utils";
 import { Button } from "../ui";
@@ -57,10 +56,10 @@ export function RoundRow({
           <Button
             type="button"
             aria-label={`Edit Round ${round.roundNumber}`}
-            className="mt-2 min-h-11 w-8"
+            className="scorecard-edit text-xs"
             onClick={() => onEdit()}
           >
-            <Pencil className="size-4" aria-hidden />
+            Edit
           </Button>
         )}
       </div>
@@ -97,7 +96,12 @@ export function RoundRow({
                   variant="completed"
                   extras={
                     <div
-                      className={`scoreboard-extras ${isExpanded ? "scoreboard-extras--open" : ""}`}
+                      className={[
+                        "scoreboard-extras",
+                        isExpanded ? "scoreboard-extras--open" : "",
+                      ].join(" ")}
+                      aria-hidden={!isExpanded}
+                      inert={!isExpanded}
                     >
                       <div>
                         <span className="text-[14px] leading-none text-text-secondary tabular-nums">
@@ -110,23 +114,23 @@ export function RoundRow({
                         <span className="text-[12px] leading-none text-text-secondary/70 tabular-nums">
                           {formatTiebreakerValue(entry.runningTiebreakerTotal, tiebreaker)}
                         </span>
-                        {isExpanded && onEdit && (
-                          <Button
-                            type="button"
-                            aria-label={`Edit Round ${round.roundNumber} for ${player.name}`}
-                            className="mt-1 min-h-11 min-w-11"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              onEdit(player.id);
-                            }}
-                          >
-                            <Pencil className="size-4" aria-hidden />
-                          </Button>
-                        )}
                       </div>
                     </div>
                   }
                 />
+                {isExpanded && onEdit && (
+                  <Button
+                    type="button"
+                    aria-label={`Edit Round ${round.roundNumber} for ${player.name}`}
+                    className="scorecard-edit text-xs"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onEdit(player.id);
+                    }}
+                  >
+                    Edit
+                  </Button>
+                )}
               </>
             )}
           </div>

@@ -29,6 +29,36 @@
   box-shadow: inset 0 0 0 3px var(--color-text-primary);
 }
 
+.scorecard-edit {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border-width: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.scorecard-edit:focus-visible {
+  inset-inline: 3px;
+  bottom: 3px;
+  z-index: 1;
+  width: auto;
+  height: auto;
+  min-height: 32px;
+  padding: 4px 0;
+  border-width: 1px;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  pointer-events: auto;
+  outline: 2px solid var(--color-text-secondary);
+  outline-offset: -2px;
+}
+
 [data-hold-round] {
   -webkit-touch-callout: none;
   user-select: none;
@@ -199,20 +229,28 @@
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
+  visibility: hidden;
   width: 100%;
-  transition: grid-template-rows 400ms ease, opacity 400ms ease;
+  padding-top: 0;
+  transition:
+    grid-template-rows 400ms ease,
+    opacity 400ms ease,
+    visibility 400ms,
+    padding-top 400ms ease;
 }
 .scoreboard-extras--open {
   grid-template-rows: 1fr;
   opacity: 1;
+  visibility: visible;
+  padding-top: 6px;
 }
 .scoreboard-extras > div {
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding-top: 6px;
 }
 
 .round-result-secondary {
@@ -251,6 +289,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .scoreboard-extras {
+    transition: none;
+  }
+
   .round-result-secondary {
     transform: none;
     transition: none;

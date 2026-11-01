@@ -179,7 +179,7 @@ it.each(
     await page.getByRole("navigation").waitFor({ state: "detached" });
     await page.getByRole("button", { name: /^Round 1|^Expand Round 1/ }).click();
     const edit = page.getByRole("button", { name: "Edit Round 1 for Amelia", exact: true });
-    await edit.click();
+    await edit.press("Enter");
     const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
     await editor.getByRole("tab", { name: "Amelia", exact: true }).waitFor();
     if (owner === "phase10") {

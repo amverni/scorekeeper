@@ -42,7 +42,7 @@ it.each([
     await addDialog.getByRole("button", { name: "Close", exact: true }).click();
     await addDialog.waitFor({ state: "detached" });
     await page.getByRole("button", { name: "Expand Round 1", exact: true }).click();
-    await page.getByRole("button", { name: "Edit Round 1 for Maya", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 1 for Maya", exact: true }).press("Enter");
     const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
     await enterPoints(page, editor, "-5");
     const confirmation = page.getByRole("dialog", { name: "Edit round", exact: true });
@@ -142,7 +142,7 @@ it("discards an unsaved correction and reopens the saved values instead of a cac
     for (let attempt = 0; attempt < 2; attempt++) {
       const expand = page.getByRole("button", { name: "Expand Round 1", exact: true });
       if (await expand.count()) await expand.click();
-      await page.getByRole("button", { name: "Edit Round 1 for Maya", exact: true }).click();
+      await page.getByRole("button", { name: "Edit Round 1 for Maya", exact: true }).press("Enter");
       expect(
         await editor.getByRole("status", { name: "Maya Points", exact: true }).innerText(),
       ).toBe("10");
@@ -524,7 +524,7 @@ it("rejects stale confirmation without losing the draft and reloads fresh values
   try {
     const gameId = await openGame(page);
     await page.getByRole("button", { name: "Expand Round 1", exact: true }).click();
-    await page.getByRole("button", { name: "Edit Round 1 for Maya", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 1 for Maya", exact: true }).press("Enter");
     const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
     await enterPoints(page, editor, "-5");
     await editor.getByRole("button", { name: "Save", exact: true }).click();
@@ -550,7 +550,7 @@ it("rejects stale confirmation without losing the draft and reloads fresh values
     );
     await editor.getByRole("button", { name: "Close", exact: true }).click();
     await editor.waitFor({ state: "detached" });
-    await page.getByRole("button", { name: "Edit Round 1 for Maya", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 1 for Maya", exact: true }).press("Enter");
     expect(await editor.getByRole("status", { name: "Maya Points", exact: true }).innerText()).toBe(
       "9",
     );
@@ -646,12 +646,12 @@ it.each([
     await page.getByRole("cell", { name: "Rowan, Round 1: Won", exact: true }).waitFor();
     await add.waitFor();
     await page.getByRole("button", { name: "Expand Round 1", exact: true }).click();
-    await page.getByRole("button", { name: "Edit Round 1 for Maya", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 1 for Maya", exact: true }).press("Enter");
     expect(await rowan.isChecked()).toBe(true);
     await maya.click();
     await editor.getByRole("button", { name: "Close", exact: true }).click();
     await editor.waitFor({ state: "detached" });
-    await page.getByRole("button", { name: "Edit Round 1 for Maya", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 1 for Maya", exact: true }).press("Enter");
     expect(await rowan.isChecked()).toBe(true);
   } finally {
     await page.close();
@@ -669,7 +669,7 @@ it("retains a failed winner correction and prevents duplicate confirmed saves wh
       dealer: false,
     });
     await page.getByRole("button", { name: "Expand Round 1", exact: true }).click();
-    await page.getByRole("button", { name: "Edit Round 1 for Rowan", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 1 for Rowan", exact: true }).press("Enter");
     const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
     await editor.getByRole("radio", { name: "Rowan", exact: true }).click();
     await editor.getByRole("button", { name: "Save", exact: true }).click();
@@ -739,7 +739,7 @@ it("surfaces stale winner approval, keeps the correction draft, and reloads save
       dealer: false,
     });
     await page.getByRole("button", { name: "Expand Round 1", exact: true }).click();
-    await page.getByRole("button", { name: "Edit Round 1 for Rowan", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 1 for Rowan", exact: true }).press("Enter");
     const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
     await editor.getByRole("radio", { name: "Rowan", exact: true }).click();
     await editor.getByRole("button", { name: "Save", exact: true }).click();
@@ -758,7 +758,7 @@ it("surfaces stale winner approval, keeps the correction draft, and reloads save
     expect(await editor.getByRole("radio", { name: "Rowan", exact: true }).isChecked()).toBe(true);
     await editor.getByRole("button", { name: "Close", exact: true }).click();
     await editor.waitFor({ state: "detached" });
-    await page.getByRole("button", { name: "Edit Round 1 for Rowan", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Round 1 for Rowan", exact: true }).press("Enter");
     expect(await editor.getByRole("radio", { name: "Maya", exact: true }).isChecked()).toBe(true);
     await editor.getByRole("button", { name: "Save", exact: true }).click();
     await editor.waitFor({ state: "detached" });

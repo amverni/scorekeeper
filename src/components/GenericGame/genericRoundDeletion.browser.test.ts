@@ -262,7 +262,7 @@ async function openGame(page: Page, settings: GenericGameSettings) {
 async function openEditor(page: Page) {
   const expand = page.getByRole("button", { name: "Expand Round 1", exact: true });
   if (await expand.count()) await expand.click();
-  await page.getByRole("button", { name: "Edit Round 1 for Maya", exact: true }).click();
+  await page.getByRole("button", { name: "Edit Round 1 for Maya", exact: true }).press("Enter");
   const editor = page.getByRole("dialog", { name: "Edit Round", exact: true });
   await editor.getByRole("button", { name: "Close", exact: true }).waitFor();
   return editor;

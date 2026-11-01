@@ -273,47 +273,52 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
                           )}
                         </div>
                       </div>
-                      {expandedRound === round.roundNumber && (
-                        <div
-                          id={`${resultsId}-${round.roundNumber}-${index}`}
-                          className="scoreboard-extras scoreboard-extras--open"
-                        >
-                          <div className="text-xs leading-none text-text-secondary/70">
-                            <span
-                              aria-hidden
-                              className="my-0.5 h-px w-3/4 shrink-0 bg-text-secondary/70"
-                            />
+                      <div
+                        id={`${resultsId}-${round.roundNumber}-${index}`}
+                        className={[
+                          "scoreboard-extras",
+                          expandedRound === round.roundNumber ? "scoreboard-extras--open" : "",
+                        ].join(" ")}
+                        aria-hidden={expandedRound !== round.roundNumber}
+                        inert={expandedRound !== round.roundNumber}
+                      >
+                        <div className="text-xs leading-none text-text-secondary/70">
+                          <span
+                            aria-hidden
+                            className="my-0.5 h-px w-3/4 shrink-0 bg-text-secondary/70"
+                          />
+                          <span>
+                            <span className="sr-only">Accumulated {metric}: </span>
+                            {primaryTotal(score)}
+                          </span>
+                          {"totalTiebreaker" in score && score.totalTiebreaker !== undefined && (
                             <span>
-                              <span className="sr-only">Accumulated {metric}: </span>
-                              {primaryTotal(score)}
+                              <span className="sr-only">Accumulated Tiebreaker: </span>
+                              {score.totalTiebreaker}
                             </span>
-                            {"totalTiebreaker" in score && score.totalTiebreaker !== undefined && (
-                              <span>
-                                <span className="sr-only">Accumulated Tiebreaker: </span>
-                                {score.totalTiebreaker}
-                              </span>
-                            )}
-                            {view.game.status === "active" && round.id && (
-                              <Button
-                                type="button"
-                                aria-label={`Edit Round ${round.roundNumber} for ${view.players[index].name}`}
-                                className="mt-2 min-h-11 px-3 text-xs"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  if (round.id) {
-                                    setEditTarget({
-                                      roundId: round.id,
-                                      playerId: score.playerId,
-                                    });
-                                  }
-                                }}
-                              >
-                                Edit
-                              </Button>
-                            )}
-                          </div>
+                          )}
                         </div>
-                      )}
+                      </div>
+                      {expandedRound === round.roundNumber &&
+                        view.game.status === "active" &&
+                        round.id && (
+                          <Button
+                            type="button"
+                            aria-label={`Edit Round ${round.roundNumber} for ${view.players[index].name}`}
+                            className="scorecard-edit text-xs"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              if (round.id) {
+                                setEditTarget({
+                                  roundId: round.id,
+                                  playerId: score.playerId,
+                                });
+                              }
+                            }}
+                          >
+                            Edit
+                          </Button>
+                        )}
                     </td>
                   );
                 })}

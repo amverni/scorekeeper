@@ -77,8 +77,8 @@ it.each([
       (await box(cell.getByText("-9007199254740991", { exact: true }))).x,
     );
     await cell.click();
-    expect(await cell.innerText()).toContain("Accumulated Points: -9007199254740991");
-    expect(await cell.innerText()).toContain("Accumulated Tiebreaker: 9007199254740991");
+    await expect.poll(() => cell.innerText()).toContain("Accumulated Points: -9007199254740991");
+    await expect.poll(() => cell.innerText()).toContain("Accumulated Tiebreaker: 9007199254740991");
     expect(await cell.getAttribute("aria-describedby")).toBeTruthy();
     expect(await card.getByRole("row").last().getByRole("cell").allTextContents()).toEqual(["D"]);
     const upcomingDealer = await box(
@@ -421,9 +421,16 @@ it.each(
       const before = await box(value);
       const savedBounds = await box(cell);
       await cell.tap();
+      await expect
+        .poll(() =>
+          cell
+            .locator(".scoreboard-extras")
+            .evaluate((element) => getComputedStyle(element).opacity),
+        )
+        .toBe("1");
       expect(await box(value)).toEqual(before);
       expect((await box(cell)).height).toBe(
-        settings.tiebreaker ? (playerCount === 1 ? 151 : 152) : playerCount === 1 ? 119 : 120,
+        settings.tiebreaker ? (playerCount === 1 ? 97 : 98) : playerCount === 1 ? 65 : 66,
       );
       expect(await cell.getByRole("button", { name: /^Edit Round/ }).count()).toBe(1);
       for (const detail of await cell.locator(".scoreboard-extras span:has(> .sr-only)").all()) {
@@ -431,6 +438,13 @@ it.each(
         expect(bounds.x + bounds.width / 2).toBeCloseTo(before.x + before.width / 2, 1);
       }
       await cell.tap();
+      await expect
+        .poll(() =>
+          cell
+            .locator(".scoreboard-extras")
+            .evaluate((element) => getComputedStyle(element).opacity),
+        )
+        .toBe("0");
       expect(await box(cell)).toEqual(savedBounds);
     } finally {
       await page.close();
@@ -568,9 +582,14 @@ it.each(
     const before = await box(control.locator("span"));
     await cell.tap();
     expect(await control.getAttribute("aria-expanded")).toBe("true");
-    expect(await cell.innerText()).toContain(
-      `Accumulated ${metric}: ${settings.mode === "points" ? "-12" : "1"}`,
-    );
+    await expect
+      .poll(() => cell.innerText())
+      .toContain(`Accumulated ${metric}: ${settings.mode === "points" ? "-12" : "1"}`);
+    await expect
+      .poll(() =>
+        cell.locator(".scoreboard-extras").evaluate((element) => getComputedStyle(element).opacity),
+      )
+      .toBe("1");
     const after = await box(control.locator("span"));
     expect(after.y).toBe(before.y);
     expect((await box(row.getByRole("rowheader"))).height).toBe((await box(cell)).height);
@@ -582,9 +601,9 @@ it.each(
     expect(await control.getAttribute("aria-expanded")).toBe("false");
     expect(await next.getAttribute("aria-expanded")).toBe("true");
     expect(await card.getByRole("button", { expanded: true }).count()).toBe(1);
-    expect(await card.getByRole("row").nth(2).getByRole("cell").first().innerText()).toContain(
-      `Accumulated ${metric}: ${settings.mode === "points" ? "-5" : "1"}`,
-    );
+    await expect
+      .poll(() => card.getByRole("row").nth(2).getByRole("cell").first().innerText())
+      .toContain(`Accumulated ${metric}: ${settings.mode === "points" ? "-5" : "1"}`);
     await page.locator(".page-shell-header").tap({ position: { x: 2, y: 2 } });
     expect(await next.getAttribute("aria-expanded")).toBe("false");
     await control.focus();
