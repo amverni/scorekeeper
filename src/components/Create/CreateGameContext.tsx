@@ -6,6 +6,7 @@ import { phaseSetPhasesOptions } from "../../data/hooks/usePhaseSets";
 import { appSettingsOptions } from "../../data/hooks/useSettings";
 import type {
   AppGameDefaults,
+  FirstDealerSelection,
   GameSettings,
   GameTiebreaker,
   Phase,
@@ -28,6 +29,8 @@ interface CreateGameContextValue {
     retry: () => void;
   };
   settings: GameSettings;
+  firstDealer: FirstDealerSelection;
+  setFirstDealer: (selection: FirstDealerSelection) => void;
   setInOrderPhases: (value: boolean) => void;
   setTiebreaker: (tiebreaker: GameTiebreaker) => void;
   setRoundSkipPenalty: (value: number) => void;
@@ -56,8 +59,13 @@ export function CreateGameProvider({ children }: { children: ReactNode }) {
   });
   const [players, setPlayers] = useState<Player[]>([]);
   const [phases, setGamePhases] = useState<Phase[]>([]);
-  const settingsForm = useForm({ defaultValues: { settings: resolveDefaultGameSettings() } });
+  const defaultValues: { settings: GameSettings; firstDealer: FirstDealerSelection } = {
+    settings: resolveDefaultGameSettings(),
+    firstDealer: { type: "random" },
+  };
+  const settingsForm = useForm({ defaultValues });
   const settings = useStore(settingsForm.store, (state) => state.values.settings);
+  const firstDealer = useStore(settingsForm.store, (state) => state.values.firstDealer);
   const setSettings = (update: GameSettings | ((previous: GameSettings) => GameSettings)) =>
     settingsForm.setFieldValue("settings", update);
   const [settingsInitialized, setSettingsInitialized] = useState(false);
@@ -107,6 +115,8 @@ export function CreateGameProvider({ children }: { children: ReactNode }) {
       },
     },
     settings,
+    firstDealer,
+    setFirstDealer: (selection) => settingsForm.setFieldValue("firstDealer", selection),
     setInOrderPhases: (inOrderPhases) => {
       settingsDirtyRef.current = true;
       setSettings((prev) => ({ ...prev, inOrderPhases }));
@@ -142,7 +152,13 @@ export function CreateGameProvider({ children }: { children: ReactNode }) {
         players,
         addPlayer: (player) =>
           setPlayers((prev) => (prev.some((p) => p.id === player.id) ? prev : [...prev, player])),
-        removePlayer: (id) => setPlayers((prev) => prev.filter((p) => p.id !== id)),
+        removePlayer: (id) => {
+          const choice = settingsForm.getFieldValue("firstDealer");
+          if (choice.type === "player" && choice.playerId === id) {
+            settingsForm.setFieldValue("firstDealer", { type: "random" });
+          }
+          setPlayers((prev) => prev.filter((p) => p.id !== id));
+        },
         reorderPlayers: setPlayers,
       }}
     >
@@ -190,6 +206,11 @@ export function useDefaultPhaseSetId(): PhaseSetId {
 export function useGameSettings(): GameSettings {
   const { settings } = useCreateGameContext();
   return settings;
+}
+
+export function useGameFirstDealer() {
+  const { firstDealer, setFirstDealer } = useCreateGameContext();
+  return { value: firstDealer, onChange: setFirstDealer };
 }
 
 export function useGameDefaultsStatus(): CreateGameContextValue["defaultsStatus"] {

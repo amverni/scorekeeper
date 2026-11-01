@@ -19,6 +19,7 @@ export function makeActiveGame(overrides: Partial<ActiveGame> = {}): ActiveGame 
       phases: ["phase-1", "phase-2"],
     },
     players: playerIds,
+    firstDealerId: overrides.players?.[0] ?? playerIds[0],
     activePlayers: playerIds,
     settings: {
       tiebreaker: "lowestPoints",

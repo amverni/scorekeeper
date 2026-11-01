@@ -65,6 +65,7 @@ function createCompletedGame(
     status: "completed",
     phaseSet: input.game.phaseSet,
     players: playerIds,
+    firstDealerId: input.game.firstDealerId,
     settings: input.game.settings,
     ...(input.game.continuation !== undefined ? { continuation: input.game.continuation } : {}),
     ...(input.game.playerJoins !== undefined ? { playerJoins: input.game.playerJoins } : {}),

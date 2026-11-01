@@ -15,6 +15,7 @@ import type {
 } from "../../types";
 import { formatPhaseDisplayName } from "../../utils";
 import { getDB } from "../db";
+import { resolveFirstDealer } from "./firstDealer";
 import {
   deleteEmptyGame,
   deleteGameRecords,
@@ -160,9 +161,16 @@ export const gamesApi = {
     ) {
       throw new Error("In-order phases must be On or Off.");
     }
+    if (new Set(data.players).size !== data.players.length) {
+      throw new Error("Players must be unique");
+    }
+    const firstDealerId = resolveFirstDealer(data.players, data.firstDealer);
+    if (firstDealerId === null) throw new Error("Phase 10 requires a First Dealer.");
     const now = Date.now();
     const newGame: ActiveGame = {
-      ...data,
+      players: [...data.players],
+      phaseSet: data.phaseSet,
+      firstDealerId,
       settings: { ...data.settings, inOrderPhases: data.settings.inOrderPhases ?? true },
       scorekeeper: "phase10",
       id: crypto.randomUUID(),

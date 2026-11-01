@@ -15,12 +15,13 @@ async function resetDatabase() {
 beforeEach(resetDatabase);
 afterEach(resetDatabase);
 
-async function setup(initialPlayers = 2) {
+async function setup(initialPlayers = 2, firstDealerSeat = 0) {
   const amy = await playersApi.create({ name: "Amy", color: "Jam", isFavorite: 0 });
   const bob = await playersApi.create({ name: "Bob", color: "Ocean", isFavorite: 0 });
   const cam = await playersApi.create({ name: "Cam", color: "Lime", isFavorite: 0 });
   const game = await gamesApi.create({
     players: initialPlayers === 3 ? [amy.id, bob.id, cam.id] : [amy.id, bob.id],
+    firstDealer: { type: "player", playerId: [amy.id, bob.id, cam.id][firstDealerSeat] },
     phaseSet: {
       id: "short",
       type: "temporary",
@@ -33,7 +34,7 @@ async function setup(initialPlayers = 2) {
 }
 
 it("withdraws and rejoins the same saved seat without resetting history or filling Participation Gaps", async () => {
-  const { game, amy, bob, cam } = await setup(3);
+  const { game, amy, bob, cam } = await setup(3, 1);
   async function membership(withdrawnPlayers: string[]) {
     const editor = await gamesApi.getEditor(game.id);
     if (!editor) throw new Error("Missing Game editor");
@@ -104,8 +105,9 @@ it("withdraws and rejoins the same saved seat without resetting history or filli
     tiebreakerTotal: 3,
   });
   expect(view?.rounds[1].scores[0]).toMatchObject({ source: undefined, counted: false });
-  expect(view?.rounds.map(({ dealerId }) => dealerId)).toEqual([amy.id, bob.id, cam.id]);
-  expect(view?.upcomingDealerId).toBe(amy.id);
+  expect(view?.game.firstDealerId).toBe(bob.id);
+  expect(view?.rounds.map(({ dealerId }) => dealerId)).toEqual([bob.id, cam.id, amy.id]);
+  expect(view?.upcomingDealerId).toBe(bob.id);
   expect(view?.standings.tiebreakerGraphSeries[0].points).toEqual([
     { roundNumber: 0, value: 0, standingValue: 0 },
     { roundNumber: 1, value: 2, standingValue: -2 },
@@ -113,6 +115,61 @@ it("withdraws and rejoins the same saved seat without resetting history or filli
   ]);
   expect((await roundsApi.getByGameId(game.id)).slice(0, 2)).toEqual(history);
   expect(await playersApi.getById(amy.id)).toEqual(amy);
+});
+
+it("keeps the saved First Dealer through a withdrawn starting seat, Join, Rejoin and deletion-shifted Participation Gaps", async () => {
+  const { game, amy, bob, cam } = await setup(3, 1);
+  const dee = await playersApi.create({ name: "Dee", color: "Jam", isFavorite: 0 });
+  async function membership(players: string[], withdrawnPlayers: string[]) {
+    const editor = await gamesApi.getEditor(game.id);
+    if (!editor) throw new Error("Missing Game editor");
+    await gamesApi.edit({
+      gameId: game.id,
+      version: editor.version,
+      players,
+      withdrawnPlayers,
+      confirmImpact: true,
+    });
+  }
+  async function add() {
+    const view = await gamesApi.getView(game.id);
+    if (!view) throw new Error("Missing scoreboard");
+    const [first, ...rest] = view.playingPlayers.map(({ id }) => ({
+      playerId: id,
+      phaseStatus: "failed" as const,
+      score: 0,
+    }));
+    await roundsApi.add({ gameId: game.id, roundWinnerId: null, scores: [first, ...rest] });
+  }
+  await membership(game.players, [bob.id]);
+  expect((await gamesApi.getView(game.id))?.upcomingDealerId).toBe(cam.id);
+  await add();
+  const seats = [amy.id, bob.id, dee.id, cam.id];
+  await membership(seats, [bob.id]);
+  await add();
+  await membership(seats, []);
+  await add();
+  await add();
+  closeDB();
+  const before = await gamesApi.getView(game.id);
+  expect(before?.rounds.map(({ dealerId }) => dealerId)).toEqual([cam.id, amy.id, bob.id, dee.id]);
+  const first = await gamesApi.getRoundEditor(game.id, 1);
+  await gamesApi.deleteRound({
+    gameId: game.id,
+    roundId: first.round.id,
+    version: first.version,
+  });
+  closeDB();
+  const view = await gamesApi.getView(game.id);
+  expect(view?.game).toMatchObject({ firstDealerId: bob.id, players: seats });
+  expect(view?.players.map(({ id }) => id)).toEqual(seats);
+  expect(view?.rounds.map(({ dealerId }) => dealerId)).toEqual([dee.id, cam.id, amy.id]);
+  expect(view?.upcomingDealerId).toBe(bob.id);
+  expect(view?.rounds.map(({ source }) => source.scores.map(({ playerId }) => playerId))).toEqual([
+    [amy.id, dee.id, cam.id],
+    seats,
+    seats,
+  ]);
 });
 
 it("completes a Withdrawal prospectively at Round 10, retaining counted play and final identities", async () => {
@@ -631,7 +688,7 @@ it("locks every saved seat, rejects invalid and duplicate saves atomically, and 
     players: input.players,
     playerJoins: [{ playerId: cam.id, afterRoundNumber: 0 }],
   });
-  expect((await gamesApi.getView(game.id))?.upcomingDealerId).toBe(cam.id);
+  expect((await gamesApi.getView(game.id))?.upcomingDealerId).toBe(amy.id);
   const dora = await playersApi.create({ name: "Dora", color: "Jam", isFavorite: 0 });
   if (!saved) throw new Error("Missing Game editor");
   await expect(

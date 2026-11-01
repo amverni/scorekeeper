@@ -57,6 +57,7 @@ describe("resolveGameCompletion", () => {
         status: "completed",
         phaseSet: game.phaseSet,
         players: [players.amy.id, players.bob.id],
+        firstDealerId: game.firstDealerId,
         settings: game.settings,
         createdAt: game.createdAt,
         lastActivityAt: 456,

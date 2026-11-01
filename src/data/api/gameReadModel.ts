@@ -85,7 +85,8 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
       else withdrawn.delete(change.playerId);
     }
   };
-  let nextSeat = 0;
+  let nextSeat = game.players.indexOf(game.firstDealerId);
+  if (nextSeat < 0) throw new Error("First Dealer must be a saved Game member.");
   const nextDealer = (participatingIds: readonly PlayerId[]) => {
     for (let offset = 0; offset < game.players.length; offset++) {
       const index = (nextSeat + offset) % game.players.length;
