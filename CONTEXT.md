@@ -32,6 +32,13 @@ The removal of a saved Round from an Active Game. Any saved Round may be deleted
 Deletion requires explicit confirmation; revealing or arming a row action alone never removes saved history.
 Saved Round identity survives renumbering. Deletion validates the editor's whole-history version and shifts Join, Withdrawal, and Rejoin boundaries atomically, preserving all surviving inputs, excluded history, and actual Participation Gaps.
 
+**Round Row Action**:
+A deletion affordance for a saved Round in an Active Game, revealed by moving its scorecard row aside; only one may be exposed on a scorecard at a time. A short gesture exposes a trash control; a long gesture arms a request for Round Deletion confirmation.
+Mouse and touch edge drags reveal row actions; trackpad and wheel scrolling only navigate the scorecard.
+
+**Armed Row Action**:
+A Round Row Action prepared to request deletion confirmation when its gesture ends, unless it retreats to a short reveal or is canceled first. Pausing with contact maintained does not end the gesture.
+
 **Active Game**:
 A Game whose competitive result is not finalized, accepting new Rounds or Round Edits as its rules allow.
 _Avoid_: Open game, live game

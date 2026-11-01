@@ -20,6 +20,8 @@ beforeAll(async () => {
   const address = server.httpServer?.address();
   if (!address || typeof address === "string") throw new Error("Missing test server address");
   appUrl = `http://127.0.0.1:${address.port}/scorekeeper/`;
+  await server.environments.client.warmupRequest("/src/main.tsx");
+  await server.environments.client.waitForRequestsIdle();
   browser = await webkit.launch();
 }, 60_000);
 

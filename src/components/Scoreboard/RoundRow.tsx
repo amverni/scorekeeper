@@ -2,6 +2,7 @@ import type { GameRoundView, GameTiebreaker, PlayerId, PlayerIdentity } from "..
 import { formatTiebreakerValue } from "../../utils";
 import { Button } from "../ui";
 import { PlayerResultCell } from "./PlayerResultCell";
+import { ScorecardRow } from "./ScorecardRow";
 
 interface RoundRowProps {
   round: GameRoundView;
@@ -29,7 +30,7 @@ export function RoundRow({
   const lastRowClass = isLastRow ? "scoreboard-cell--last-row" : "";
 
   return (
-    <>
+    <ScorecardRow roundNumber={round.roundNumber}>
       <div
         data-action-round={onEdit ? round.roundNumber : undefined}
         className={[
@@ -136,6 +137,6 @@ export function RoundRow({
           </div>
         );
       })}
-    </>
+    </ScorecardRow>
   );
 }

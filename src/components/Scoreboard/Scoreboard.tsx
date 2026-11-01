@@ -10,6 +10,7 @@ import { PhaseScorecardRoundDeletion } from "./ScorecardRoundDeletion";
 import { ScorecardRowActions } from "./ScorecardRowActions";
 import { useAddRoundDraft } from "./useAddRoundDraft";
 import { useScorecardHold } from "./useScorecardHold";
+import { useScorecardRowMotion } from "./useScorecardRowMotion";
 import "./scoreboard.css";
 
 interface ScoreboardProps {
@@ -36,6 +37,7 @@ export function Scoreboard({ view, onGameCompleted }: ScoreboardProps) {
     version: string;
   } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  useScorecardRowMotion(rootRef);
   useScorecardHold(rootRef, (cell) => {
     if (game.status !== "active") return;
     const round = rounds.find(
@@ -133,7 +135,8 @@ export function Scoreboard({ view, onGameCompleted }: ScoreboardProps) {
         </div>
         <ScorecardRowActions
           rootRef={rootRef}
-          enabled={isActive && !entryVisible && !editing && deleteTarget === null}
+          enabled={isActive && !entryVisible && !editing}
+          confirming={deleteTarget !== null}
           onDelete={(roundNumber) => setDeleteTarget({ roundNumber, version: view.version })}
         />
       </section>
