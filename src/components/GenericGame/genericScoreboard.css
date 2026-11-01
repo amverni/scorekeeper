@@ -1,9 +1,9 @@
-.generic-scoreboard :is(thead, tbody, tr) {
+.generic-scoreboard :is(thead, tbody, tr):not(.scorecard-round) {
   display: contents;
   background: inherit;
 }
 
-.generic-scoreboard :is(td, th):not(:first-child) {
+.generic-scoreboard .scoreboard-cell:is(td, th):not(:first-child) {
   min-width: 70px;
 }
 

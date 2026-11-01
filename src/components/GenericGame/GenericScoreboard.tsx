@@ -8,8 +8,10 @@ import type {
 } from "../../types";
 import { ScoreboardPlayerName } from "../Scoreboard/ScoreboardPlayerName";
 import { GenericScorecardRoundDeletion } from "../Scoreboard/ScorecardRoundDeletion";
+import { ScorecardRow } from "../Scoreboard/ScorecardRow";
 import { ScorecardRowActions } from "../Scoreboard/ScorecardRowActions";
 import { useScorecardHold } from "../Scoreboard/useScorecardHold";
+import { useScorecardRowMotion } from "../Scoreboard/useScorecardRowMotion";
 import { Button, DealerMarker } from "../ui";
 import { GenericAddRoundDialog } from "./GenericAddRoundDialog";
 import { GenericEditRoundDialog } from "./GenericEditRoundDialog";
@@ -37,6 +39,7 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
     metric?: "Tiebreaker";
   } | null>(null);
   const rootRef = useRef<HTMLElement>(null);
+  useScorecardRowMotion(rootRef);
   const resultsId = useId();
   useScorecardHold(rootRef, (cell, origin) => {
     if (view.game.status !== "active") return;
@@ -179,7 +182,11 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
           </thead>
           <tbody>
             {view.rounds.map((round, roundIndex) => (
-              <tr key={round.id ?? round.roundNumber}>
+              <ScorecardRow
+                as="tr"
+                key={round.id ?? round.roundNumber}
+                roundNumber={round.roundNumber}
+              >
                 <th
                   scope="row"
                   data-action-round={
@@ -317,7 +324,7 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
                     </td>
                   );
                 })}
-              </tr>
+              </ScorecardRow>
             ))}
             {view.game.status === "active" && (
               <tr>
@@ -359,7 +366,8 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
         </table>
         <ScorecardRowActions
           rootRef={rootRef}
-          enabled={view.game.status === "active" && !addOpen && !editTarget && !deleteTarget}
+          enabled={view.game.status === "active" && !addOpen && !editTarget}
+          confirming={deleteTarget !== null}
           onDelete={(roundNumber) => {
             const round = view.rounds.find((round) => round.roundNumber === roundNumber);
             if (round?.id) setDeleteTarget(round.id);

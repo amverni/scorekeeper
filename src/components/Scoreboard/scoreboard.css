@@ -12,6 +12,7 @@
     36px repeat(var(--player-count, 1), minmax(max-content, 1fr));
   background: white;
   min-width: max-content;
+  overflow: clip;
 }
 
 .scoreboard-scroller {
@@ -19,14 +20,73 @@
 }
 
 .scorecard-row-action {
-  position: absolute;
-  border-radius: 0;
+  width: var(--scorecard-action-width, 0px);
+  height: 100%;
+  flex-shrink: 0;
+  container-type: size;
   touch-action: manipulation;
+  pointer-events: auto;
   box-shadow: none;
 }
 
-.scorecard-row-action--armed {
-  box-shadow: inset 0 0 0 3px var(--color-text-primary);
+.scorecard-row-action__surface {
+  --action-diameter: min(44px, calc(100cqh - 8px));
+  --action-gutter: min(
+    calc(var(--scorecard-action-width, 0px) / 4),
+    calc((64px - var(--action-diameter)) / 2)
+  );
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: max(0px, calc(100% - 2 * var(--action-gutter)));
+  height: var(--action-diameter);
+  overflow: hidden;
+  border-radius: 9999px;
+  background: var(--color-pt-red-500);
+}
+
+.scorecard-round[data-scorecard-row-action] > .scoreboard-cell:first-child {
+  box-shadow: inset 1px 0 var(--surface-border);
+}
+
+.scorecard-round[data-scorecard-row-action] > .scoreboard-cell--last-col {
+  box-shadow: inset -1px 0 var(--surface-border);
+}
+
+.scorecard-round {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  position: relative;
+  min-width: 0;
+  overflow: clip;
+  isolation: isolate;
+  background: inherit;
+}
+
+.scorecard-round > .scoreboard-cell {
+  transform: translateX(calc(-1 * var(--scorecard-row-offset, 0px)));
+}
+
+.scorecard-action-space {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  left: var(--scorecard-column-offset, 0px);
+  width: var(--scorecard-reveal-capacity, 0px);
+  min-width: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.scorecard-action-space--left {
+  justify-content: flex-start;
+}
+
+.scorecard-action-space--right {
+  justify-content: flex-end;
 }
 
 [data-hold-round] {

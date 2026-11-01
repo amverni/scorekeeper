@@ -191,7 +191,7 @@ it("restores the durable first-finisher choice, continues without finished entri
       players[1].id,
       players[2].id,
     ]);
-    const blank = page.locator(".scoreboard > .scoreboard-cell").nth(9);
+    const blank = page.locator(".scoreboard .scoreboard-cell").nth(9);
     expect((await blank.innerText()).trim()).toBe("");
     await page.reload();
     await page.getByRole("tabpanel", { name: "Standings", exact: true }).waitFor();
@@ -340,7 +340,7 @@ it("shows retained entries and whole excluded Rounds muted while ordinary post-f
     `);
     await page.goto(`${appUrl}#/phaseCompan10n/game/${game.id}`);
     await page.getByRole("button", { name: "Round 3", exact: true }).click();
-    const cells = page.locator(".scoreboard > .scoreboard-cell");
+    const cells = page.locator(".scoreboard .scoreboard-cell");
     const retained = cells.nth(16);
     expect(await retained.innerText()).toContain("Retained entry, not counted.");
     expect(Number(await retained.evaluate((cell) => getComputedStyle(cell).opacity))).toBeLessThan(
