@@ -259,7 +259,6 @@ export function AddRoundDialog({
           }
         }}
         dismissible={!locked}
-        sizing="workspace"
         bodyScroll="custom"
         minBodyHeight={240}
         header={

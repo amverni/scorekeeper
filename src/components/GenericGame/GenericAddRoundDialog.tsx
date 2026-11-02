@@ -176,6 +176,7 @@ export function GenericAddRoundDialog({
         onSubmit={() => roundDialog.handleSubmit(form.handleSubmit)}
         submitError={mode === "points" ? null : roundDialog.submitError}
         minBodyHeight={mode === "points" ? 240 : undefined}
+        sizing={mode === "points" ? "workspace" : "content"}
         actions={(formId) => (
           <form.Subscribe
             selector={(state) => ({

@@ -9,6 +9,7 @@ import {
 } from "../../data/hooks/useGenericGames";
 import type { AddGenericRoundInput, EditGenericRoundInput, GenericRoundEditor } from "../../types";
 import { Button, Dialog, DialogScrollArea, InlineError } from "../ui";
+import { usePointsDialogSize } from "./usePointsDialogSize";
 
 export function useGenericRoundDialog(
   onClose: (open: boolean) => void,
@@ -116,6 +117,7 @@ interface GenericRoundDialogProps {
   children: ReactNode;
   actions: (formId: string) => ReactNode;
   minBodyHeight?: number;
+  sizing?: "content" | "workspace";
   title?: string;
   dismissible?: boolean;
 }
@@ -129,16 +131,18 @@ export function GenericRoundDialog({
   children,
   actions,
   minBodyHeight,
+  sizing = "content",
   title = "Add Round",
   dismissible = true,
 }: GenericRoundDialogProps) {
   const formId = useId();
+  const formRef = usePointsDialogSize();
   return (
     <Dialog
       open={open}
       onClose={onClose}
       dismissible={dismissible}
-      sizing="workspace"
+      sizing={sizing}
       bodyScroll="custom"
       minBodyHeight={minBodyHeight}
       header={<DialogTitle className="sr-only">{title}</DialogTitle>}
@@ -156,6 +160,7 @@ export function GenericRoundDialog({
       }
     >
       <form
+        ref={formRef}
         id={formId}
         aria-busy={isPending}
         className="round-entry-form flex min-h-0 flex-1 flex-col"

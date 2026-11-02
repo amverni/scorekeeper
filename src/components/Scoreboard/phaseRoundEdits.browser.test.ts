@@ -6,7 +6,7 @@ import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { holdRoundStorage, releaseRoundStorage } from "../../test/roundStorage";
 import { holdScorecard } from "../../test/scorecardHold";
-import type { Game, GameReadModel, Player } from "../../types";
+import type { Game, GameReadModel, GameTiebreaker, Player } from "../../types";
 
 let server: ViteDevServer;
 let browser: Browser;
@@ -27,6 +27,75 @@ afterAll(async () => {
   await browser?.close();
   await server?.close();
 });
+
+it.each([
+  "roundsWon",
+  "lowestPoints",
+  "fewestWilds",
+] as const)("fits Phase Add/Edit Round controls and keeps the tallest Player panel with %s", async (tiebreaker) => {
+  const page = await browser.newPage({
+    viewport: { width: 1280, height: 1000 },
+    reducedMotion: "reduce",
+  });
+  try {
+    const { game } = await seedGame(page, 3, tiebreaker);
+    await page.goto(`${appUrl}#/phaseCompan10n/game/${game.id}`);
+    await page.getByRole("button", { name: "Add round 2", exact: true }).click();
+    for (const title of ["Add Round", "Edit Round"]) {
+      const dialog = page.getByRole("dialog", { name: title, exact: true });
+      const panel = dialog.locator(".dialog-panel");
+      await dialog.getByRole("button", { name: "Show extra options", exact: true }).waitFor();
+      const initial = await panel.boundingBox();
+      const entry = await dialog.getByRole("tabpanel").boundingBox();
+      const footer = await dialog.locator("footer").boundingBox();
+      if (!initial || !entry || !footer) throw new Error("Missing Phase Round geometry");
+      expect(footer.y - entry.y - entry.height).toBeLessThanOrEqual(40);
+      await dialog.getByRole("button", { name: "Show extra options", exact: true }).click();
+      await expect
+        .poll(async () => (await panel.boundingBox())?.height ?? 0)
+        .toBeGreaterThan(initial.height);
+      await page.evaluate(() =>
+        Promise.allSettled(document.getAnimations().map((animation) => animation.finished)),
+      );
+      const expanded = await panel.boundingBox();
+      await dialog.getByRole("tab", { name: "Bob", exact: true }).click();
+      expect((await panel.boundingBox())?.height).toBe(expanded?.height);
+      if (title === "Edit Round") {
+        await page.evaluate(() => {
+          const put = IDBObjectStore.prototype.put;
+          IDBObjectStore.prototype.put = function (value, key) {
+            if (this.name === "rounds") {
+              IDBObjectStore.prototype.put = put;
+              throw new DOMException("Round storage unavailable", "QuotaExceededError");
+            }
+            return put.call(this, value, key);
+          };
+        });
+        await dialog.getByRole("button", { name: "Save round", exact: true }).click();
+        await dialog.getByRole("alert").filter({ hasText: "Round storage unavailable" }).waitFor();
+        await expect
+          .poll(async () => (await panel.boundingBox())?.height ?? 0)
+          .toBeGreaterThan(expanded?.height ?? 0);
+      }
+      await page.setViewportSize({ width: 390, height: 600 });
+      const bounded = await panel.boundingBox();
+      if (!bounded) throw new Error("Missing bounded Phase Round");
+      expect(bounded.y).toBeGreaterThanOrEqual(16);
+      expect(bounded.y + bounded.height).toBeLessThanOrEqual(584);
+      await dialog.getByRole("button", { name: "Close", exact: true }).click();
+      await dialog.waitFor({ state: "detached" });
+      if (title === "Add Round") {
+        await page.setViewportSize({ width: 1280, height: 1000 });
+        await page.getByRole("button", { name: "Round 1", exact: true }).click();
+        await page
+          .getByRole("button", { name: "Edit Round 1 for Amy", exact: true })
+          .press("Enter");
+      }
+    }
+  } finally {
+    await page.close();
+  }
+}, 60_000);
 
 it.each([
   "mouse",
@@ -779,7 +848,7 @@ async function addFailedRound(page: Page, gameId: string, players: Player[]) {
         }))
       `);
 }
-async function seedGame(page: Page, phases = 3) {
+async function seedGame(page: Page, phases = 3, tiebreaker: GameTiebreaker = "lowestPoints") {
   await page.goto(`${appUrl}#/phaseCompan10n/players`);
   await page.getByText("No players yet", { exact: true }).waitFor();
   return page.evaluate<{ game: Game; players: Player[] }>(`
@@ -793,15 +862,21 @@ async function seedGame(page: Page, phases = 3) {
       const game = await gamesApi.create({
         players: players.map((player) => player.id),
         phaseSet: { id: "short", type: "temporary", name: "Short", phases: Array(${phases}).fill("classic-1") },
-        settings: { tiebreaker: "lowestPoints", roundSkipPenalty: 100, sitOutPenalty: 50 }
+        settings: { tiebreaker: ${JSON.stringify(tiebreaker)}, roundSkipPenalty: 100, sitOutPenalty: 50 }
       });
       await roundsApi.add({
-        gameId: game.id, roundWinnerId: null,
-        scores: [
+        gameId: game.id, roundWinnerId: ${tiebreaker === "roundsWon" ? "players[0].id" : "null"},
+        scores: ${
+          tiebreaker === "lowestPoints"
+            ? `[
           { playerId: players[0].id, phaseStatus: "completed", score: 55, pointsCardBreakdown: { p5: 1, p10: 1, skipCard: 1, wild: 1 } },
           { playerId: players[1].id, phaseStatus: "completed", score: 75, pointsCardBreakdown: { p5: 0, p10: 5, skipCard: 0, wild: 1 } },
           { playerId: players[2].id, phaseStatus: "failed", score: 100, pointsCardBreakdown: { p5: 0, p10: 10, skipCard: 0, wild: 0 } }
-        ]
+        ]`
+            : `players.map((player, index) => ({
+          playerId: player.id, phaseStatus: index === 0 ? "completed" : "failed", score: 0,
+        }))`
+        }
       });
       return { game, players };
     })()

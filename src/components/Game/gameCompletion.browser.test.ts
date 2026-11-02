@@ -1275,8 +1275,9 @@ it.each([
     expect(await dialog.getByRole("button", { name: "Cancel", exact: true }).count()).toBe(0);
     const bounds = await dialog.locator(".dialog-panel").boundingBox();
     if (!bounds) throw new Error("Missing Phase Round workspace");
-    expect(bounds.y).toBe(16);
-    expect(bounds.height).toBe(812);
+    expect(bounds.y).toBeGreaterThanOrEqual(16);
+    expect(bounds.height).toBeLessThanOrEqual(812);
+    expect(bounds.y + bounds.height / 2).toBeCloseTo(422, 0);
     for (const colorScheme of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme });
       await expectReadyAction(save, cancel, false);

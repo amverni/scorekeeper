@@ -1,3 +1,7 @@
+.dialog-panel-workspace:has(.points-entry) {
+  height: min(100%, var(--points-preferred-height, 100%));
+}
+
 .points-entry {
   container: points-entry / size;
   width: 100%;
@@ -14,8 +18,8 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  gap: clamp(4px, 2cqh, 12px);
-  padding: clamp(6px, 3cqh, 12px) 12px 10px;
+  gap: 12px;
+  padding: 12px 12px 10px;
 }
 
 .points-summary {
@@ -38,12 +42,12 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  max-height: 25cqh;
+  max-height: min(6rem, 25cqh);
 }
 
 .points-field {
   container-type: inline-size;
-  padding: clamp(4px, 2cqh, 12px) 8px;
+  padding: 12px 8px;
 }
 
 .points-value {
@@ -78,6 +82,7 @@
 .points-key {
   width: var(--key-size);
   height: var(--key-size);
+  max-height: 4rem;
   font-size: clamp(0.875rem, calc(var(--key-size) * 0.5), 1.5rem);
   line-height: 1;
 }
@@ -86,6 +91,7 @@
   .points-entry-layout {
     flex-direction: row;
     gap: 12px;
+    padding-top: clamp(6px, 3cqh, 12px);
   }
 
   .points-summary {
@@ -96,6 +102,10 @@
   .points-fields {
     grid-template-columns: minmax(0, 1fr);
     gap: 8px;
+  }
+
+  .points-field {
+    padding-block: clamp(4px, 2cqh, 12px);
   }
 
   .points-keypad-space {

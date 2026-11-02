@@ -29,6 +29,108 @@ const longErrorSettings = [
 ] satisfies GenericGameSettings[];
 
 it.each(
+  longErrorSettings,
+)("sizes short $mode Add/Edit Round dialogs to their controls without empty workspace", async (settings) => {
+  const page = await browser.newPage({
+    viewport: { width: 1280, height: 1000 },
+    reducedMotion: "reduce",
+  });
+  try {
+    let dialog = await openRound(page, settings, 2);
+    for (const title of ["Add Round", "Edit Round"]) {
+      for (const viewport of [
+        { width: 1280, height: 1000 },
+        { width: 390, height: 844 },
+      ]) {
+        await page.setViewportSize(viewport);
+        await page.evaluate(() => new Promise(requestAnimationFrame));
+        const footer = await dialog.locator("footer").boundingBox();
+        const entries =
+          settings.mode === "points"
+            ? dialog.locator(".points-keypad")
+            : settings.mode === "singleRoundWinner"
+              ? dialog.getByRole("radio")
+              : dialog.getByRole("group", { name: "Players who passed" }).getByRole("button");
+        const lastEntry = await entries.last().boundingBox();
+        if (!footer || !lastEntry) throw new Error("Missing Round entry geometry");
+        expect(footer.y - lastEntry.y - lastEntry.height).toBeLessThanOrEqual(40);
+        if (settings.mode === "points") {
+          const summary = await dialog
+            .getByRole("tabpanel")
+            .locator(".points-summary")
+            .boundingBox();
+          if (!summary) throw new Error("Missing Points summary");
+          expect(lastEntry.y - summary.y - summary.height).toBeLessThanOrEqual(32);
+          const key = await dialog.getByRole("button", { name: "1", exact: true }).boundingBox();
+          expect(key?.height).toBeGreaterThanOrEqual(44);
+          expect(key?.height).toBeLessThanOrEqual(64);
+        }
+        await expectPinnedActions(dialog, 0);
+      }
+      if (title === "Add Round") {
+        if (settings.mode === "singleRoundWinner") {
+          await dialog.getByRole("radio", { name: "Player 1", exact: true }).click();
+        }
+        await dialog.getByRole("button", { name: "Save", exact: true }).click();
+        await dialog.waitFor({ state: "detached" });
+        await page.getByRole("button", { name: "Expand Round 1", exact: true }).click();
+        await page
+          .getByRole("button", { name: "Edit Round 1 for Player 1", exact: true })
+          .press("Enter");
+        dialog = page.getByRole("dialog", { name: "Edit Round", exact: true });
+        await dialog.getByRole("button", { name: "Save", exact: true }).waitFor();
+      }
+    }
+  } finally {
+    await page.close();
+  }
+}, 60_000);
+
+it.each(
+  longErrorSettings.filter((settings) => settings.mode === "points"),
+)("grows $mode entry for an error without shrinking the keypad or resizing between Players", async (settings) => {
+  const page = await browser.newPage({
+    viewport: { width: 1280, height: 1000 },
+    reducedMotion: "reduce",
+  });
+  try {
+    const dialog = await openRound(page, settings, 2);
+    const panel = dialog.locator(".dialog-panel");
+    const initial = await panel.boundingBox();
+    if (!initial) throw new Error("Missing Points dialog");
+    const digit = dialog.getByRole("button", { name: "1", exact: true });
+    await digit.focus();
+    await page.keyboard.type("1.5");
+    await dialog.getByRole("alert").waitFor();
+    await expect
+      .poll(async () => (await panel.boundingBox())?.height ?? 0)
+      .toBeGreaterThan(initial.height);
+    const expanded = await panel.boundingBox();
+    const key = await digit.boundingBox();
+    if (!expanded || !key) throw new Error("Missing expanded Points geometry");
+    expect(key.height).toBeGreaterThanOrEqual(44);
+    await dialog.getByRole("tab", { name: "Player 2", exact: true }).click();
+    expect((await panel.boundingBox())?.height).toBe(expanded.height);
+    await dialog.getByRole("tab", { name: "Player 1", exact: true }).click();
+    await digit.focus();
+    await page.keyboard.press("Delete");
+    await expect.poll(async () => (await panel.boundingBox())?.height).toBe(initial.height);
+    await failNextSave(page, "Round storage unavailable. Try saving again.");
+    await dialog.getByRole("button", { name: "Save", exact: true }).click();
+    await dialog.getByRole("alert").waitFor();
+    await expect
+      .poll(async () => (await panel.boundingBox())?.height ?? 0)
+      .toBeGreaterThan(initial.height);
+    const withSaveError = await panel.boundingBox();
+    await dialog.getByRole("tab", { name: "Player 2", exact: true }).click();
+    expect((await panel.boundingBox())?.height).toBe(withSaveError?.height);
+    await expectPinnedActions(dialog, 0);
+  } finally {
+    await page.close();
+  }
+}, 60_000);
+
+it.each(
   [
     { width: 320, height: 480 },
     { width: 320, height: 568 },
@@ -485,8 +587,12 @@ it.each([
         await expectPinnedActions(dialog, viewport.bottom);
         const panelBounds = await dialog.locator(".dialog-panel").boundingBox();
         if (!panelBounds) throw new Error("Missing Round dialog");
-        expect(panelBounds.y).toBeCloseTo(16, 0);
-        expect(panelBounds.height).toBeCloseTo(viewport.height - viewport.bottom - 32, 0);
+        expect(panelBounds.y).toBeGreaterThanOrEqual(16);
+        expect(panelBounds.height).toBeLessThanOrEqual(viewport.height - viewport.bottom - 32);
+        expect(panelBounds.y + panelBounds.height / 2).toBeCloseTo(
+          (viewport.height - viewport.bottom) / 2,
+          0,
+        );
         expect(panelBounds.x).toBeGreaterThanOrEqual(viewport.left + 16);
         expect(panelBounds.x + panelBounds.width).toBeLessThanOrEqual(
           viewport.width - viewport.right - 16,

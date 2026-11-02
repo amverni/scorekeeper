@@ -425,8 +425,9 @@ it.each(
     await expectNumericFit(dialog);
     const panelBounds = await dialog.locator(".dialog-panel").boundingBox();
     if (!panelBounds) throw new Error("Missing numeric dialog panel");
-    expect(panelBounds.y).toBe(36);
-    expect(panelBounds.height).toBe(height - 20 - 34 - 32);
+    expect(panelBounds.y).toBeGreaterThanOrEqual(36);
+    expect(panelBounds.height).toBeLessThanOrEqual(height - 20 - 34 - 32);
+    expect(panelBounds.y + panelBounds.height / 2).toBeCloseTo((height + 20 - 34) / 2, 0);
     for (const name of names) {
       const playerTab = dialog.getByRole("tab", { name, exact: true });
       await playerTab.click();
