@@ -38,7 +38,7 @@ export function ScoreboardHeader({
             )}
             <div
               className={[
-                "flex flex-col items-center gap-1",
+                "flex w-full min-w-0 flex-col items-center gap-1",
                 player.place === null ? "grayscale" : "",
               ].join(" ")}
             >
@@ -47,7 +47,7 @@ export function ScoreboardHeader({
                 expanded={namesExpanded}
                 onToggle={onToggleNames}
               />
-              <span className="text-2xl font-medium leading-none tabular-nums text-text-primary">
+              <span className="scoreboard-number text-2xl font-medium leading-none tabular-nums text-text-primary">
                 <span className="sr-only">
                   {player.place === null
                     ? "Unranked"
@@ -67,7 +67,7 @@ export function ScoreboardHeader({
                         : player.progress.currentPhase}
                 </span>
               </span>
-              <span className="text-sm leading-none text-text-secondary tabular-nums">
+              <span className="scoreboard-number text-sm leading-none text-text-secondary tabular-nums">
                 {player.formattedTiebreaker}
               </span>
             </div>

@@ -1,5 +1,5 @@
 import { Check, Plus, X } from "lucide-react";
-import { type CSSProperties, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useId, useRef, useState } from "react";
 import type {
   GenericRoundId,
   GenericScoreboardView,
@@ -53,39 +53,6 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
     });
   });
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: Reconnect the observer when saved Round DOM nodes change.
-  useLayoutEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
-    const columns = Array.from({ length: view.players.length }, (_, index) => {
-      const entries = Array.from(
-        root.querySelectorAll<HTMLElement>(`[data-scoreboard-column="${index}"]`),
-      );
-      const contents = entries.flatMap((entry) =>
-        Array.from(entry.querySelector(".scoreboard-entry__value")?.children ?? []),
-      );
-      return { entries, contents };
-    });
-    const alignEntries = () => {
-      // Measure glyphs, not their reserved slots, so setting widths cannot feed
-      // back into the observer. Read every column before writing any styles.
-      const widths = columns.map(({ contents }) =>
-        Math.max(0, ...contents.map((element) => element.getBoundingClientRect().width)),
-      );
-      for (const [index, { entries }] of columns.entries()) {
-        for (const entry of entries) {
-          entry.style.setProperty("--entry-value-width", `${widths[index]}px`);
-        }
-      }
-    };
-    const observer = new ResizeObserver(alignEntries);
-    for (const { contents } of columns) {
-      for (const element of contents) observer.observe(element);
-    }
-    alignEntries();
-    return () => observer.disconnect();
-  }, [view.players.length, view.rounds]);
-
   useEffect(() => {
     if (expandedRound === null || addOpen || editTarget) return;
     const collapseOutside = (event: PointerEvent) => {
@@ -120,16 +87,9 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
         // biome-ignore lint/a11y/noNoninteractiveTabindex: Native scroll regions need focus for keyboard scrolling.
         tabIndex={0}
         className="scoreboard-scroller glass relative min-h-0 overflow-auto rounded-2xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-text-secondary"
+        style={{ "--player-count": view.players.length } as CSSProperties}
       >
-        <table
-          className="scoreboard generic-scoreboard w-full text-center"
-          style={
-            {
-              "--player-count": view.players.length,
-              "--name-column-cap": view.players.length === 1 ? "calc(100cqw - 36px)" : "50cqw",
-            } as CSSProperties
-          }
-        >
+        <table className="scoreboard generic-scoreboard w-full text-center">
           <caption className="sr-only">
             {metric === "Wins" ? "Rounds Won" : metric} scoreboard
           </caption>
@@ -152,7 +112,7 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
                   {view.upcomingDealerId === player.id && (
                     <span className="sr-only">Upcoming Round Dealer</span>
                   )}
-                  <div className="flex flex-col items-center gap-1">
+                  <div className="flex w-full min-w-0 flex-col items-center gap-1">
                     <ScoreboardPlayerName
                       player={player}
                       expanded={namesExpanded}
@@ -160,7 +120,7 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
                     />
                     <span
                       className={[
-                        "whitespace-nowrap text-2xl font-medium leading-none tabular-nums",
+                        "scoreboard-number text-2xl font-medium leading-none tabular-nums",
                         view.withdrawnPlayers.includes(player.id)
                           ? "text-text-secondary"
                           : "text-text-primary",
@@ -170,7 +130,7 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
                       {primaryTotal(player)}
                     </span>
                     {"totalTiebreaker" in player && player.totalTiebreaker !== undefined && (
-                      <span className="whitespace-nowrap text-sm font-normal leading-none text-text-secondary tabular-nums">
+                      <span className="scoreboard-number text-sm font-normal leading-none text-text-secondary tabular-nums">
                         <span className="sr-only">Total Tiebreaker: </span>
                         {player.totalTiebreaker}
                       </span>
@@ -249,12 +209,12 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
                           : undefined
                       }
                       className={[
-                        "scoreboard-cell scoreboard-cell--anchor-top cursor-pointer whitespace-nowrap tabular-nums",
+                        "scoreboard-cell scoreboard-cell--anchor-top cursor-pointer tabular-nums",
                         index === view.players.length - 1 ? "scoreboard-cell--last-col" : "",
                         roundIndex === view.rounds.length - 1 ? "scoreboard-cell--last-row" : "",
                       ].join(" ")}
                     >
-                      <div className={entryClasses} data-scoreboard-column={index}>
+                      <div className={entryClasses}>
                         {round.dealerId === score.playerId && (
                           <DealerMarker className="scoreboard-entry__dealer" />
                         )}
@@ -263,11 +223,11 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
                             <PassFailOutcome passed={score.passed} />
                           ) : "points" in score ? (
                             <>
-                              <span>{score.points}</span>
+                              <span className="scoreboard-number">{score.points}</span>
                               {score.tiebreaker !== undefined && (
                                 <span
                                   data-hold-tiebreaker
-                                  className="text-sm font-normal leading-none text-text-secondary"
+                                  className="scoreboard-number text-sm font-normal leading-none text-text-secondary"
                                 >
                                   {score.tiebreaker}
                                 </span>
@@ -294,12 +254,12 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
                             aria-hidden
                             className="my-0.5 h-px w-3/4 shrink-0 bg-text-secondary/70"
                           />
-                          <span>
+                          <span className="scoreboard-number">
                             <span className="sr-only">Accumulated {metric}: </span>
                             {primaryTotal(score)}
                           </span>
                           {"totalTiebreaker" in score && score.totalTiebreaker !== undefined && (
-                            <span>
+                            <span className="scoreboard-number">
                               <span className="sr-only">Accumulated Tiebreaker: </span>
                               {score.totalTiebreaker}
                             </span>
@@ -357,7 +317,7 @@ export function GenericScoreboard({ view }: { view: GenericScoreboardView }) {
                       index === view.players.length - 1 ? "scoreboard-cell--last-col" : "",
                     ].join(" ")}
                   >
-                    <div className={entryClasses} data-scoreboard-column={index}>
+                    <div className={entryClasses}>
                       {view.upcomingDealerId === player.id && (
                         <DealerMarker className="scoreboard-entry__dealer opacity-60" />
                       )}

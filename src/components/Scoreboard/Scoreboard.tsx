@@ -75,16 +75,9 @@ export function Scoreboard({ view, onGameCompleted }: ScoreboardProps) {
         ref={rootRef}
         aria-label="Scoreboard"
         className="scoreboard-scroller glass relative min-h-0 max-h-full overflow-auto rounded-2xl"
+        style={{ "--player-count": players.length } as React.CSSProperties}
       >
-        <div
-          className="scoreboard"
-          style={
-            {
-              "--player-count": players.length,
-              "--name-column-cap": players.length === 1 ? "calc(100cqw - 36px)" : "50cqw",
-            } as React.CSSProperties
-          }
-        >
+        <div className="scoreboard">
           <ScoreboardHeader
             players={players}
             namesExpanded={namesExpanded}

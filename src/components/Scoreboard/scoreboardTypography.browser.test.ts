@@ -157,7 +157,7 @@ it.each([
         expect(await fontSize(phase)).toBe("16px");
         expect(bounds.height).toBe(44);
         expect(bounds.width).toBeCloseTo(
-          Math.max(70, (Math.min(width, 512) - 32 - 2 - 36) / playerCount),
+          Math.min(160, Math.max(70, (width - 32 - 2 - 36) / playerCount)),
           1,
         );
         const ring = await box(phase.locator("[aria-hidden]"));
@@ -168,7 +168,7 @@ it.each([
         positions.push({ width: bounds.width, separation: right - left });
         if (playerCount === 6) {
           // The ring and symmetric 17px marker positions define the reserved footprints.
-          const outer = badge.x - (bounds.x + 2);
+          const outer = badge.x - (await box(cell.locator(".scoreboard-entry"))).x;
           const interior = ring.x - (badge.x + badge.width);
           expect(outer).toBeGreaterThan(0);
           expect(interior).toBeCloseTo(outer * 2, 0);
@@ -176,7 +176,7 @@ it.each([
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
       }
       if (playerCount === 1) {
-        expect(positions[2].width).toBeGreaterThan(positions[0].width);
+        expect(positions[2].width).toBe(positions[0].width);
         expect(positions[0].separation).toBeCloseTo(positions[2].separation, 1);
         expect(positions[2].separation).toBeCloseTo(positions[3].separation, 1);
         expect(positions[0].separation).toBeLessThan(100);

@@ -104,7 +104,7 @@ export function Game({ gameId }: GameProps) {
           </div>
         }
         mainContent={
-          <div className="content-container flex h-full min-h-0 flex-col py-4 pb-[calc(0.5rem+var(--slant))]">
+          <div className="flex h-full min-h-0 w-full min-w-0 flex-col px-4 py-4 pb-[calc(0.5rem+var(--slant))]">
             {hasLoadError && (
               <InlineError
                 message="Unable to load this Game."

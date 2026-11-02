@@ -105,14 +105,14 @@ export function RoundRow({
                       inert={!isExpanded}
                     >
                       <div>
-                        <span className="text-[14px] leading-none text-text-secondary tabular-nums">
+                        <span className="scoreboard-number text-[14px] leading-none text-text-secondary tabular-nums">
                           {formatTiebreakerValue(entry.sourceTiebreakerValue, tiebreaker)}
                         </span>
                         <span
                           aria-hidden
                           className="my-0.5 h-px w-3/4 shrink-0 bg-text-secondary/70"
                         />
-                        <span className="text-[12px] leading-none text-text-secondary/70 tabular-nums">
+                        <span className="scoreboard-number text-[12px] leading-none text-text-secondary/70 tabular-nums">
                           {formatTiebreakerValue(entry.runningTiebreakerTotal, tiebreaker)}
                         </span>
                       </div>

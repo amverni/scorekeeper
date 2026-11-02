@@ -8,15 +8,16 @@
 
 .scoreboard {
   display: grid;
-  grid-template-columns:
-    36px repeat(var(--player-count, 1), minmax(max-content, 1fr));
+  grid-template-columns: 36px repeat(var(--player-count, 1), minmax(70px, 1fr));
   background: white;
-  min-width: max-content;
+  min-width: calc(36px + var(--player-count, 1) * 70px);
   overflow: clip;
 }
 
 .scoreboard-scroller {
   container-type: inline-size;
+  width: min(100%, calc(38px + var(--player-count, 1) * 160px));
+  margin-inline: auto;
 }
 
 .scorecard-row-action {
@@ -124,8 +125,7 @@
   user-select: none;
 }
 
-/* Spare width is split 1:2:2:1 around symmetric marker slots. The preferred
-   spread never caps intrinsic content, and markers don't affect row height. */
+/* Spare width is split 1:2:2:1 around symmetric marker slots. */
 .scoreboard-entry {
   position: relative;
   display: grid;
@@ -137,13 +137,22 @@
     );
   align-items: center;
   width: 100%;
-  min-width: max-content;
+  min-width: 0;
   max-width: 9rem;
   margin-inline: auto;
 }
 
 .scoreboard-entry__value {
   grid-column: 4;
+  max-width: 100%;
+}
+
+.scoreboard-number {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .scoreboard-entry__dealer,
@@ -172,6 +181,7 @@
   display: flex;
   justify-content: center;
   height: 26px;
+  max-width: 100%;
   overflow: hidden;
 }
 
@@ -186,8 +196,7 @@
   left: 0;
   display: block;
   width: max-content;
-  /* Only names are capped; Grid still honors the intrinsic minimum of every score and total. */
-  max-width: max(63px, calc(var(--name-column-cap, 50cqw) - 7px));
+  max-width: 100cqw;
   font-size: 1rem;
   color: var(--color-text-primary);
 }
@@ -205,6 +214,7 @@
   padding: 10px 2px;
   position: relative;
   min-height: 44px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -227,11 +237,11 @@
 
 /* Sticky header row. */
 .scoreboard-cell--sticky-top {
+  container-type: inline-size;
   position: sticky;
   top: 0;
   z-index: 2;
   padding: 10px 3px;
-  min-width: 70px;
   white-space: nowrap;
 }
 

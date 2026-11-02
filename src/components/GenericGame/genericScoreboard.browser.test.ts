@@ -363,11 +363,7 @@ it.each(
         expect(Math.abs(center - (bounds.x + bounds.width / 2))).toBeLessThanOrEqual(0.6);
         expect(bounds.height).toBe(settings.tiebreaker ? (playerCount === 1 ? 58 : 59) : 44);
         expect(bounds.width).toBeCloseTo(
-          playerCount === 7
-            ? settings.mode === "points" && settings.dealer
-              ? 73.515625
-              : 70
-            : (Math.min(width, 512) - 32 - 2 - 36) / playerCount,
+          Math.min(160, Math.max(70, (width - 32 - 2 - 36) / playerCount)),
           1,
         );
         if (settings.mode === "points") {
@@ -389,14 +385,7 @@ it.each(
           expect(badge.x + badge.width).toBeLessThan(main.x);
           const offset = center - (badge.x + badge.width / 2);
           positions.push({ width: bounds.width, offset });
-          expect(offset).toBeLessThan(60);
-          if (playerCount === 7) {
-            // Dealer tracking previously reserved 24px on each side of the central value.
-            const outer = badge.x + badge.width / 2 - 12 - (bounds.x + 2);
-            const interior = main.x - (badge.x + badge.width / 2 + 12);
-            expect(outer).toBeGreaterThanOrEqual(0);
-            expect(interior).toBeCloseTo(outer * 2, 0);
-          }
+          expect(offset).toBeLessThan(70);
         }
         const upcoming = card.getByRole("row").last().getByRole("cell").first();
         expect((await upcoming.innerText()).trim()).toBe(settings.dealer ? "D" : "");
@@ -409,7 +398,7 @@ it.each(
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
       }
       if (settings.dealer && playerCount === 1) {
-        expect(positions[2].width).toBeGreaterThan(positions[0].width);
+        expect(positions[2].width).toBe(positions[0].width);
         expect(positions[0].offset).toBeCloseTo(positions[2].offset, 1);
       }
       if (settings.dealer && playerCount === 2) {
@@ -452,7 +441,9 @@ it.each(
   }
 }, 60_000);
 
-it.each([2, 7])("matches the capped header/footer width with %i Players", async (playerCount) => {
+it.each([
+  2, 7,
+])("sizes %i Player columns independently of capped header/footer controls", async (playerCount) => {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   page.setDefaultTimeout(5_000);
   try {
@@ -485,15 +476,18 @@ it.each([2, 7])("matches the capped header/footer width with %i Players", async 
         page.getByRole("button", { name: "Open Standings", exact: true }),
       );
       expect(bounds.width, `scoreboard width at ${width}px`).toBe(
-        Math.min(width - left - right, 512) - 32,
+        Math.min(width - left - right - 32, 38 + playerCount * 160),
       );
-      expect(bounds.x).toBeCloseTo(standings.x, 1);
-      expect(bounds.x + bounds.width).toBeCloseTo(finish.x + finish.width, 1);
-      expect(bounds.x + bounds.width).toBeCloseTo(menu.x + menu.width, 1);
+      expect(bounds.x).toBeCloseTo(left + (width - left - right - bounds.width) / 2, 1);
+      const controlsLeft =
+        left + (width - left - right - Math.min(width - left - right, 512)) / 2 + 16;
+      expect(standings.x).toBeCloseTo(controlsLeft, 1);
+      expect(finish.x + finish.width).toBeCloseTo(width - right - (controlsLeft - left), 1);
+      expect(menu.x + menu.width).toBeCloseTo(finish.x + finish.width, 1);
       expect(await card.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
-        playerCount === 7,
+        width - left - right - 32 < 38 + playerCount * 70,
       );
-      if (playerCount === 7) {
+      if (width - left - right - 32 < 38 + playerCount * 70) {
         await card.evaluate((element) => {
           element.scrollLeft = element.scrollWidth;
         });

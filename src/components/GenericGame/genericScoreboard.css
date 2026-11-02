@@ -3,10 +3,6 @@
   background: inherit;
 }
 
-.generic-scoreboard .scoreboard-cell:is(td, th):not(:first-child) {
-  min-width: 70px;
-}
-
 .generic-scoreboard .scoreboard-cell--withdrawn {
   color: var(--color-text-secondary);
 }
@@ -15,18 +11,26 @@
   filter: grayscale(1);
 }
 
-/* Keep the existing 24px intrinsic allowance on either side when tracking
-   a Dealer, without adding a new column minimum when tracking is off. */
 .generic-scoreboard-entry {
-  --entry-marker-width: 24px;
+  --entry-marker-width: 17px;
+  grid-template-columns: var(--entry-marker-width) minmax(0, 1fr) var(
+      --entry-marker-width
+    );
+  column-gap: 2px;
 }
 
 .generic-scoreboard-entry--without-dealer {
   --entry-marker-width: 0px;
+  column-gap: 0;
 }
 
 .generic-scoreboard-entry > .scoreboard-entry__value {
-  min-width: var(--entry-value-width, 0px);
+  grid-column: 2;
+  min-width: 0;
+}
+
+.generic-scoreboard-entry > .scoreboard-entry__dealer {
+  grid-column: 1 / 2;
 }
 
 .generic-scoreboard .scoreboard-cell--anchor-top .scoreboard-entry__dealer {

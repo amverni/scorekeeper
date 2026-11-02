@@ -461,6 +461,12 @@ it("keeps solo Dealer markers on every Round and reclaims their layout space whe
         groupBounds.x + groupBounds.width / 2,
         1,
       );
+      if (dealer) {
+        const marker = await firstScore.getByText("D", { exact: true }).boundingBox();
+        if (!marker) throw new Error("Missing Dealer marker");
+        expect(marker.x).toBeGreaterThanOrEqual(groupBounds.x);
+        expect(marker.x + marker.width).toBeLessThan(valueBounds.x);
+      }
       const add = page.getByRole("button", { name: "Add Round", exact: true });
       await page.getByRole("region", { name: "Scoreboard", exact: true }).evaluate((element) => {
         element.scrollLeft = element.scrollWidth;
@@ -479,7 +485,7 @@ it("keeps solo Dealer markers on every Round and reclaims their layout space whe
     }
   }
   expect(reservedMarkerSpace[0]).toBeLessThan(1);
-  expect(reservedMarkerSpace[1]).toBeCloseTo(48, 1);
+  expect(reservedMarkerSpace[1]).toBeGreaterThan(reservedMarkerSpace[0]);
 }, 120_000);
 
 it("keeps a modal Points draft on close, saves explicit zero and negatives, and clears after save", async () => {

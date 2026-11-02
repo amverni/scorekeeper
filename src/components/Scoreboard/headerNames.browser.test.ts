@@ -62,7 +62,10 @@ async function openGame(
   mode: Mode,
   playerNames = names,
   roundCount = 1,
-  numericScores = { points: "-12", tiebreaker: "7" },
+  numericScores: { points: string; tiebreaker: string; phasePoints?: number } = {
+    points: "-12",
+    tiebreaker: "7",
+  },
 ) {
   page.setDefaultTimeout(5_000);
   page.setDefaultNavigationTimeout(30_000);
@@ -83,7 +86,7 @@ async function openGame(
     }
     const ids = players.map(player => player.id);
     const settings = ${JSON.stringify(mode.settings)};
-    const phaseGame = ${JSON.stringify(makePhaseGraphGame({ settings: { tiebreaker: "fewestSkips", roundSkipPenalty: 0, sitOutPenalty: 0 } }))};
+    const phaseGame = ${JSON.stringify(makePhaseGraphGame({ settings: { tiebreaker: numericScores.phasePoints === undefined ? "fewestSkips" : "lowestPoints", roundSkipPenalty: 0, sitOutPenalty: 0 } }))};
     phaseGame.phaseSet.phases = Array(${roundCount + 3}).fill((await phasesApi.getAll())[0].id);
     const game = settings
       ? await genericGamesApi.create({ players: ids, settings, firstDealer: { type: "player", playerId: ids[0] } })
@@ -104,7 +107,7 @@ async function openGame(
       } else {
         await roundsApi.add({ gameId: game.id, roundWinnerId: ids[0],
           scores: ids.map((playerId, index) => ({
-            playerId, phaseStatus: index === 0 ? "completed" : "failed", score: 0,
+            playerId, phaseStatus: index === 0 ? "completed" : "failed", score: ${numericScores.phasePoints ?? 0},
           })),
         });
       }
@@ -163,6 +166,31 @@ async function bounds(locator: Locator) {
   return result;
 }
 
+async function expectTextContained(text: Locator, cell: Locator) {
+  const column = await bounds(cell);
+  const lines = await text.evaluate((element) =>
+    Array.from(element.childNodes).flatMap((node) => {
+      if (node.nodeType !== Node.TEXT_NODE || !node.textContent?.trim()) return [];
+      const range = document.createRange();
+      range.selectNode(node);
+      return Array.from(range.getClientRects(), (rect) => ({
+        x: rect.x,
+        right: rect.right,
+        y: rect.y,
+        bottom: rect.bottom,
+      }));
+    }),
+  );
+  expect(lines.length).toBeGreaterThan(0);
+  for (const line of lines) {
+    expect(line.x).toBeGreaterThanOrEqual(column.x);
+    expect(line.right).toBeLessThanOrEqual(column.x + column.width);
+    expect(line.y).toBeGreaterThanOrEqual(column.y);
+    expect(line.bottom).toBeLessThanOrEqual(column.y + column.height);
+  }
+  return lines;
+}
+
 const longNames = [
   "Alexandria Stone with an extraordinarily long Player name",
   "Adelaide Stone with another extraordinarily long Player name",
@@ -191,23 +219,37 @@ async function expectAligned(page: Page, playerCount: number) {
 it.each([
   modes[0],
   modes[2],
-])("bounds $label name-driven columns to the visible scroller through resizing and scrolling", async (mode) => {
+])("keeps equal $label columns independent of names through all three sizing regimes", async (mode) => {
   const page = await browser.newPage({ viewport: { width: 320, height: 568 } });
   try {
     await openGame(page, mode, longNames, 24);
     const card = scoreboard(page);
-    const compact = await bounds(headers(page).first());
-    expect(compact.width).toBeLessThan(90);
-    await toggles(page).first().click();
-    await settleMotion(card);
-    for (const width of [320, 1280, 390, 320]) {
+    for (const [width, cardWidth, columnWidth, scrolls] of [
+      [320, 288, 70, true],
+      [844, 812, 774 / 7, false],
+      [1280, 1158, 160, false],
+      [390, 358, 70, true],
+      [320, 288, 70, true],
+    ] as const) {
       await page.setViewportSize({ width, height: 568 });
       await page.emulateMedia({ colorScheme: width === 1280 ? "dark" : "light" });
       await settleMotion(card);
+      const cardBounds = await bounds(card);
+      expect(cardBounds.width).toBeCloseTo(cardWidth, 1);
+      expect(cardBounds.x).toBeCloseTo((width - cardWidth) / 2, 1);
+      expect((await bounds(card.locator(".scoreboard-cell--sticky-corner"))).width).toBe(36);
       const column = await bounds(headers(page).first());
-      const visibleWidth = await card.evaluate((element) => element.clientWidth);
-      expect(column.width).toBeGreaterThan(compact.width);
-      expect(column.width).toBeLessThanOrEqual(visibleWidth / 2 + 1);
+      for (const header of await headers(page).all()) {
+        expect((await bounds(header)).width).toBeCloseTo(columnWidth, 1);
+      }
+      const before = await card.evaluate((element) => element.scrollWidth > element.clientWidth);
+      expect(before).toBe(scrolls);
+      await toggles(page).first().click();
+      await settleMotion(card);
+      expect((await bounds(headers(page).first())).width).toBeCloseTo(column.width, 1);
+      expect(await card.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
+        before,
+      );
       const name = card.getByText(longNames[0], { exact: true });
       expect(
         await name.evaluate((element) => ({
@@ -220,6 +262,8 @@ it.each([
       expect(nameBox.x + nameBox.width).toBeLessThanOrEqual(column.x + column.width);
       await expectAligned(page, longNames.length);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+      await toggles(page).first().click();
+      await settleMotion(card);
     }
     const top = (await bounds(headers(page).first())).y;
     const roundColumn = card.locator(".scoreboard-cell--sticky-left").first();
@@ -235,8 +279,32 @@ it.each([
     await expectAligned(page, longNames.length);
     await toggles(page).nth(1).click();
     await settleMotion(card);
-    expect((await bounds(headers(page).first())).width).toBeCloseTo(compact.width, 1);
+    expect((await bounds(headers(page).first())).width).toBeCloseTo(70, 1);
     await expectAligned(page, longNames.length);
+    await page.getByRole("button", { name: "Finish Game", exact: true }).click();
+    await page
+      .getByRole("dialog", { name: "Finish Game", exact: true })
+      .getByRole("button", { name: "Finish", exact: true })
+      .click();
+    await closeDialog(
+      page,
+      page.getByRole("dialog").filter({
+        has: page.getByRole("tab", { name: "Standings", exact: true }),
+      }),
+    );
+    for (const [width, cardWidth, columnWidth] of [
+      [320, 288, 70],
+      [844, 812, 774 / 7],
+      [1280, 1158, 160],
+    ]) {
+      await page.setViewportSize({ width, height: 568 });
+      expect((await bounds(card)).width).toBe(cardWidth);
+      for (const header of await headers(page).all()) {
+        expect((await bounds(header)).width).toBeCloseTo(columnWidth, 1);
+      }
+      await expectAligned(page, longNames.length);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    }
   } finally {
     await page.close();
   }
@@ -247,6 +315,115 @@ async function closeDialog(page: Page, dialog: Locator) {
   await page.keyboard.press("Escape");
   await dialog.waitFor({ state: "detached" });
 }
+
+it.each([
+  modes[0],
+  modes[2],
+])("reflows $label columns as Players Join across sizing thresholds", async (mode) => {
+  const page = await browser.newPage({ viewport: { width: 844, height: 844 } });
+  try {
+    await openGame(page, mode, names.slice(0, 2));
+    await page.evaluate(`(async () => {
+      const { playersApi } = await import("/scorekeeper/src/data/api/players.ts");
+      for (let index = 3; index <= 7; index++) {
+        await playersApi.create({ name: "Joining Player " + index, color: "Jam", isFavorite: 1 });
+      }
+    })()`);
+    await page.reload();
+    const card = scoreboard(page);
+    await card.waitFor();
+    expect((await bounds(card)).width).toBe(358);
+    for (const joining of [[3], [4, 5, 6, 7]]) {
+      await page.getByRole("button", { name: "Menu", exact: true }).click();
+      await page.getByRole("link", { name: "Edit game", exact: true }).click();
+      for (const index of joining) {
+        await page.getByRole("button", { name: `Joining Player ${index}`, exact: true }).click();
+      }
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await page
+        .getByRole("dialog", { name: "Edit game", exact: true })
+        .getByRole("button", { name: "Save", exact: true })
+        .click();
+      await card.waitFor();
+      await card
+        .getByRole("button", {
+          name: `Joining Player ${joining.at(-1)}: Show all Player names`,
+          exact: true,
+        })
+        .waitFor();
+      const count = joining.length === 1 ? 3 : 7;
+      expect(await headers(page).count()).toBe(count);
+      if (count === 3) {
+        expect((await bounds(card)).width).toBe(518);
+        expect((await bounds(headers(page).first())).width).toBe(160);
+        await page.setViewportSize({ width: 512, height: 844 });
+        expect((await bounds(card)).width).toBe(480);
+        expect((await bounds(headers(page).first())).width).toBeCloseTo(442 / 3, 1);
+      } else {
+        expect((await bounds(card)).width).toBe(480);
+        for (const header of await headers(page).all()) {
+          expect((await bounds(header)).width).toBe(70);
+        }
+        await card.evaluate((element) => {
+          element.scrollLeft = element.scrollWidth;
+        });
+        expect(await card.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+      }
+      await expectAligned(page, count);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(512);
+    }
+  } finally {
+    await page.close();
+  }
+}, 30_000);
+
+it.each(modes)("centers compact $label scorecards in Active and Completed Games", async (mode) => {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 844 } });
+  try {
+    await openGame(page, mode, longNames.slice(0, 2));
+    const card = scoreboard(page);
+    for (const completed of [false, true]) {
+      if (completed) {
+        await page.getByRole("button", { name: "Finish Game", exact: true }).click();
+        await page
+          .getByRole("dialog", { name: "Finish Game", exact: true })
+          .getByRole("button", { name: "Finish", exact: true })
+          .click();
+        await closeDialog(
+          page,
+          page.getByRole("dialog").filter({
+            has: page.getByRole("tab", { name: "Standings", exact: true }),
+          }),
+        );
+      }
+      for (const [width, cardWidth, columnWidth] of [
+        [1280, 358, 160],
+        [320, 288, 125],
+        [390, 358, 160],
+      ]) {
+        await page.setViewportSize({ width, height: 844 });
+        for (const expanded of [true, false]) {
+          await toggles(page).first().click();
+          await settleMotion(card);
+          expect(await toggles(page).first().getAttribute("aria-expanded")).toBe(String(expanded));
+          const outer = await bounds(card);
+          expect(outer.width).toBe(cardWidth);
+          expect(outer.x).toBe((width - cardWidth) / 2);
+          for (const header of await headers(page).all()) {
+            expect((await bounds(header)).width).toBe(columnWidth);
+          }
+          expect(await card.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
+            false,
+          );
+          await expectAligned(page, 2);
+        }
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+      }
+    }
+  } finally {
+    await page.close();
+  }
+}, 60_000);
 
 async function saveRound(page: Page, mode: Mode) {
   await scoreboard(page)
@@ -382,6 +559,7 @@ it.each([
         expect(await toggles(page).first().getAttribute("aria-expanded")).toBe(String(expanded));
         const header = headers(page).first();
         const cell = scoreboard(page).getByRole("cell").first();
+        expect((await bounds(header)).width).toBe(playerCount === 1 ? 160 : 70);
         for (const container of [header, cell]) {
           const column = await bounds(container);
           const numbers = await container
@@ -391,22 +569,91 @@ it.each([
             })
             .all();
           expect(numbers.length).toBe(2);
-          for (const text of numbers) {
+          for (const [index, text] of numbers.entries()) {
             const box = await bounds(text);
             expect(box.x).toBeGreaterThanOrEqual(column.x);
             expect(box.x + box.width).toBeLessThanOrEqual(column.x + column.width);
             expect(
               await text.evaluate((element) => element.scrollWidth <= element.clientWidth),
             ).toBe(true);
+            expect(await text.evaluate((element) => getComputedStyle(element).fontSize)).toBe(
+              index === 1 ? "14px" : container === header ? "24px" : "16px",
+            );
+            const lines = await expectTextContained(text, container);
+            if (index === 0 || playerCount === 7) expect(lines.length).toBeGreaterThan(1);
           }
         }
         expect(await cell.innerText()).toContain("-9007199254740991");
         const dealer = await bounds(cell.getByText("D", { exact: true }));
         const number = await bounds(cell.getByText("-9007199254740991", { exact: true }));
         expect(dealer.x + dealer.width).toBeLessThan(number.x);
+        expect((await bounds(cell)).height).toBeGreaterThan(59);
+        await cell.click();
+        await settleMotion(scoreboard(page));
+        for (const detail of await cell.locator(".scoreboard-extras span:has(> .sr-only)").all()) {
+          await expectTextContained(detail, cell);
+        }
+        if (playerCount === 7) {
+          const card = scoreboard(page);
+          const corner = card.locator(".scoreboard-cell--sticky-corner");
+          const initialCorner = await bounds(corner);
+          const initialHeader = await bounds(header);
+          const round = card.locator(".scoreboard-cell--sticky-left").first();
+          const initialRound = await bounds(round);
+          await card.evaluate((element) => {
+            element.scrollTo(100, 100);
+          });
+          expect(await card.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+          expect(await card.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+          expect(await bounds(corner)).toEqual(initialCorner);
+          expect((await bounds(header)).y).toBe(initialHeader.y);
+          expect((await bounds(round)).x).toBe(initialRound.x);
+          await card.evaluate((element) => {
+            element.scrollTo(0, 0);
+          });
+        }
+        await cell.click();
+        await settleMotion(scoreboard(page));
         await expectAligned(page, playerCount);
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
       }
+    }
+  } finally {
+    await page.close();
+  }
+}, 30_000);
+
+it("wraps exact Phase 10 scores and totals without widening headers or expanded details", async () => {
+  const page = await browser.newPage({ viewport: { width: 320, height: 568 } });
+  try {
+    await openGame(page, modes[0], longNames, 1, {
+      points: "0",
+      tiebreaker: "0",
+      phasePoints: Number.MAX_SAFE_INTEGER,
+    });
+    const card = scoreboard(page);
+    const header = headers(page).first();
+    const cell = card.locator(".scorecard-round > .scoreboard-cell").nth(1);
+    for (const width of [320, 844, 1280]) {
+      await page.setViewportSize({ width, height: 568 });
+      await card.evaluate((element) => element.scrollTo(0, 0));
+      const column = await bounds(header);
+      expect(column.width).toBeLessThanOrEqual(160);
+      const total = header.getByText("9007199254740991 pts", { exact: true });
+      await expectTextContained(total, header);
+      expect(await total.evaluate((element) => getComputedStyle(element).fontSize)).toBe("14px");
+      await cell.click();
+      await settleMotion(card);
+      const details = cell.locator(".scoreboard-extras");
+      expect(await details.getByText("9007199254740991 pts", { exact: true }).count()).toBe(2);
+      for (const number of await details.getByText("9007199254740991 pts", { exact: true }).all()) {
+        await expectTextContained(number, cell);
+      }
+      expect((await bounds(cell)).width).toBeCloseTo(column.width, 1);
+      await expectAligned(page, 7);
+      await cell.click();
+      await settleMotion(card);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
     }
   } finally {
     await page.close();
@@ -503,30 +750,25 @@ function sampleToggle(card: Locator) {
 it.each([
   modes[0],
   modes[2],
-])("animates $label name reveal and actual score columns together in both directions", async (mode) => {
+])("animates $label name reveal without moving score columns in either direction", async (mode) => {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   try {
     await openGame(page, mode, longNames);
     await settleMotion(scoreboard(page));
     for (const expanding of [true, false]) {
       const { before, frames, after } = await sampleToggle(scoreboard(page));
-      expect(after.width > before.width).toBe(expanding);
-      const intermediate = frames.filter(
-        (frame) =>
-          frame.width > Math.min(before.width, after.width) + 1 &&
-          frame.width < Math.max(before.width, after.width) - 1,
-      );
-      expect(intermediate.length).toBeGreaterThan(0);
-      for (const frame of intermediate) {
+      expect(after.width).toBe(before.width);
+      expect(after.opacity).toBe(expanding ? 1 : 0);
+      for (const frame of frames) {
+        expect(frame.width).toBe(before.width);
         expect(frame.cellWidth).toBeCloseTo(frame.width, 1);
         expect(frame.alignment).toBeCloseTo(0, 1);
-        expect(frame.opacity).toBeGreaterThan(0);
-        expect(frame.opacity).toBeLessThan(1);
         expect(frame.avatarWidth).toBe(26);
         expect(frame.avatarHeight).toBe(26);
         expect(frame.textHeight).toBe(after.textHeight);
         expect(frame.textOverflow).toBe(0);
       }
+      expect(frames.some((frame) => frame.opacity > 0 && frame.opacity < 1)).toBe(true);
     }
     // Interrupt in-flight transitions, rather than waiting between activations.
     await toggles(page)
