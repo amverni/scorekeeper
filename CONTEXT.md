@@ -166,7 +166,16 @@ A required card objective that must be satisfied to progress through the game.
 _Avoid_: Level, challenge
 
 **Phase Number**:
-A Phase's numbered position within a Game's Phase Set. Repeated objectives at different positions are separate Phases for progress and selection.
+A Phase's numbered position within a Game's Phase Set; repeated objectives at different positions are separate Phases for progress and selection. Removing a Phase must not change Phase Numbers referenced in saved Round history.
+
+**Removed Phase**:
+A Phase taken out of a Game's requirements without deleting saved Rounds; its saved entries are Excluded Entries. It remains visible but grayed out when it has saved Round entries or is needed to preserve the numbering of a later Phase with saved entries.
+
+**Phase Restoration**:
+Returning a retained Removed Phase to a Game's requirements under its original Phase Number. Its saved entries become eligible to count again under the Game's rules.
+
+**Phase Reordering**:
+Changing which unresolved Phase occupies an editable Phase Number without moving resolved Phases or retained Removed Phases. Saved attempts stay associated with their original objective when its Phase Number changes.
 
 **Phase Order**:
 The Game's choice, fixed at creation, between resolving Phases sequentially and allowing a separate Phase selection for each Round.
@@ -187,7 +196,7 @@ An unchanged historical attempt remains editable even if an earlier correction r
 A numbered Phase that a Player has Passed or taken a Round Skip for in counted history. A Phase cannot be resolved a second time.
 
 **Remaining Phase**:
-A Phase not yet resolved by a Player at the point in the Game being considered. In Selectable Phase Order, the lowest Remaining Phase is the default selection.
+A required Phase not yet resolved by a Player at the point in the Game being considered. In Selectable Phase Order, the lowest Remaining Phase is the default selection.
 
 **Current Phase**:
 In Sequential Phase Order, the Phase Number a Player is attempting in their next Round, based on saved Round outcomes. Unfinished score entry does not change a Player's Current Phase.
@@ -201,7 +210,7 @@ _Avoid_: Preset, playlist, Set (ambiguous with a card set)
 A Round in which the Players still playing record scores and phase outcomes.
 
 **Finished Player**:
-A Player who has resolved every Phase in a Phase 10 Game's Phase Set. Their totals stop at their Finishing Round, and they no longer play or deal subsequent Rounds.
+A Player who has resolved every required Phase in a Phase 10 Game's Phase Set. Their totals stop at their Finishing Round, and they no longer play or deal subsequent Rounds.
 _Avoid_: Completed player, done player
 
 **Finishing Round**:
@@ -221,7 +230,7 @@ A saved Phase 10 Round after the Game Ending Round, retained as history but not 
 A Round with no recorded entry for a Player who did not play, distinct from Sit Out. It contributes no score, penalty, or phase advancement.
 
 **Excluded Entry**:
-A recorded entry outside a Player's counted Phase 10 history, such as after their corrected Finishing Round or the Game Ending Round. It contributes no score, tiebreaker value, or phase advancement while excluded, but can become applicable again after another Round Edit.
+A recorded entry outside a Player's counted Phase 10 history, such as on a Removed Phase or after their corrected Finishing Round or the Game Ending Round. It contributes no score, tiebreaker value, or phase advancement while excluded, but can become applicable again after another Round Edit or Phase Restoration.
 
 ### Results and tiebreakers
 
