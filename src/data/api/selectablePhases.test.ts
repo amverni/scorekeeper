@@ -201,12 +201,16 @@ it("preserves Join, Withdrawal, Rejoin and genuine gaps through reversible finis
   async function membership(withdrawnPlayers: string[]) {
     const editor = await gamesApi.getEditor(game.id);
     if (!editor) throw new Error("Missing Game editor");
-    await gamesApi.edit({
+    const input = {
       gameId: game.id,
       version: editor.version,
       players: [...game.players, dora.id],
       withdrawnPlayers,
-      confirmImpact: true,
+    };
+    const preview = await gamesApi.previewEdit(input);
+    await gamesApi.edit({
+      ...input,
+      approval: { token: preview.token },
     });
     joined = true;
     closeDB();

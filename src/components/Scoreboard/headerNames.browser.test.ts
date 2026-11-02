@@ -341,8 +341,11 @@ it.each([
       }
       await page.getByRole("button", { name: "Save", exact: true }).click();
       await page
-        .getByRole("dialog", { name: "Edit game", exact: true })
-        .getByRole("button", { name: "Save", exact: true })
+        .getByRole("dialog", {
+          name: mode.settings ? "Edit game" : "Review game changes",
+          exact: true,
+        })
+        .getByRole("button", { name: mode.settings ? "Save" : "Save changes", exact: true })
         .click();
       await card.waitFor();
       await card

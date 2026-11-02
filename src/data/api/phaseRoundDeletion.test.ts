@@ -443,11 +443,15 @@ it.each([
   const cam = await playersApi.create({ name: "Cam", color: "Jam", isFavorite: 0 });
   const editor = await gamesApi.getEditor(game.id);
   if (!editor) throw new Error("Missing Game editor.");
-  await gamesApi.edit({
+  const membershipInput = {
     gameId: game.id,
     players: [amy.id, bob.id, cam.id],
     version: editor.version,
-    confirmImpact: true,
+  };
+  const preview = await gamesApi.previewEdit(membershipInput);
+  await gamesApi.edit({
+    ...membershipInput,
+    approval: { token: preview.token },
   });
   await expect(
     gamesApi.deleteRound({ gameId: game.id, roundId: stale.round.id, version: stale.version }),
@@ -526,11 +530,15 @@ it("retains an unplayed Join and the current roster when deleting the sole remai
   const cam = await playersApi.create({ name: "Cam", color: "Jam", isFavorite: 0 });
   const editor = await gamesApi.getEditor(game.id);
   if (!editor) throw new Error("Missing Game editor.");
-  await gamesApi.edit({
+  const input = {
     gameId: game.id,
     players: [amy.id, bob.id, cam.id],
     version: editor.version,
-    confirmImpact: true,
+  };
+  const preview = await gamesApi.previewEdit(input);
+  await gamesApi.edit({
+    ...input,
+    approval: { token: preview.token },
   });
   const round = await gamesApi.getRoundEditor(game.id, 1);
   await gamesApi.deleteRound({

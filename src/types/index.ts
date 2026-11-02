@@ -11,7 +11,14 @@ export type {
   PhaseGame,
   StoredGame,
 } from "./game";
-export type { EditGamePlayersInput, GenericGameEditor, PhaseGameEditor } from "./gameEditor";
+export type {
+  EditGamePlayersInput,
+  GenericGameEditor,
+  PhaseGameEditCompletion,
+  PhaseGameEditEffect,
+  PhaseGameEditor,
+  PhaseGameEditPreview,
+} from "./gameEditor";
 export type {
   ActiveGameMetadata,
   CompletedGameMetadata,

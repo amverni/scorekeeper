@@ -1,6 +1,7 @@
 import "fake-indexeddb/auto";
 import { deleteDB } from "idb";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import type { EditGamePlayersInput } from "../../types";
 import { closeDB } from "../db";
 import { gamesApi } from "./games";
 import { playersApi } from "./players";
@@ -33,6 +34,11 @@ async function setup(initialPlayers = 2, firstDealerSeat = 0) {
   return { game, amy, bob, cam };
 }
 
+async function saveMembership(input: EditGamePlayersInput) {
+  const preview = await gamesApi.previewEdit(input);
+  return gamesApi.edit({ ...input, approval: { token: preview.token } });
+}
+
 it("withdraws and rejoins the same saved seat without resetting history or filling Participation Gaps", async () => {
   const { game, amy, bob, cam } = await setup(3, 1);
   async function membership(withdrawnPlayers: string[]) {
@@ -45,7 +51,7 @@ it("withdraws and rejoins the same saved seat without resetting history or filli
       withdrawnPlayers,
       confirmImpact: true,
     };
-    await gamesApi.edit(input);
+    await saveMembership(input);
     closeDB();
   }
   await membership([amy.id]);
@@ -123,7 +129,7 @@ it("keeps the saved First Dealer through a withdrawn starting seat, Join, Rejoin
   async function membership(players: string[], withdrawnPlayers: string[]) {
     const editor = await gamesApi.getEditor(game.id);
     if (!editor) throw new Error("Missing Game editor");
-    await gamesApi.edit({
+    await saveMembership({
       gameId: game.id,
       version: editor.version,
       players,
@@ -205,10 +211,36 @@ it("completes a Withdrawal prospectively at Round 10, retaining counted play and
     players: game.players,
     withdrawnPlayers: [cam.id],
   };
-  expect(await gamesApi.previewEdit(input)).toEqual({ requiresConfirmation: true });
+  const preview = await gamesApi.previewEdit(input);
+  expect(preview).toMatchObject({
+    requiresConfirmation: true,
+    effects: [{ type: "withdrawal", players: [cam], afterRoundNumber: 10 }],
+    completion: { type: "automatic", winner: amy, gameEndingRound: 10 },
+  });
   await expect(gamesApi.edit(input)).rejects.toThrow("Confirm");
   expect(await gamesApi.getById(game.id)).toEqual(editor.game);
-  const completed = await gamesApi.edit({ ...input, confirmImpact: true });
+  const approved = { ...input, approval: { token: preview.token } };
+  await expect(
+    gamesApi.edit({ ...input, approval: { token: preview.token, finishChoice: "continue" } }),
+  ).rejects.toThrow("does not require");
+  const put = IDBObjectStore.prototype.put;
+  vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function (
+    this: IDBObjectStore,
+    value,
+    key,
+  ) {
+    const request = put.call(this, value, key);
+    if (value?.id === game.id) {
+      request.addEventListener("success", () => this.transaction.abort(), { once: true });
+    }
+    return request;
+  });
+  await expect(gamesApi.edit(approved)).rejects.toThrow();
+  vi.restoreAllMocks();
+  closeDB();
+  expect(await gamesApi.getById(game.id)).toEqual(editor.game);
+  expect(await roundsApi.getByGameId(game.id)).toEqual(history);
+  const completed = await gamesApi.edit(approved);
   expect(completed.status).toBe("completed");
   closeDB();
   const view = await gamesApi.getView(game.id);
@@ -227,12 +259,87 @@ it("completes a Withdrawal prospectively at Round 10, retaining counted play and
   expect(await gamesApi.getView(game.id)).toEqual(view);
 });
 
+it.each([
+  "continue",
+  "finish",
+] as const)("collects %s before committing a reopened Game's membership correction and first-finisher decision", async (finishChoice) => {
+  const { game, amy, bob, cam } = await setup(3);
+  const dee = await playersApi.create({ name: "Dee", color: "Ocean", isFavorite: 0 });
+  const initial = await gamesApi.getEditor(game.id);
+  if (!initial) throw new Error("Missing Game editor");
+  const players = [...game.players, dee.id];
+  await gamesApi.edit({ gameId: game.id, version: initial.version, players });
+  for (let number = 1; number <= 3; number++) {
+    await roundsApi.add({
+      gameId: game.id,
+      roundWinnerId: amy.id,
+      scores: [
+        { playerId: amy.id, phaseStatus: "completed", score: 0 },
+        ...[bob, cam, dee].map(({ id }) => ({
+          playerId: id,
+          phaseStatus: "failed" as const,
+          score: 1,
+        })),
+      ],
+    });
+  }
+  const completed = await gamesApi.finish(game.id);
+  await gamesApi.reopen(game.id, JSON.stringify(completed));
+  const before = await gamesApi.getView(game.id);
+  const history = await roundsApi.getByGameId(game.id);
+  const editor = await gamesApi.getEditor(game.id);
+  if (!editor) throw new Error("Missing Game editor");
+  const input = {
+    gameId: game.id,
+    version: editor.version,
+    players,
+    withdrawnPlayers: [cam.id],
+  };
+  const preview = await gamesApi.previewEdit(input);
+  expect(preview).toMatchObject({
+    requiresConfirmation: true,
+    effects: [{ type: "withdrawal", players: [cam], afterRoundNumber: 3 }],
+    completion: { type: "choice", winner: amy, gameEndingRound: 3 },
+  });
+  await expect(gamesApi.edit({ ...input, approval: { token: preview.token } })).rejects.toThrow(
+    "Choose",
+  );
+  await expect(
+    gamesApi.edit({
+      ...input,
+      // @ts-expect-error Untyped callers cannot supply an unrecognized completion choice.
+      approval: { token: preview.token, finishChoice: "skip" },
+    }),
+  ).rejects.toThrow("Choose");
+  closeDB();
+  expect(await gamesApi.getView(game.id)).toEqual(before);
+  const approved = { ...input, approval: { token: preview.token, finishChoice } };
+  const outcomes = await Promise.allSettled([gamesApi.edit(approved), gamesApi.edit(approved)]);
+  expect(outcomes.map(({ status }) => status).sort()).toEqual(["fulfilled", "rejected"]);
+  closeDB();
+  const saved = await gamesApi.getView(game.id);
+  expect(saved?.game.status).toBe(finishChoice === "finish" ? "completed" : "active");
+  expect(saved?.pendingFinishChoice).toBeNull();
+  expect(saved?.standings.rows.find(({ player }) => player.id === cam.id)?.place).toBeNull();
+  expect(saved?.game.playerMembershipChanges).toEqual([
+    { playerId: cam.id, afterRoundNumber: 3, type: "withdrawal" },
+  ]);
+  expect(await roundsApi.getByGameId(game.id)).toEqual(history);
+  if (finishChoice === "continue") {
+    expect(saved?.game).toMatchObject({ continuation: true });
+    expect(saved?.playingPlayers.map(({ id }) => id)).toEqual([bob.id, dee.id]);
+    expect(saved?.gameEndingRound).toBeNull();
+  } else {
+    expect(saved?.game).toMatchObject({ completionType: "normal", winnerIds: [amy.id] });
+  }
+});
+
 it("ignores a Withdrawal and its later actions while a corrected earlier finish applies, then restores them", async () => {
   const { game, amy, bob, cam } = await setup(3);
   const dora = await playersApi.create({ name: "Dora", color: "Jam", isFavorite: 0 });
   const initial = await gamesApi.getEditor(game.id);
   if (!initial) throw new Error("Missing Game editor");
-  await gamesApi.edit({
+  await saveMembership({
     gameId: game.id,
     version: initial.version,
     players: [...game.players, dora.id],
@@ -240,7 +347,7 @@ it("ignores a Withdrawal and its later actions while a corrected earlier finish 
   async function membership(withdrawnPlayers: string[]) {
     const editor = await gamesApi.getEditor(game.id);
     if (!editor) throw new Error("Missing Game editor");
-    await gamesApi.edit({
+    await saveMembership({
       gameId: game.id,
       version: editor.version,
       players: editor.game.players,
@@ -352,7 +459,7 @@ it("preserves actual attendance and source identity when deletion shifts Join, W
     const editor = await gamesApi.getEditor(game.id);
     if (!editor) throw new Error("Missing Game editor");
     if (number < 4) {
-      await gamesApi.edit({
+      await saveMembership({
         gameId: game.id,
         version: editor.version,
         players: [...game.players, dora.id],
@@ -438,10 +545,13 @@ it("rejects invalid or stale Withdrawals atomically, counts Finished Players, an
   ).rejects.toThrow("Withdrawn Players must be unique saved Game members.");
   closeDB();
   expect(await gamesApi.getView(game.id)).toEqual(before);
-  const results = await Promise.allSettled([
-    gamesApi.edit(replacement),
-    gamesApi.edit(replacement),
+  const preview = await gamesApi.previewEdit(replacement);
+  expect(preview.effects).toEqual([
+    { type: "join", players: [dora], afterRoundNumber: 3 },
+    { type: "withdrawal", players: [cam], afterRoundNumber: 3 },
   ]);
+  const approved = { ...replacement, approval: { token: preview.token } };
+  const results = await Promise.allSettled([gamesApi.edit(approved), gamesApi.edit(approved)]);
   expect(results.map(({ status }) => status).sort()).toEqual(["fulfilled", "rejected"]);
   await expect(gamesApi.edit({ ...input, withdrawnPlayers: [bob.id] })).rejects.toThrow(
     "history changed",
@@ -475,10 +585,26 @@ it("saves a prospective seat with zero progress and totals, blank earlier cells 
     version: editor.version,
     players: [amy.id, cam.id, bob.id],
   };
-  expect(await gamesApi.previewEdit(input)).toEqual({ requiresConfirmation: true });
-  await expect(gamesApi.edit(input)).rejects.toThrow("Confirm");
+  const preview = await gamesApi.previewEdit(input);
+  expect(preview).toMatchObject({
+    requiresConfirmation: true,
+    effects: [{ type: "join", players: [cam], afterRoundNumber: 1 }],
+    completion: { type: "none" },
+    token: expect.any(String),
+  });
+  closeDB();
   expect(await gamesApi.getById(game.id)).toEqual(editor.game);
-  await gamesApi.edit({ ...input, confirmImpact: true });
+  expect(await roundsApi.getByGameId(game.id)).toEqual(history);
+  await expect(gamesApi.edit(input)).rejects.toThrow("Confirm");
+  await expect(gamesApi.edit({ ...input, confirmImpact: true })).rejects.toThrow("Confirm");
+  const approval = { token: preview.token };
+  await expect(
+    gamesApi.edit({ ...input, players: [cam.id, amy.id, bob.id], approval }),
+  ).rejects.toThrow("review");
+  await expect(gamesApi.edit({ ...input, withdrawnPlayers: [amy.id], approval })).rejects.toThrow(
+    "review",
+  );
+  await gamesApi.edit({ ...input, approval });
   closeDB();
   const view = await gamesApi.getView(game.id);
   expect(view?.players.map(({ id }) => id)).toEqual(input.players);
@@ -510,7 +636,10 @@ it("saves a prospective seat with zero progress and totals, blank earlier cells 
   expect(saved?.upcomingDealerId).toBe(bob.id);
 });
 
-it("uses historical membership for automatic completion and retains the late Join and excluded source entries", async () => {
+it.each([
+  false,
+  true,
+])("uses historical membership for automatic completion and retains the late Join (later saved Round: %s)", async (withTail) => {
   const { game, amy, bob, cam } = await setup();
   for (let number = 1; number <= 3; number++) {
     await roundsApi.add({
@@ -524,21 +653,22 @@ it("uses historical membership for automatic completion and retains the late Joi
   }
   const editor = await gamesApi.getEditor(game.id);
   if (!editor) throw new Error("Missing Game editor");
-  await gamesApi.edit({
+  await saveMembership({
     gameId: game.id,
     version: editor.version,
     players: [...game.players, cam.id],
-    confirmImpact: true,
   });
-  await roundsApi.add({
-    gameId: game.id,
-    roundWinnerId: null,
-    scores: [
-      { playerId: amy.id, phaseStatus: "failed", score: 1 },
-      { playerId: bob.id, phaseStatus: "failed", score: 2 },
-      { playerId: cam.id, phaseStatus: "completed", score: 3 },
-    ],
-  });
+  if (withTail) {
+    await roundsApi.add({
+      gameId: game.id,
+      roundWinnerId: null,
+      scores: [
+        { playerId: amy.id, phaseStatus: "failed", score: 1 },
+        { playerId: bob.id, phaseStatus: "failed", score: 2 },
+        { playerId: cam.id, phaseStatus: "completed", score: 3 },
+      ],
+    });
+  }
   const history = await roundsApi.getByGameId(game.id);
   const round = await gamesApi.getRoundEditor(game.id, 1);
   await gamesApi.editRound({
@@ -571,11 +701,13 @@ it("uses historical membership for automatic completion and retains the late Joi
     [bob.id, 2],
     [cam.id, null],
   ]);
-  expect(view?.rounds[3]).toMatchObject({
-    counted: false,
-    source: history[3],
-    scores: [{ counted: false }, { counted: false }, { counted: false }],
-  });
+  if (withTail) {
+    expect(view?.rounds[3]).toMatchObject({
+      counted: false,
+      source: history[3],
+      scores: [{ counted: false }, { counted: false }, { counted: false }],
+    });
+  }
   expect(view?.standings.phaseGraphSeries[2].points).toEqual([]);
 });
 
@@ -595,11 +727,10 @@ it("restores a retained late Join and its exact source results when another corr
   }
   const editor = await gamesApi.getEditor(game.id);
   if (!editor) throw new Error("Missing Game editor");
-  await gamesApi.edit({
+  await saveMembership({
     gameId: game.id,
     version: editor.version,
     players: [dora.id, ...game.players],
-    confirmImpact: true,
   });
   await roundsApi.add({
     gameId: game.id,
@@ -662,6 +793,82 @@ it("restores a retained late Join and its exact source results when another corr
   ]);
 });
 
+it.each([
+  false,
+  true,
+])("preserves mandatory completion reached before a trailing Rejoin (Continuation: %s)", async (continuation) => {
+  const players = await Promise.all(
+    ["Amy", "Bob", "Cam", "Dee"]
+      .slice(0, continuation ? 4 : 3)
+      .map((name) => playersApi.create({ name, color: "Jam", isFavorite: 0 })),
+  );
+  const [amy, bob] = players;
+  const returning = players[players.length - 1];
+  const game = await gamesApi.create({
+    players: players.map(({ id }) => id),
+    phaseSet: {
+      id: "short",
+      type: "temporary",
+      name: "Short",
+      phases: ["classic-1", ...(continuation ? [] : ["classic-2", "classic-3"])],
+    },
+    settings: { tiebreaker: "fewestWilds", roundSkipPenalty: 0, sitOutPenalty: 0 },
+  });
+  async function membership(withdrawnPlayers: string[]) {
+    const editor = await gamesApi.getEditor(game.id);
+    if (!editor) throw new Error("Missing Game editor");
+    await saveMembership({
+      gameId: game.id,
+      version: editor.version,
+      players: game.players,
+      withdrawnPlayers,
+    });
+  }
+  if (!continuation) await membership([returning.id]);
+  const lastRound = continuation ? 2 : 3;
+  for (let number = 1; number <= lastRound; number++) {
+    const view = await gamesApi.getView(game.id);
+    if (!view) throw new Error("Missing Game");
+    const [first, ...rest] = view.playingPlayers.map(({ id }) => ({
+      playerId: id,
+      phaseStatus:
+        id === amy.id && (continuation || number > 1)
+          ? ("completed" as const)
+          : ("failed" as const),
+      score: 1,
+    }));
+    await roundsApi.add({ gameId: game.id, roundWinnerId: null, scores: [first, ...rest] });
+    if (continuation && number === 1) {
+      const choice = (await gamesApi.getView(game.id))?.pendingFinishChoice;
+      if (!choice) throw new Error("Missing Finish Game choice");
+      await gamesApi.resolveFinishChoice(game.id, "continue", choice.token);
+      await membership([returning.id]);
+    }
+  }
+  await membership([]);
+  const correctedRound = continuation ? 2 : 1;
+  const editor = await gamesApi.getRoundEditor(game.id, correctedRound);
+  await gamesApi.editRound({
+    gameId: game.id,
+    roundNumber: correctedRound,
+    version: editor.version,
+    roundWinnerId: null,
+    scores: editor.round.scores.map((score) =>
+      score.playerId === (continuation ? bob.id : amy.id)
+        ? { ...score, phaseStatus: "completed" as const }
+        : score,
+    ),
+    confirmImpact: true,
+  });
+  closeDB();
+  const saved = await gamesApi.getView(game.id);
+  expect(saved?.game.status).toBe("completed");
+  expect(saved?.automaticCompletion).toBe(true);
+  expect(saved?.gameEndingRound).toBe(lastRound);
+  expect(saved?.pendingFinishChoice).toBeNull();
+  expect(saved?.players.find(({ id }) => id === returning.id)?.place).toBeNull();
+});
+
 it("locks every saved seat, rejects invalid and duplicate saves atomically, and does not backdate an empty Game Join", async () => {
   const { game, amy, bob, cam } = await setup();
   const editor = await gamesApi.getEditor(game.id);
@@ -679,7 +886,11 @@ it("locks every saved seat, rejects invalid and duplicate saves atomically, and 
     closeDB();
     expect(await gamesApi.getById(game.id)).toEqual(game);
   }
-  expect(await gamesApi.previewEdit(input)).toEqual({ requiresConfirmation: false });
+  expect(await gamesApi.previewEdit(input)).toMatchObject({
+    requiresConfirmation: false,
+    effects: [{ type: "join", players: [cam], afterRoundNumber: 0 }],
+    completion: { type: "none" },
+  });
   const outcomes = await Promise.allSettled([gamesApi.edit(input), gamesApi.edit(input)]);
   expect(outcomes.map(({ status }) => status).sort()).toEqual(["fulfilled", "rejected"]);
   closeDB();
@@ -711,6 +922,7 @@ it("rejects stale history, rolls back failed storage and preserves a retryable J
     players: [...game.players, cam.id],
     confirmImpact: true,
   };
+  const stalePreview = await gamesApi.previewEdit(input);
   await roundsApi.add({
     gameId: game.id,
     roundWinnerId: null,
@@ -719,9 +931,16 @@ it("rejects stale history, rolls back failed storage and preserves a retryable J
       { playerId: game.players[1], phaseStatus: "failed", score: 2 },
     ],
   });
+  await expect(gamesApi.previewEdit(input)).rejects.toThrow("history changed");
   await expect(gamesApi.edit(input)).rejects.toThrow("history changed");
   const fresh = await gamesApi.getEditor(game.id);
   if (!fresh) throw new Error("Missing Game editor");
+  const draft = { ...input, version: fresh.version };
+  await expect(
+    gamesApi.edit({ ...draft, approval: { token: stalePreview.token } }),
+  ).rejects.toThrow("review");
+  const preview = await gamesApi.previewEdit(draft);
+  const approved = { ...draft, approval: { token: preview.token } };
   const before = await gamesApi.getView(game.id);
   const put = IDBObjectStore.prototype.put;
   vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function (
@@ -734,15 +953,51 @@ it("rejects stale history, rolls back failed storage and preserves a retryable J
     }
     return put.call(this, value, key);
   });
-  await expect(gamesApi.edit({ ...input, version: fresh.version })).rejects.toThrow(
-    "Membership storage unavailable",
-  );
+  await expect(gamesApi.edit(approved)).rejects.toThrow("Membership storage unavailable");
   vi.restoreAllMocks();
   closeDB();
   expect(await gamesApi.getView(game.id)).toEqual(before);
-  await gamesApi.edit({ ...input, version: fresh.version });
+  await gamesApi.edit(approved);
   closeDB();
   expect((await gamesApi.getById(game.id))?.players).toEqual(input.players);
+});
+
+it("previews only net membership effects without obsolete Withdrawal warnings", async () => {
+  const { game, amy, bob, cam } = await setup(3);
+  const initial = await gamesApi.getEditor(game.id);
+  if (!initial) throw new Error("Missing Game editor");
+  await saveMembership({
+    gameId: game.id,
+    version: initial.version,
+    players: game.players,
+    withdrawnPlayers: [bob.id],
+  });
+  await roundsApi.add({
+    gameId: game.id,
+    roundWinnerId: null,
+    scores: [
+      { playerId: amy.id, phaseStatus: "failed", score: 2 },
+      { playerId: cam.id, phaseStatus: "failed", score: 2 },
+    ],
+  });
+  const dee = await playersApi.create({ name: "Dee", color: "Ocean", isFavorite: 0 });
+  const editor = await gamesApi.getEditor(game.id);
+  if (!editor) throw new Error("Missing Game editor");
+  const before = await gamesApi.getView(game.id);
+  const draft = { gameId: game.id, version: editor.version, players: game.players };
+  const joinOnly = await gamesApi.previewEdit({
+    ...draft,
+    players: [...game.players, dee.id],
+    withdrawnPlayers: [bob.id],
+  });
+  expect(joinOnly.effects).toEqual([{ type: "join", players: [dee], afterRoundNumber: 1 }]);
+  const rejoinOnly = await gamesApi.previewEdit({ ...draft, withdrawnPlayers: [] });
+  expect(rejoinOnly.effects).toEqual([{ type: "rejoin", players: [bob], afterRoundNumber: 1 }]);
+  await expect(gamesApi.previewEdit({ ...draft, withdrawnPlayers: [bob.id] })).rejects.toThrow(
+    "No Game membership changes",
+  );
+  closeDB();
+  expect(await gamesApi.getView(game.id)).toEqual(before);
 });
 
 it("keeps Finished Players out of new Rounds and dealing after a Join, without reopening a reached finish", async () => {
@@ -774,7 +1029,7 @@ it("keeps Finished Players out of new Rounds and dealing after a Join, without r
   await gamesApi.resolveFinishChoice(game.id, "continue", choice.token);
   const continued = await gamesApi.getEditor(game.id);
   if (!continued) throw new Error("Missing Game editor");
-  await gamesApi.edit({
+  await saveMembership({
     gameId: game.id,
     version: continued.version,
     players: [...game.players, dora.id],
@@ -818,7 +1073,7 @@ it.each([
   }
   const editor = await gamesApi.getEditor(game.id);
   if (!editor) throw new Error("Missing Game editor");
-  await gamesApi.edit({
+  await saveMembership({
     gameId: game.id,
     version: editor.version,
     players: [amy.id, cam.id, bob.id],
@@ -854,7 +1109,7 @@ it.each([
   ]);
   const returning = await gamesApi.getEditor(game.id);
   if (!returning) throw new Error("Missing Game editor");
-  await gamesApi.edit({
+  await saveMembership({
     gameId: game.id,
     version: returning.version,
     players: returning.game.players,

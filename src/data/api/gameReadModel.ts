@@ -184,10 +184,13 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
     }
   }
 
-  if (gameEndingRound === null) {
-    const lastRoundNumber = sortedRounds.at(-1)?.roundNumber ?? 0;
+  const lastRoundNumber = sortedRounds.at(-1)?.roundNumber ?? 0;
+  if (gameEndingRound === null || (!automaticCompletion && gameEndingRound === lastRoundNumber)) {
     applyMembershipThrough(lastRoundNumber);
-    checkCompletion(lastRoundNumber, lastRoundNumber + 1);
+    checkCompletion(
+      lastRoundNumber,
+      gameEndingRound === null ? lastRoundNumber + 1 : lastRoundNumber,
+    );
   }
   const eligible = (id: PlayerId) =>
     !withdrawn.has(id) &&

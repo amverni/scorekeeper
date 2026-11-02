@@ -5,6 +5,7 @@ import type {
   EditGamePlayersInput,
   GenericGameEditor,
   PhaseGameEditor,
+  PhaseGameEditPreview,
   PlayerId,
   ScorekeeperExperience,
 } from "../../types";
@@ -12,7 +13,12 @@ import { GameSetupTabs } from "../Create/GameSetupTabs";
 import { PlayerSelectionProvider } from "../Create/PlayerSelectionContext";
 import { Players } from "../Create/Players";
 import { EditImpactDialog, InlineError, ScrollFade } from "../ui";
+import { GameEditReviewDialog } from "./GameEditReviewDialog";
 import { StagedGameEditor } from "./StagedGameEditor";
+
+type EditConfirmation =
+  | { type: "phase10"; input: EditGamePlayersInput; preview: PhaseGameEditPreview }
+  | { type: "generic"; input: EditGamePlayersInput };
 
 export function GameMembershipEditor({
   editor,
@@ -28,13 +34,15 @@ export function GameMembershipEditor({
   phases?: ReactNode;
   settings: ReactNode;
   isPending: boolean;
-  preview: (input: EditGamePlayersInput) => Promise<{ requiresConfirmation: boolean }>;
+  preview: (
+    input: EditGamePlayersInput,
+  ) => Promise<PhaseGameEditPreview | { requiresConfirmation: boolean }>;
   save: (input: EditGamePlayersInput) => Promise<void>;
 }) {
   const { game } = editor;
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [confirmation, setConfirmation] = useState<EditGamePlayersInput | null>(null);
+  const [confirmation, setConfirmation] = useState<EditConfirmation | null>(null);
   const submitting = useRef(false);
   const savedIds = new Set(game.players);
   const savedWithdrawn = editor.withdrawnPlayers;
@@ -49,7 +57,11 @@ export function GameMembershipEditor({
       };
       const impact = await preview(input);
       if (impact.requiresConfirmation) {
-        setConfirmation(input);
+        setConfirmation(
+          "token" in impact
+            ? { type: "phase10", input, preview: impact }
+            : { type: "generic", input },
+        );
       } else {
         await save(input);
       }
@@ -185,15 +197,34 @@ export function GameMembershipEditor({
                 <ScrollFade className="h-full -mx-6 px-6 pb-4">{settings}</ScrollFade>
               </TabPanel>
             </GameSetupTabs>
+            {confirmation?.type === "phase10" && (
+              <GameEditReviewDialog
+                preview={confirmation.preview}
+                isPending={isPending}
+                onEdit={() => {
+                  if (!submitting.current) setConfirmation(null);
+                }}
+                onSave={(finishChoice) =>
+                  submit(() =>
+                    save({
+                      ...confirmation.input,
+                      approval: { token: confirmation.preview.token, finishChoice },
+                    }),
+                  )
+                }
+              />
+            )}
             <EditImpactDialog
-              open={confirmation !== null}
+              open={confirmation?.type === "generic"}
               title="Edit game"
               isPending={isPending}
               onEdit={() => {
                 if (!submitting.current) setConfirmation(null);
               }}
               onSave={() => {
-                if (confirmation) submit(() => save({ ...confirmation, confirmImpact: true }));
+                if (confirmation?.type === "generic") {
+                  submit(() => save({ ...confirmation.input, confirmImpact: true }));
+                }
               }}
             />
           </StagedGameEditor>

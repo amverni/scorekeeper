@@ -1,4 +1,11 @@
-import type { EditGamePlayersInput, GameId, PhaseGameEditor } from "../../types";
+import type {
+  EditGamePlayersInput,
+  GameId,
+  PhaseGameEditCompletion,
+  PhaseGameEditEffect,
+  PhaseGameEditor,
+  PhaseGameEditPreview,
+} from "../../types";
 import {
   finalizeGame,
   type GameLifecycleTransaction,
@@ -9,7 +16,7 @@ import { assertSavedSeats } from "./gameMembership";
 import { deriveGameReadModel } from "./gameReadModel";
 import { assertActivePhaseGame, assertPhaseRounds } from "./games";
 import { phasesApi } from "./phases";
-import { resolveGameCompletion } from "./roundCompletion";
+import { resolveEarlyGameCompletion, resolveGameCompletion } from "./roundCompletion";
 
 export const phaseGameEdits = {
   async getEditor(id: GameId): Promise<PhaseGameEditor | null> {
@@ -43,20 +50,45 @@ export const phaseGameEdits = {
     };
   },
 
-  preview(input: EditGamePlayersInput) {
+  preview(input: EditGamePlayersInput): Promise<PhaseGameEditPreview> {
     return withGameTransaction(async (tx) => {
-      const { requiresConfirmation } = await evaluateEdit(tx, input);
-      return { requiresConfirmation };
+      const { preview } = await evaluateEdit(tx, input);
+      return preview;
     });
   },
 
   edit(input: EditGamePlayersInput) {
     return withGameTransaction(async (tx) => {
-      const { game, players, rounds, requiresConfirmation } = await evaluateEdit(tx, input);
-      if (requiresConfirmation && input.confirmImpact !== true) {
-        throw new Error("This edit will change game results. Confirm the edit before saving.");
+      const { game, players, rounds, preview } = await evaluateEdit(tx, input);
+      if (preview.requiresConfirmation && !input.approval) {
+        throw new Error("Confirm the reviewed Game changes before saving.");
       }
-      const saved = { ...game, deferFinishChoiceUntilSave: undefined, lastActivityAt: Date.now() };
+      if (input.approval && input.approval.token !== preview.token) {
+        throw new Error("Game changes differ from the review. Review the intended changes again.");
+      }
+      const choice = input.approval?.finishChoice;
+      if (preview.completion.type === "choice") {
+        if (choice !== "continue" && choice !== "finish") {
+          throw new Error("Choose Keep playing or Finish before saving Game changes.");
+        }
+      } else if (choice !== undefined) {
+        throw new Error("This review does not require a Finish Game choice.");
+      }
+      const saved = {
+        ...game,
+        ...(choice === "continue" ? { continuation: true } : {}),
+        lastActivityAt: Date.now(),
+      };
+      if (choice === "finish") {
+        const completed = resolveEarlyGameCompletion({
+          game: saved,
+          players,
+          rounds,
+          completedAt: saved.lastActivityAt,
+        });
+        await finalizeGame(tx, completed);
+        return completed;
+      }
       const completion = resolveGameCompletion({
         game: saved,
         players,
@@ -89,11 +121,18 @@ async function evaluateEdit(tx: GameLifecycleTransaction, input: EditGamePlayers
   if (input.version !== view.version) {
     throw new Error("Game history changed. Close and reopen Edit game to load the saved values.");
   }
-  if (view.gameEndingRound !== null) {
-    throw new Error("Resolve Finish Game before adding Players.");
-  }
   assertSavedSeats(game.players, input.players);
   const addedIds = input.players.filter((id) => !game.players.includes(id));
+  const afterRoundNumber = view.nextRoundNumber - 1;
+  if (
+    view.gameEndingRound !== null &&
+    (addedIds.length > 0 ||
+      !game.deferFinishChoiceUntilSave ||
+      view.automaticCompletion ||
+      view.gameEndingRound !== afterRoundNumber)
+  ) {
+    throw new Error("Resolve Finish Game before editing membership.");
+  }
   const addedPlayers = await requirePlayers(tx, addedIds);
   const savedWithdrawn = new Set(
     view.players.filter((player) => player.place === null).map(({ id }) => id),
@@ -108,7 +147,6 @@ async function evaluateEdit(tx: GameLifecycleTransaction, input: EditGamePlayers
     throw new Error("Withdrawn Players must be unique saved Game members.");
   }
   const withdrawn = new Set(withdrawnPlayers);
-  const afterRoundNumber = view.nextRoundNumber - 1;
   const changes = game.players
     .filter((id) => savedWithdrawn.has(id) !== withdrawn.has(id))
     .map((playerId) => ({
@@ -130,6 +168,7 @@ async function evaluateEdit(tx: GameLifecycleTransaction, input: EditGamePlayers
   }
   const proposed = {
     ...game,
+    deferFinishChoiceUntilSave: undefined,
     players: [...input.players],
     activePlayers: input.players.filter(
       (id) => game.activePlayers.includes(id) || addedIds.includes(id),
@@ -143,11 +182,36 @@ async function evaluateEdit(tx: GameLifecycleTransaction, input: EditGamePlayers
     ],
     playerMembershipChanges: [...(game.playerMembershipChanges ?? []), ...changes],
   };
-  deriveGameReadModel({ game: proposed, players: [...players, ...addedPlayers], rounds });
+  const intendedPlayers = [...players, ...addedPlayers];
+  const projected = deriveGameReadModel({ game: proposed, players: intendedPlayers, rounds });
+  const winner = projected.standings.gameWinner?.player;
+  const completion: PhaseGameEditCompletion =
+    winner && projected.gameEndingRound !== null
+      ? {
+          type: projected.automaticCompletion ? "automatic" : "choice",
+          winner,
+          gameEndingRound: projected.gameEndingRound,
+        }
+      : { type: "none" };
+  const effects: PhaseGameEditEffect[] = [];
+  for (const type of ["join", "withdrawal", "rejoin"] as const) {
+    const affected = intendedPlayers.filter(({ id }) =>
+      type === "join"
+        ? addedIds.includes(id)
+        : changes.some((change) => change.playerId === id && change.type === type),
+    );
+    if (affected.length > 0) effects.push({ type, players: affected, afterRoundNumber });
+  }
+  const preview: PhaseGameEditPreview = {
+    token: JSON.stringify([view.version, proposed, intendedPlayers]),
+    requiresConfirmation: rounds.length > 0,
+    effects,
+    completion,
+  };
   return {
     game: proposed,
-    players: [...players, ...addedPlayers],
+    players: intendedPlayers,
     rounds,
-    requiresConfirmation: rounds.length > 0,
+    preview,
   };
 }
