@@ -994,7 +994,7 @@ it("previews only net membership effects without obsolete Withdrawal warnings", 
   const rejoinOnly = await gamesApi.previewEdit({ ...draft, withdrawnPlayers: [] });
   expect(rejoinOnly.effects).toEqual([{ type: "rejoin", players: [bob], afterRoundNumber: 1 }]);
   await expect(gamesApi.previewEdit({ ...draft, withdrawnPlayers: [bob.id] })).rejects.toThrow(
-    "No Game membership changes",
+    "No Game membership or Phase changes",
   );
   closeDB();
   expect(await gamesApi.getView(game.id)).toEqual(before);

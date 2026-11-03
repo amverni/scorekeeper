@@ -22,6 +22,185 @@ beforeAll(async () => {
   browser = await webkit.launch();
 }, 60_000);
 
+it.each([
+  "storage failure",
+  "stale history",
+] as const)("retains the phase draft after %s without saving twice or bypassing the history guard", async (failure) => {
+  const page = await newPage(390, 844);
+  try {
+    const game = await seed(page, "phase10");
+    if (game.scorekeeper !== "phase10") throw new Error("Missing Phase Game");
+    await page.goto(`${appUrl}#/phaseCompan10n/game/${game.id}`);
+    await openEditor(page);
+    await page.getByRole("tab", { name: "Phases", exact: true }).click();
+    await page.getByRole("button", { name: /^Remove Phase 2:/ }).click();
+    const save = page.getByRole("button", { name: "Save", exact: true });
+    if (failure === "storage failure") {
+      await holdRoundStorage(page);
+      await page.evaluate((id) => {
+        const put = IDBObjectStore.prototype.put;
+        IDBObjectStore.prototype.put = function (value, key) {
+          if (value?.id === id) {
+            IDBObjectStore.prototype.put = put;
+            throw new DOMException("Phase storage unavailable", "QuotaExceededError");
+          }
+          return put.call(this, value, key);
+        };
+      }, game.id);
+      await save.click();
+      await expect.poll(() => save.isDisabled()).toBe(true);
+      await save.evaluate((button: HTMLButtonElement) => {
+        button.click();
+        button.click();
+      });
+      await releaseRoundStorage(page);
+    } else {
+      await page.evaluate(`(async () => {
+        const { roundsApi } = await import("/scorekeeper/src/data/api/rounds.ts");
+        await roundsApi.add({
+          gameId: ${JSON.stringify(game.id)}, roundWinnerId: null,
+          scores: ${JSON.stringify(game.players)}.map(playerId => ({
+            playerId, phaseStatus: "failed", score: 0,
+          })),
+        });
+      })()`);
+      await save.click();
+    }
+    await page
+      .getByRole("alert")
+      .filter({
+        hasText:
+          failure === "storage failure" ? "Phase storage unavailable" : "Game history changed",
+      })
+      .waitFor();
+    expect(await page.getByRole("button", { name: /^Remove Phase / }).count()).toBe(2);
+    const saved = await page.evaluate<import("../../types").Game>(`(async () => {
+      const { gamesApi } = await import("/scorekeeper/src/data/api/games.ts");
+      return gamesApi.getById(${JSON.stringify(game.id)});
+    })()`);
+    expect(saved.phaseOccurrences).toEqual(game.phaseOccurrences);
+    if (failure === "storage failure") {
+      expect(saved).toEqual(game);
+      await save.click();
+      await page.getByRole("button", { name: "Menu", exact: true }).waitFor();
+      await page.reload();
+      await openEditor(page);
+      const reloaded = await page.evaluate<import("../../types").Game>(`(async () => {
+        const { gamesApi } = await import("/scorekeeper/src/data/api/games.ts");
+        return gamesApi.getById(${JSON.stringify(game.id)});
+      })()`);
+      expect(reloaded.phaseOccurrences).toEqual([
+        game.phaseOccurrences[0],
+        game.phaseOccurrences[2],
+      ]);
+    } else {
+      await page.getByRole("link", { name: "Cancel", exact: true }).click();
+      await openEditor(page);
+      await page.getByRole("tab", { name: "Phases", exact: true }).click();
+      await page
+        .getByText("Phases cannot be edited after a Round has been saved.", { exact: true })
+        .waitFor();
+      expect(
+        await page
+          .getByRole("button", { name: /^Remove Phase |^Reorder Phase |^Add Phase$/ })
+          .count(),
+      ).toBe(0);
+    }
+  } finally {
+    await releaseRoundStorage(page);
+    await page.close();
+  }
+}, 60_000);
+
+it("edits pre-Round Phases by touch and keyboard in one cancelable draft and reloads the saved occurrences", async () => {
+  const page = await newPage();
+  try {
+    const game = await seed(page, "phase10");
+    const objective = await page.evaluate<string>(`(async () => {
+      const { gamesApi } = await import("/scorekeeper/src/data/api/games.ts");
+      const { playersApi } = await import("/scorekeeper/src/data/api/players.ts");
+      await playersApi.create({ name: "Cam", color: "Lime", isFavorite: 1 });
+      return (await gamesApi.getPhaseOptions(${JSON.stringify(game.id)}))[0].objective;
+    })()`);
+    await page.goto(`${appUrl}#/phaseCompan10n/game/${game.id}`);
+    await openEditor(page);
+    const save = page.getByRole("button", { name: "Save", exact: true });
+    async function addRepeatedPhase() {
+      await page.getByRole("button", { name: "Add Phase", exact: true }).tap();
+      const dialog = page.getByRole("dialog", { name: "Add phases", exact: true });
+      await dialog.getByRole("textbox").fill(objective);
+      await dialog.getByRole("button", { name: objective, exact: true }).tap();
+      await dialog.getByRole("button", { name: "Close", exact: true }).click();
+      await dialog.waitFor({ state: "detached" });
+    }
+    await page.getByRole("tab", { name: "Phases", exact: true }).click();
+    await addRepeatedPhase();
+    await page.getByRole("button", { name: /^Remove Phase 4:/ }).tap();
+    await expect.poll(() => save.isDisabled()).toBe(true);
+    await page.getByRole("button", { name: /^Remove Phase 2:/ }).tap();
+    await addRepeatedPhase();
+    await page.getByRole("link", { name: "Cancel", exact: true }).click();
+    await openEditor(page);
+    expect(await save.isDisabled()).toBe(true);
+    await page.getByRole("tab", { name: "Phases", exact: true }).click();
+    await page.getByRole("button", { name: /^Remove Phase 2:/ }).tap();
+    await addRepeatedPhase();
+    await page.evaluate(() =>
+      Promise.allSettled(document.getAnimations().map((animation) => animation.finished)),
+    );
+    await page.getByRole("button", { name: /^Reorder Phase 3:/ }).focus();
+    await page.keyboard.press("Space");
+    const phaseAnnouncement = page.getByRole("status").filter({ hasText: /^Phase / });
+    await expect.poll(() => phaseAnnouncement.innerText()).toContain("position 3 of 3");
+    await page.keyboard.press("ArrowUp");
+    await expect.poll(() => phaseAnnouncement.innerText()).toContain("position 2 of 3");
+    await page.keyboard.press("ArrowUp");
+    await expect.poll(() => phaseAnnouncement.innerText()).toContain("position 1 of 3");
+    await page.keyboard.press("Space");
+    await page.getByRole("tab", { name: "Players", exact: true }).click();
+    await page.getByRole("button", { name: "Cam", exact: true }).click();
+    const before = await page.evaluate<StoredGame>(`(async () => {
+      const { gamesApi } = await import("/scorekeeper/src/data/api/games.ts");
+      return gamesApi.getById(${JSON.stringify(game.id)});
+    })()`);
+    expect(before).toEqual(game);
+    await save.click();
+    await page.getByRole("button", { name: "Menu", exact: true }).waitFor();
+    expect(await page.getByRole("dialog").count()).toBe(0);
+    await page.reload();
+    await openEditor(page);
+    await page.getByRole("tab", { name: "Phases", exact: true }).click();
+    const saved = await page.evaluate<import("../../types").Game>(`(async () => {
+      const { gamesApi } = await import("/scorekeeper/src/data/api/games.ts");
+      return gamesApi.getById(${JSON.stringify(game.id)});
+    })()`);
+    if (game.scorekeeper !== "phase10") throw new Error("Missing Phase Game");
+    expect(saved.phaseSet.phases).toEqual(["classic-2", "classic-2", "classic-2"]);
+    expect(saved.phaseOccurrences.slice(1)).toEqual([
+      game.phaseOccurrences[0],
+      game.phaseOccurrences[2],
+    ]);
+    expect(new Set(saved.phaseOccurrences.map(({ id }) => id)).size).toBe(3);
+    expect(saved.players).toHaveLength(3);
+    expect(await save.isDisabled()).toBe(true);
+    const list = page.getByRole("list", { name: "Game Phases", exact: true });
+    expect(
+      await list.evaluate((element) => element.getBoundingClientRect().right),
+    ).toBeLessThanOrEqual(320);
+    await page.getByRole("button", { name: /^Remove Phase 3:/ }).tap();
+    await page.getByRole("button", { name: /^Remove Phase 2:/ }).tap();
+    await page.getByRole("button", { name: /^Remove Phase 1:/ }).tap();
+    await page
+      .getByRole("alert")
+      .filter({ hasText: "At least one required Phase must remain." })
+      .waitFor();
+    expect(await save.isDisabled()).toBe(true);
+    await page.getByRole("link", { name: "Cancel", exact: true }).click();
+  } finally {
+    await page.close();
+  }
+}, 60_000);
+
 afterAll(async () => {
   await browser?.close();
   await server?.close();
@@ -85,11 +264,11 @@ async function movePlayerUp(page: Page, name: string, dropKey = "Space") {
   await page.keyboard.press("Space");
   await page.evaluate(() => new Promise(requestAnimationFrame));
   await expect
-    .poll(() => page.locator("[aria-live]").innerText())
+    .poll(() => page.getByRole("status").filter({ hasText: name }).innerText())
     .toContain(`${name} moved to position 3 of 3.`);
   await page.keyboard.press("ArrowUp");
   await expect
-    .poll(() => page.locator("[aria-live]").innerText())
+    .poll(() => page.getByRole("status").filter({ hasText: name }).innerText())
     .toContain(`${name} moved to position 2 of 3.`);
   await page.keyboard.press(dropKey);
 }
@@ -522,7 +701,7 @@ it.each([
     await movePlayerUp(page, "Cam", "Escape");
     await expect.poll(rowOrder).toEqual(["Bob", "Amy", "Cam"]);
     await expect
-      .poll(() => page.locator("[aria-live]").innerText())
+      .poll(() => page.getByRole("status").filter({ hasText: "Cam" }).innerText())
       .toBe("Cancelled moving Cam. Returned to position 3 of 3.");
     expect(
       await page
@@ -532,7 +711,7 @@ it.each([
     await movePlayerUp(page, "Cam");
     await expect.poll(rowOrder).toEqual(["Bob", "Cam", "Amy"]);
     await expect
-      .poll(() => page.locator("[aria-live]").innerText())
+      .poll(() => page.getByRole("status").filter({ hasText: "Cam" }).innerText())
       .toBe("Dropped Cam at position 2 of 3.");
     await page.getByRole("button", { name: "Remove Cam", exact: true }).click();
     await expect.poll(rowOrder).toEqual(["Bob", "Amy"]);
@@ -1210,7 +1389,9 @@ it.each([
       await page.getByRole("tab", { name: "Phases", exact: true }).click();
       const phases = page.getByRole("tabpanel", { name: "Phases", exact: true });
       expect(await phases.getByRole("listitem").count()).toBe(3);
-      expect(await phases.getByRole("button").count()).toBe(0);
+      expect(await phases.getByRole("button", { name: /^Reorder Phase / }).count()).toBe(3);
+      expect(await phases.getByRole("button", { name: /^Remove Phase / }).count()).toBe(3);
+      expect(await phases.getByRole("button", { name: "Add Phase", exact: true }).count()).toBe(1);
     }
     expect(await page.getByText(/Locked|Shuffle|Reset/, { exact: true }).count()).toBe(0);
     for (const [width, height, colorScheme] of [

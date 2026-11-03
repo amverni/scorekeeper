@@ -233,8 +233,20 @@ it.each([
     { p5: 3, p10: 0, skipCard: 1, wild: 1 },
   ]);
   expect(view?.rounds[1].source.scores).toEqual([
-    { playerId: amy.id, phaseStatus: "skipped", score: 100, currentPhase: 2 },
-    { playerId: bob.id, phaseStatus: "satOut", score: 50, currentPhase: 2 },
+    {
+      playerId: amy.id,
+      phaseStatus: "skipped",
+      score: 100,
+      currentPhase: 2,
+      phaseOccurrenceId: game.phaseOccurrences[1].id,
+    },
+    {
+      playerId: bob.id,
+      phaseStatus: "satOut",
+      score: 50,
+      currentPhase: 2,
+      phaseOccurrenceId: game.phaseOccurrences[1].id,
+    },
   ]);
   expect(view?.players.map((player) => player.tiebreakerTotal)).toEqual([155, 105]);
   expect(await roundsApi.getByGameId(game.id)).toEqual(view?.rounds.map((round) => round.source));
@@ -258,8 +270,20 @@ it.each([
   closeDB();
   const view = await gamesApi.getView(game.id);
   expect(view?.rounds[0].source.scores).toEqual([
-    { playerId: amy.id, phaseStatus: "completed", score: 3, currentPhase: 1 },
-    { playerId: bob.id, phaseStatus: "failed", score: 2, currentPhase: 1 },
+    {
+      playerId: amy.id,
+      phaseStatus: "completed",
+      score: 3,
+      currentPhase: 1,
+      phaseOccurrenceId: game.phaseOccurrences[0].id,
+    },
+    {
+      playerId: bob.id,
+      phaseStatus: "failed",
+      score: 2,
+      currentPhase: 1,
+      phaseOccurrenceId: game.phaseOccurrences[0].id,
+    },
   ]);
   expect(view?.players.map((player) => player.tiebreakerTotal)).toEqual(
     tiebreaker === "roundsWon" ? [1, 0] : [3, 2],

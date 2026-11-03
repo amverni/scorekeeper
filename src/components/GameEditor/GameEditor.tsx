@@ -8,7 +8,6 @@ import {
   usePreviewGenericGameEdit,
 } from "../../data/hooks/useGenericGames";
 import type { ActiveGenericGame, GameId, GenericGameEditor, PhaseGameEditor } from "../../types";
-import { formatPhaseDisplayName } from "../../utils";
 import { InlineError } from "../ui";
 import { GameMembershipEditor } from "./GameMembershipEditor";
 import { StagedGameEditor } from "./StagedGameEditor";
@@ -93,14 +92,6 @@ export function PhaseGameEditorPage({ gameId }: { gameId: GameId }) {
           await edit.mutateAsync(input);
           await navigate({ to: "/phaseCompan10n/game/$gameId", params: { gameId } });
         }}
-        phases={
-          <ol className="glass my-4 list-decimal space-y-4 rounded-2xl py-4 pr-4 pl-10 text-sm">
-            {editor.phases.map((phase, index) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: Saved Phase positions are immutable.
-              <li key={index}>{formatPhaseDisplayName(phase)}</li>
-            ))}
-          </ol>
-        }
         settings={
           <SettingsReference
             rows={[

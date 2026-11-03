@@ -908,12 +908,25 @@ it("preserves the actual Points Card Breakdown from Add Round controls through p
     `);
     expect(reloaded.rounds[0]).toEqual(view.rounds[0]);
     expect(reloaded.rounds[1].source.scores).toEqual([
-      { playerId: players[0].id, phaseStatus: "skipped", currentPhase: 2, score: 100 },
-      { playerId: players[1].id, phaseStatus: "satOut", currentPhase: 1, score: 0 },
+      {
+        playerId: players[0].id,
+        phaseStatus: "skipped",
+        currentPhase: 2,
+        phaseOccurrenceId: game.phaseOccurrences[1].id,
+        score: 100,
+      },
+      {
+        playerId: players[1].id,
+        phaseStatus: "satOut",
+        currentPhase: 1,
+        phaseOccurrenceId: game.phaseOccurrences[0].id,
+        score: 0,
+      },
       {
         playerId: players[2].id,
         phaseStatus: "completed",
         currentPhase: 2,
+        phaseOccurrenceId: game.phaseOccurrences[1].id,
         score: 0,
         pointsCardBreakdown: { p5: 0, p10: 0, skipCard: 0, wild: 0 },
       },

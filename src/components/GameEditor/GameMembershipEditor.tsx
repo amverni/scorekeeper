@@ -14,6 +14,7 @@ import { PlayerSelectionProvider } from "../Create/PlayerSelectionContext";
 import { Players } from "../Create/Players";
 import { EditImpactDialog, InlineError, ScrollFade } from "../ui";
 import { GameEditReviewDialog } from "./GameEditReviewDialog";
+import { GamePhasesEditor } from "./GamePhasesEditor";
 import { StagedGameEditor } from "./StagedGameEditor";
 
 type EditConfirmation =
@@ -23,7 +24,6 @@ type EditConfirmation =
 export function GameMembershipEditor({
   editor,
   experience,
-  phases,
   settings,
   isPending,
   preview,
@@ -31,7 +31,6 @@ export function GameMembershipEditor({
 }: {
   editor: GenericGameEditor | PhaseGameEditor;
   experience: ScorekeeperExperience;
-  phases?: ReactNode;
   settings: ReactNode;
   isPending: boolean;
   preview: (
@@ -47,13 +46,25 @@ export function GameMembershipEditor({
   const savedIds = new Set(game.players);
   const savedWithdrawn = editor.withdrawnPlayers;
   const form = useForm({
-    defaultValues: { players: editor.players, withdrawnPlayers: savedWithdrawn },
+    defaultValues: {
+      players: editor.players,
+      withdrawnPlayers: savedWithdrawn,
+      phases: "phases" in editor ? editor.phases : [],
+    },
     onSubmit: async ({ value }) => {
       const input = {
         gameId: game.id,
         version: editor.version,
         players: value.players.map(({ id }) => id),
         withdrawnPlayers: value.withdrawnPlayers,
+        ...(game.scorekeeper === "phase10"
+          ? {
+              phaseOccurrences: value.phases.map((phase) => ({
+                id: phase.occurrenceId,
+                phaseId: phase.id,
+              })),
+            }
+          : {}),
       };
       const impact = await preview(input);
       if (impact.requiresConfirmation) {
@@ -93,17 +104,29 @@ export function GameMembershipEditor({
       selector={(state) => ({
         players: state.values.players,
         withdrawnPlayers: state.values.withdrawnPlayers,
+        phases: state.values.phases,
         isSubmitting: state.isSubmitting,
       })}
     >
-      {({ players, withdrawnPlayers, isSubmitting }) => {
+      {({ players, withdrawnPlayers, phases, isSubmitting }) => {
+        const phasesChanged =
+          game.scorekeeper === "phase10" &&
+          (phases.length !== game.phaseOccurrences.length ||
+            phases.some(
+              (phase, index) =>
+                phase.occurrenceId !== game.phaseOccurrences[index]?.id ||
+                phase.id !== game.phaseOccurrences[index]?.phaseId,
+            ));
         const changed =
+          phasesChanged ||
           players.length > game.players.length ||
           withdrawnPlayers.length !== savedWithdrawn.length ||
           withdrawnPlayers.some((id) => !savedWithdrawn.includes(id));
-        const invalid =
+        const membershipInvalid =
           withdrawnPlayers.some((id) => !savedWithdrawn.includes(id)) &&
           players.length - withdrawnPlayers.length < 2;
+        const invalid =
+          membershipInvalid || (game.scorekeeper === "phase10" && phases.length === 0);
         return (
           <StagedGameEditor
             experience={experience}
@@ -176,7 +199,7 @@ export function GameMembershipEditor({
                             onRejoin: rejoin,
                           }}
                           error={
-                            invalid && (
+                            membershipInvalid && (
                               <output className="text-sm text-text-secondary">
                                 Withdrawal must leave at least two eligible Players.
                               </output>
@@ -188,9 +211,24 @@ export function GameMembershipEditor({
                   </form.Field>
                 </ScrollFade>
               </TabPanel>
-              {phases && (
+              {"phases" in editor && (
                 <TabPanel className="h-full px-4">
-                  <ScrollFade className="h-full -mx-6 px-6 pb-4">{phases}</ScrollFade>
+                  <ScrollFade className="h-full -mx-6 px-6 pb-4">
+                    <form.Field name="phases">
+                      {(field) => (
+                        <GamePhasesEditor
+                          phases={field.state.value}
+                          editable={editor.canEditPhases}
+                          isPending={isPending || isSubmitting}
+                          onChange={(phases) => {
+                            if (submitting.current) return;
+                            setSubmitError(null);
+                            field.handleChange(phases);
+                          }}
+                        />
+                      )}
+                    </form.Field>
+                  </ScrollFade>
                 </TabPanel>
               )}
               <TabPanel className="h-full px-4">

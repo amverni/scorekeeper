@@ -29,6 +29,12 @@ export function makeActiveGame(overrides: Partial<ActiveGame> = {}): ActiveGame 
     createdAt: 10,
     lastActivityAt: 10,
     ...overrides,
+    phaseOccurrences:
+      overrides.phaseOccurrences ??
+      (overrides.phaseSet?.phases ?? ["phase-1", "phase-2"]).map((phaseId, index) => ({
+        id: `game-1-phase-${index}`,
+        phaseId,
+      })),
   };
   return game as ActiveGame;
 }

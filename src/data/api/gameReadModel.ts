@@ -171,6 +171,10 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
         playerId: player.id,
         source: recorded,
         phaseNumber: effectiveScore?.currentPhase ?? null,
+        phaseOccurrenceId:
+          effectiveScore !== undefined
+            ? (game.phaseOccurrences[effectiveScore.currentPhase - 1]?.id ?? null)
+            : null,
         counted: entryCounts,
         sourceTiebreakerValue,
         tiebreakerValue,

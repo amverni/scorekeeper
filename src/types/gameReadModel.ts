@@ -1,4 +1,4 @@
-import type { Game } from "./game";
+import type { Game, GamePhaseOccurrenceId } from "./game";
 import type { PlayerId, PlayerIdentity } from "./player";
 import type { Round, RoundScore } from "./round";
 import type { PlayerProgress, StandingsDerivation } from "./standings";
@@ -38,6 +38,7 @@ export interface GameRoundScoreView {
   playerId: PlayerId;
   source: RoundScore | undefined;
   phaseNumber: number | null;
+  phaseOccurrenceId: GamePhaseOccurrenceId | null;
   tiebreakerValue: number;
   runningTiebreakerTotal: number;
   counted: boolean;

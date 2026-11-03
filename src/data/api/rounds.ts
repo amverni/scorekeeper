@@ -203,6 +203,7 @@ export const roundsApi = {
         return {
           ...input,
           currentPhase,
+          phaseOccurrenceId: game.phaseOccurrences[currentPhase - 1].id,
         };
         // Input guarantees at least one score; .map() preserves length but TS can't infer tuple minimum
       }) as ArrayAtLeastOne<RoundScore>;
@@ -275,7 +276,7 @@ export const roundsApi = {
     gameId: GameId,
     roundNumber: number,
     playerId: PlayerId,
-    updates: Partial<Omit<RoundScore, "playerId" | "currentPhase">>,
+    updates: Partial<Omit<RoundScore, "playerId" | "currentPhase" | "phaseOccurrenceId">>,
   ): Promise<Round> {
     return withGameTransaction(async (tx) => {
       const game = await tx.objectStore("games").get(gameId);
@@ -317,7 +318,11 @@ export const roundsApi = {
         const scores = source.scores.map((score) => {
           const entry = interpreted.scores.find((entry) => entry.playerId === score.playerId);
           return entry?.counted && entry.phaseNumber !== null
-            ? { ...score, currentPhase: entry.phaseNumber }
+            ? {
+                ...score,
+                currentPhase: entry.phaseNumber,
+                phaseOccurrenceId: entry.phaseOccurrenceId ?? undefined,
+              }
             : score;
         }) as ArrayAtLeastOne<RoundScore>;
         if (

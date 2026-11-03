@@ -1,4 +1,4 @@
-import type { ActiveGame } from "./game";
+import type { ActiveGame, GamePhaseOccurrence } from "./game";
 import type { GameId } from "./gameLifecycle";
 import type { ActiveGenericGame } from "./genericGame";
 import type { Phase } from "./phase";
@@ -7,10 +7,11 @@ import type { Player, PlayerId, PlayerIdentity } from "./player";
 export interface PhaseGameEditor {
   game: ActiveGame;
   players: Player[];
-  phases: Phase[];
+  phases: Array<Phase & { occurrenceId: GamePhaseOccurrence["id"] }>;
   version: string;
   withdrawnPlayers: PlayerId[];
   finishedPlayers: PlayerId[];
+  canEditPhases: boolean;
 }
 
 export interface EditGamePlayersInput {
@@ -18,6 +19,7 @@ export interface EditGamePlayersInput {
   version: string;
   players: PlayerId[];
   withdrawnPlayers?: PlayerId[];
+  phaseOccurrences?: GamePhaseOccurrence[];
   confirmImpact?: boolean;
   approval?: {
     token: string;

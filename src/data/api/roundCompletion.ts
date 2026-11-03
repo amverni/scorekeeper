@@ -64,6 +64,7 @@ function createCompletedGame(
     scorekeeper: "phase10",
     status: "completed",
     phaseSet: input.game.phaseSet,
+    phaseOccurrences: input.game.phaseOccurrences,
     players: playerIds,
     firstDealerId: input.game.firstDealerId,
     settings: input.game.settings,

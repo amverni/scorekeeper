@@ -6,6 +6,8 @@ export type {
   CreateGameInput,
   Game,
   GameId,
+  GamePhaseOccurrence,
+  GamePhaseOccurrenceId,
   GameSettings,
   GameTiebreaker,
   PhaseGame,

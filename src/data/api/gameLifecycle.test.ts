@@ -269,7 +269,7 @@ async function createGame() {
       id: "short",
       type: "temporary",
       name: "Short",
-      phases: ["phase-1", "phase-2"],
+      phases: ["classic-1", "classic-2"],
     },
     settings: { tiebreaker: "lowestPoints", roundSkipPenalty: 100, sitOutPenalty: 0 },
   });

@@ -4,7 +4,7 @@ import { Plus, Star } from "lucide-react";
 import { useDeferredValue, useEffect, useState } from "react";
 import { phaseSetListOptions } from "../../../data/hooks/usePhaseSets";
 import { phaseListOptions } from "../../../data/hooks/usePhases";
-import type { MeldType, PhaseSetId } from "../../../types";
+import type { MeldType, Phase, PhaseId, PhaseSetId } from "../../../types";
 import { formatPhaseDisplayName } from "../../../utils";
 import {
   Button,
@@ -33,14 +33,33 @@ const MELD_TYPE_OPTIONS: { label: string; value: MeldType }[] = [
 const ALL_MELD_TYPE_VALUES: MeldType[] = MELD_TYPE_OPTIONS.map((m) => m.value);
 
 export function AddPhasesDialog({ open, onClose }: AddPhasesDialogProps) {
+  const addPhase = useAddPhase();
+  const gamePhases = useGamePhases();
+  return (
+    <PhaseSelectionDialog
+      open={open}
+      onClose={onClose}
+      onAddPhase={addPhase}
+      selectedPhaseIds={gamePhases.map((phase) => phase.id)}
+    />
+  );
+}
+
+export function PhaseSelectionDialog({
+  open,
+  onClose,
+  onAddPhase,
+  selectedPhaseIds = [],
+}: AddPhasesDialogProps & {
+  onAddPhase: (phase: Phase) => void;
+  selectedPhaseIds?: PhaseId[];
+}) {
   const [searchTerm, setSearchTerm] = useState("");
   const [meldType, setMeldType] = useState<MeldType[]>(ALL_MELD_TYPE_VALUES);
   const [phaseSetId, setPhaseSetId] = useState<PhaseSetId | null>(null);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const deferredSearch = useDeferredValue(searchTerm);
-  const addPhase = useAddPhase();
-  const gamePhases = useGamePhases();
-  const gamePhaseIds = new Set(gamePhases.map((p) => p.id));
+  const gamePhaseIds = new Set(selectedPhaseIds);
 
   useEffect(() => {
     if (!open) return;
@@ -156,7 +175,7 @@ export function AddPhasesDialog({ open, onClose }: AddPhasesDialogProps) {
                 <HeadlessButton
                   key={phase.id}
                   className="-mx-3 flex h-full w-[calc(100%+1.5rem)] cursor-pointer items-center justify-between px-3 text-left text-sm hover:bg-black/5 dark:hover:bg-white/10 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-40"
-                  onClick={() => addPhase(phase)}
+                  onClick={() => onAddPhase(phase)}
                   disabled={gamePhaseIds.has(phase.id)}
                 >
                   <span className="truncate">{formatPhaseDisplayName(phase)}</span>

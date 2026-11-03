@@ -1,4 +1,4 @@
-import type { Game, GameId } from "./game";
+import type { Game, GameId, GamePhaseOccurrenceId } from "./game";
 import type { RoundMetadata } from "./gameLifecycle";
 import type { GenericRound } from "./genericRound";
 import type { PlayerId, PlayerIdentity } from "./player";
@@ -60,10 +60,12 @@ export interface RoundScore {
   phaseStatus: PhaseStatus;
   /** Recorded Selected Phase; sequential counted history may derive a corrected assignment. */
   currentPhase: number;
+  /** Saved occurrence association; absent only in legacy Round fixtures/data. */
+  phaseOccurrenceId?: GamePhaseOccurrenceId;
   /** Remaining cards for a Points entry; absent for penalties, Count Tiebreakers and legacy data. */
   pointsCardBreakdown?: PointsCardBreakdown;
 }
 
-export type AddRoundScoreInput = Omit<RoundScore, "currentPhase"> & {
+export type AddRoundScoreInput = Omit<RoundScore, "currentPhase" | "phaseOccurrenceId"> & {
   selectedPhase?: number;
 };

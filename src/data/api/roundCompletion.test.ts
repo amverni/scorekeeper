@@ -56,6 +56,7 @@ describe("resolveGameCompletion", () => {
         scorekeeper: "phase10",
         status: "completed",
         phaseSet: game.phaseSet,
+        phaseOccurrences: game.phaseOccurrences,
         players: [players.amy.id, players.bob.id],
         firstDealerId: game.firstDealerId,
         settings: game.settings,

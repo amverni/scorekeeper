@@ -1,6 +1,7 @@
 import type { FirstDealerSelection } from "./dealer";
 import type { ActiveGameMetadata, CompletedGameMetadata } from "./gameLifecycle";
 import type { GenericGame } from "./genericGame";
+import type { PhaseId } from "./phase";
 import type { TemporaryPhaseSet } from "./phaseSet";
 import type { PlayerId } from "./player";
 
@@ -8,6 +9,13 @@ export type PhaseGame = ActiveGame | CompletedGame;
 export type Game = PhaseGame;
 export type StoredGame = PhaseGame | GenericGame;
 export type { GameId } from "./gameLifecycle";
+
+export type GamePhaseOccurrenceId = string;
+
+export interface GamePhaseOccurrence {
+  id: GamePhaseOccurrenceId;
+  phaseId: PhaseId;
+}
 
 export type GameTiebreaker =
   | "lowestPoints"
@@ -37,6 +45,7 @@ interface PhaseGameFields {
   scorekeeper: "phase10";
   firstDealerId: PlayerId;
   phaseSet: TemporaryPhaseSet;
+  phaseOccurrences: GamePhaseOccurrence[];
   settings: GameSettings;
   continuation?: boolean;
   playerJoins?: Array<{ playerId: PlayerId; afterRoundNumber: number }>;

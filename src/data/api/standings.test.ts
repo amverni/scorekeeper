@@ -449,6 +449,9 @@ function makePlayer(id: string, name: string, index: number): Player {
 
 function makeActiveGame(overrides: Partial<ActiveGame> = {}): ActiveGame {
   return {
+    phaseOccurrences: (overrides.phaseSet?.phases ?? ["phase-1", "phase-2", "phase-3"]).map(
+      (phaseId, index) => ({ id: `game-1-phase-${index}`, phaseId }),
+    ),
     firstDealerId: overrides.players?.[0] ?? players.amy.id,
     scorekeeper: "phase10",
     id: "game-1",
@@ -474,6 +477,9 @@ function makeActiveGame(overrides: Partial<ActiveGame> = {}): ActiveGame {
 
 function makeCompletedGame(overrides: Partial<CompletedGame> = {}): CompletedGame {
   return {
+    phaseOccurrences: (overrides.phaseSet?.phases ?? ["phase-1", "phase-2", "phase-3"]).map(
+      (phaseId, index) => ({ id: `game-1-phase-${index}`, phaseId }),
+    ),
     firstDealerId: overrides.players?.[0] ?? players.amy.id,
     scorekeeper: "phase10",
     id: "game-1",

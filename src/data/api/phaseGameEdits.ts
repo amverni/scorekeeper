@@ -1,11 +1,14 @@
 import type {
+  ActiveGame,
   EditGamePlayersInput,
   GameId,
+  GamePhaseOccurrence,
   PhaseGameEditCompletion,
   PhaseGameEditEffect,
   PhaseGameEditor,
   PhaseGameEditPreview,
 } from "../../types";
+import { builtInPhases } from "../constants/phases";
 import {
   finalizeGame,
   type GameLifecycleTransaction,
@@ -31,15 +34,16 @@ export const phaseGameEdits = {
     if (!saved) return null;
     const found = await phasesApi.getByIds(saved.game.phaseSet.phases);
     const byId = new Map(found.map((phase) => [phase.id, phase]));
-    const phases = saved.game.phaseSet.phases.map((id) => {
-      const phase = byId.get(id);
-      if (!phase) throw new Error(`Phase no longer exists: ${id}`);
-      return phase;
+    const phases = saved.game.phaseOccurrences.map(({ id, phaseId }) => {
+      const phase = byId.get(phaseId);
+      if (!phase) throw new Error(`Phase no longer exists: ${phaseId}`);
+      return { ...phase, occurrenceId: id };
     });
     return {
       game: saved.game,
       players: saved.players,
       version: saved.view.version,
+      canEditPhases: saved.rounds.length === 0,
       phases,
       withdrawnPlayers: saved.view.players
         .filter((player) => player.place === null)
@@ -122,6 +126,39 @@ async function evaluateEdit(tx: GameLifecycleTransaction, input: EditGamePlayers
     throw new Error("Game history changed. Close and reopen Edit game to load the saved values.");
   }
   assertSavedSeats(game.players, input.players);
+  const phaseOccurrences =
+    input.phaseOccurrences === undefined ? game.phaseOccurrences : input.phaseOccurrences;
+  if (!Array.isArray(phaseOccurrences) || phaseOccurrences.length === 0) {
+    throw new Error("At least one required Phase must remain.");
+  }
+  if (
+    phaseOccurrences.some(
+      (phase) =>
+        !phase ||
+        typeof phase.id !== "string" ||
+        phase.id.trim().length === 0 ||
+        typeof phase.phaseId !== "string" ||
+        phase.phaseId.length === 0,
+    ) ||
+    new Set(phaseOccurrences.map(({ id }) => id)).size !== phaseOccurrences.length
+  ) {
+    throw new Error(
+      "Each Game Phase must have a unique occurrence identity and a Phase definition.",
+    );
+  }
+  const phasesChanged =
+    phaseOccurrences.length !== game.phaseOccurrences.length ||
+    phaseOccurrences.some(
+      (phase, index) =>
+        phase.id !== game.phaseOccurrences[index]?.id ||
+        phase.phaseId !== game.phaseOccurrences[index]?.phaseId,
+    );
+  if (phasesChanged && rounds.length > 0) {
+    throw new Error("Phases can only be edited before the first saved Round.");
+  }
+  if (phasesChanged) await assertPhaseDefinitions(tx, game.phaseOccurrences, phaseOccurrences);
+  const [firstPhase, ...remainingPhases] = phaseOccurrences.map(({ phaseId }) => phaseId);
+  if (!firstPhase) throw new Error("At least one required Phase must remain.");
   const addedIds = input.players.filter((id) => !game.players.includes(id));
   const afterRoundNumber = view.nextRoundNumber - 1;
   if (
@@ -154,8 +191,8 @@ async function evaluateEdit(tx: GameLifecycleTransaction, input: EditGamePlayers
       afterRoundNumber,
       type: withdrawn.has(playerId) ? ("withdrawal" as const) : ("rejoin" as const),
     }));
-  if (addedIds.length === 0 && changes.length === 0) {
-    throw new Error("No Game membership changes to save.");
+  if (addedIds.length === 0 && changes.length === 0 && !phasesChanged) {
+    throw new Error("No Game membership or Phase changes to save.");
   }
   if (view.players.some((player) => player.progress.isFinished && withdrawn.has(player.id))) {
     throw new Error("Finished Players cannot Withdraw.");
@@ -166,8 +203,10 @@ async function evaluateEdit(tx: GameLifecycleTransaction, input: EditGamePlayers
   ) {
     throw new Error("Withdrawal must leave at least two eligible Players.");
   }
-  const proposed = {
+  const proposed: ActiveGame = {
     ...game,
+    phaseOccurrences: phaseOccurrences.map(({ id, phaseId }) => ({ id, phaseId })),
+    phaseSet: { ...game.phaseSet, phases: [firstPhase, ...remainingPhases] },
     deferFinishChoiceUntilSave: undefined,
     players: [...input.players],
     activePlayers: input.players.filter(
@@ -214,4 +253,23 @@ async function evaluateEdit(tx: GameLifecycleTransaction, input: EditGamePlayers
     rounds,
     preview,
   };
+}
+
+async function assertPhaseDefinitions(
+  tx: GameLifecycleTransaction,
+  saved: GamePhaseOccurrence[],
+  intended: GamePhaseOccurrence[],
+) {
+  const savedById = new Map(saved.map((phase) => [phase.id, phase.phaseId]));
+  for (const { id, phaseId } of intended) {
+    if (savedById.has(id) && savedById.get(id) !== phaseId) {
+      throw new Error("A Game Phase occurrence cannot change its objective.");
+    }
+  }
+  for (const phaseId of new Set(intended.map((phase) => phase.phaseId))) {
+    const phase =
+      builtInPhases.find((phase) => phase.id === phaseId) ??
+      (await tx.objectStore("customPhases").get(phaseId));
+    if (!phase) throw new Error(`Phase no longer exists: ${phaseId}`);
+  }
 }

@@ -146,7 +146,7 @@ it("resets all disposable pre-refactor data once, then preserves new data on reo
 });
 
 it("retries generic list and detail reads after a rejected database open", async () => {
-  const incompatible = await openDB("phase10-db", 9);
+  const incompatible = await openDB("phase10-db", 11);
   incompatible.close();
   const failed = await Promise.allSettled([
     genericGamesApi.getActiveViews(),
@@ -281,3 +281,72 @@ async function resetDatabase() {
   closeDB();
   await deleteDB("phase10-db");
 }
+
+it("assigns durable occurrences to saved pre-occurrence Games and their original Round associations", async () => {
+  const amy = await playersApi.create({ name: "Amy", color: "Jam", isFavorite: 0 });
+  const bob = await playersApi.create({ name: "Bob", color: "Ocean", isFavorite: 0 });
+  const created = await gamesApi.create({
+    players: [amy.id, bob.id],
+    phaseSet: {
+      id: "repeated",
+      type: "temporary",
+      name: "Repeated",
+      phases: ["classic-1", "classic-1", "classic-2"],
+    },
+    settings: {
+      inOrderPhases: false,
+      tiebreaker: "fewestWilds",
+      roundSkipPenalty: 0,
+      sitOutPenalty: 0,
+    },
+  });
+  const { phaseOccurrences: _occurrences, ...saved } = created;
+  closeDB();
+  await deleteDB("phase10-db");
+  const legacy = await openDB("phase10-db", 9, {
+    upgrade(db) {
+      const players = db.createObjectStore("players", { keyPath: "id" });
+      players.createIndex("by-isFavorite", "isFavorite");
+      const games = db.createObjectStore("games", { keyPath: "id" });
+      games.createIndex("by-created", "createdAt");
+      games.createIndex("by-status", "status");
+      const rounds = db.createObjectStore("rounds", { keyPath: ["gameId", "roundNumber"] });
+      rounds.createIndex("by-game", "gameId");
+      const phases = db.createObjectStore("customPhases", { keyPath: "id" });
+      phases.createIndex("by-type", "type");
+      db.createObjectStore("customPhaseSets", { keyPath: "id" });
+      const favorites = db.createObjectStore("favorites", { keyPath: ["entityType", "entityId"] });
+      favorites.createIndex("by-type", "entityType");
+      db.createObjectStore("settings", { keyPath: "id" });
+    },
+  });
+  await legacy.put("players", amy);
+  await legacy.put("players", bob);
+  await legacy.put("games", saved);
+  await legacy.put("rounds", {
+    id: "saved-round",
+    revision: 0,
+    scorekeeper: "phase10",
+    gameId: saved.id,
+    roundNumber: 1,
+    roundWinnerId: null,
+    scores: [
+      { playerId: amy.id, phaseStatus: "completed", score: 2, currentPhase: 2 },
+      { playerId: bob.id, phaseStatus: "failed", score: 3, currentPhase: 1 },
+    ],
+  });
+  legacy.close();
+  const view = await gamesApi.getView(saved.id);
+  expect(view?.game.phaseOccurrences).toHaveLength(3);
+  const occurrences = view?.game.phaseOccurrences;
+  if (!occurrences) throw new Error("Missing occurrences");
+  expect(new Set(occurrences.map(({ id }) => id)).size).toBe(3);
+  expect(view?.rounds[0].scores[0].source).toMatchObject({ phaseOccurrenceId: occurrences[1].id });
+  expect(view?.rounds[0].scores[1].source).toMatchObject({ phaseOccurrenceId: occurrences[0].id });
+  expect(view?.players[0]).toMatchObject({
+    tiebreakerTotal: 2,
+    progress: { selectable: { resolvedPhases: [2] } },
+  });
+  closeDB();
+  expect((await gamesApi.getView(saved.id))?.game).toEqual(view?.game);
+});

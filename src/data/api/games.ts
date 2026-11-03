@@ -118,7 +118,11 @@ export const gamesApi = {
     return game.phaseSet.phases.map((id, index) => {
       const phase = byId.get(id);
       if (!phase) throw new Error(`Phase no longer exists: ${id}`);
-      return { phaseNumber: index + 1, objective: formatPhaseDisplayName(phase) };
+      return {
+        phaseNumber: index + 1,
+        phaseOccurrenceId: game.phaseOccurrences[index].id,
+        objective: formatPhaseDisplayName(phase),
+      };
     });
   },
 
@@ -169,7 +173,11 @@ export const gamesApi = {
     const now = Date.now();
     const newGame: ActiveGame = {
       players: [...data.players],
-      phaseSet: data.phaseSet,
+      phaseSet: { ...data.phaseSet, phases: [...data.phaseSet.phases] },
+      phaseOccurrences: data.phaseSet.phases.map((phaseId) => ({
+        id: crypto.randomUUID(),
+        phaseId,
+      })),
       firstDealerId,
       settings: { ...data.settings, inOrderPhases: data.settings.inOrderPhases ?? true },
       scorekeeper: "phase10",
@@ -187,35 +195,26 @@ export const gamesApi = {
   },
 
   async addPhase(gameId: GameId, phaseId: PhaseId): Promise<void> {
-    await withGameTransaction(async (tx) => {
-      const game = await tx.objectStore("games").get(gameId);
-      assertActivePhaseGame(game);
-      await saveActiveGame(tx, {
-        ...game,
-        phaseSet: { ...game.phaseSet, phases: [...game.phaseSet.phases, phaseId] },
-      });
+    const editor = await phaseGameEdits.getEditor(gameId);
+    if (!editor) throw new Error("Active Phase 10 Game not found");
+    await phaseGameEdits.edit({
+      gameId,
+      version: editor.version,
+      players: editor.game.players,
+      phaseOccurrences: [...editor.game.phaseOccurrences, { id: crypto.randomUUID(), phaseId }],
     });
   },
 
   async removePhase(gameId: GameId, phaseId: PhaseId): Promise<void> {
-    await withGameTransaction(async (tx) => {
-      const game = await tx.objectStore("games").get(gameId);
-      assertActivePhaseGame(game);
-      const phaseIndex = game.phaseSet.phases.indexOf(phaseId);
-      if (phaseIndex === -1) throw new Error("Phase not found in game");
-      if (game.phaseSet.phases.length === 1) {
-        throw new Error("Cannot remove the last phase from a game");
-      }
-      if ((await tx.objectStore("rounds").index("by-game").count(gameId)) > 0) {
-        throw new Error("Cannot remove phases after rounds have been recorded");
-      }
-      const phases = game.phaseSet.phases.filter((_, index) => index !== phaseIndex);
-      const [first, ...rest] = phases;
-      if (!first) throw new Error("Cannot remove the last phase from a game");
-      await saveActiveGame(tx, {
-        ...game,
-        phaseSet: { ...game.phaseSet, phases: [first, ...rest] },
-      });
+    const editor = await phaseGameEdits.getEditor(gameId);
+    if (!editor) throw new Error("Active Phase 10 Game not found");
+    const index = editor.game.phaseOccurrences.findIndex((phase) => phase.phaseId === phaseId);
+    if (index === -1) throw new Error("Phase not found in game");
+    await phaseGameEdits.edit({
+      gameId,
+      version: editor.version,
+      players: editor.game.players,
+      phaseOccurrences: editor.game.phaseOccurrences.filter((_, position) => position !== index),
     });
   },
 
