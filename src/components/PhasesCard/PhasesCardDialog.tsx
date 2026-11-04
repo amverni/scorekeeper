@@ -1,9 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRef } from "react";
-import { gamePhasePlayersOptions } from "../../data/hooks/useGames";
+import { gamePhasePlayersOptions, gamePhasesCardOptions } from "../../data/hooks/useGames";
 import { builtInPhaseSetMatchOptions } from "../../data/hooks/usePhaseSets";
-import { phasesByIdsOptions } from "../../data/hooks/usePhases";
-import type { GameId, TemporaryPhaseSet } from "../../types";
+import type { GameId } from "../../types";
 import { Dialog, DialogScrollArea, InlineError, Toast, type ToastHandle } from "../ui";
 import { PhasesCardList } from "./PhasesCardList";
 import { PhasesCardShareButton } from "./PhasesCardShareButton";
@@ -12,28 +11,27 @@ interface PhasesCardDialogProps {
   gameId: GameId;
   open: boolean;
   onClose: (open: boolean) => void;
-  phaseSet: TemporaryPhaseSet;
 }
 
-export function PhasesCardDialog({ gameId, open, onClose, phaseSet }: PhasesCardDialogProps) {
+export function PhasesCardDialog({ gameId, open, onClose }: PhasesCardDialogProps) {
   const toastRef = useRef<ToastHandle>(null);
   const phasePlayersQuery = useQuery({
     ...gamePhasePlayersOptions(gameId),
     enabled: open,
   });
   const {
-    data: phases = [],
+    data: card,
     isError,
     isLoading,
+    error,
     refetch,
   } = useQuery({
-    ...phasesByIdsOptions([...phaseSet.phases]),
+    ...gamePhasesCardOptions(gameId),
     enabled: open,
   });
-  const missingPhaseRecords =
-    open && !isLoading && !isError && phases.length !== phaseSet.phases.length;
-  const canMatchBuiltIn =
-    open && !isLoading && !isError && !missingPhaseRecords && phases.length > 0;
+  const phases = card?.phases ?? [];
+  const removedPhases = card?.hasRemovedPhases === true;
+  const canMatchBuiltIn = open && !isLoading && !isError && !removedPhases && phases.length > 0;
   const { data: builtInPhaseSetId = null, isLoading: builtInMatchLoading } = useQuery({
     ...builtInPhaseSetMatchOptions(phases),
     enabled: canMatchBuiltIn,
@@ -47,25 +45,28 @@ export function PhasesCardDialog({ gameId, open, onClose, phaseSet }: PhasesCard
       bodyScroll="custom"
       headerAction={
         <PhasesCardShareButton
-          target={{ source: "game-snapshot", name: phaseSet.name, phases, builtInPhaseSetId }}
+          target={{ source: "game-snapshot", name: card?.name ?? "", phases, builtInPhaseSetId }}
           className="size-10!"
           disabled={
-            isLoading ||
-            builtInMatchLoading ||
-            isError ||
-            missingPhaseRecords ||
-            phases.length === 0
+            isLoading || builtInMatchLoading || isError || removedPhases || phases.length === 0
           }
           onError={(message) => toastRef.current?.show(message)}
         />
       }
     >
-      {isError || missingPhaseRecords || phasePlayersQuery.isError ? (
+      {removedPhases && (
+        <p className="pb-3 text-sm text-text-secondary">
+          Sharing is unavailable because this Game has Removed Phases. The current share format
+          cannot preserve their numbers and removal state.
+        </p>
+      )}
+      {isError || phasePlayersQuery.isError ? (
         <div className="pb-4">
           {isError ? (
-            <InlineError message="Unable to load phases." onRetry={() => refetch()} />
-          ) : missingPhaseRecords ? (
-            <InlineError message="This Phase Set is missing phase data and cannot be shared." />
+            <InlineError
+              message={error?.message ?? "Unable to load phases."}
+              onRetry={() => refetch()}
+            />
           ) : phasePlayersQuery.isError ? (
             <InlineError
               message="Unable to load Players' Current Phases."

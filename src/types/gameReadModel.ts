@@ -1,6 +1,6 @@
 import type { Game, GamePhaseOccurrenceId } from "./game";
 import type { PlayerId, PlayerIdentity } from "./player";
-import type { Round, RoundScore } from "./round";
+import type { PhaseSelectionAvailability, Round, RoundScore } from "./round";
 import type { PlayerProgress, StandingsDerivation } from "./standings";
 
 export interface GameReadModel {
@@ -25,6 +25,7 @@ export interface GamePlayerView extends PlayerIdentity {
   finishingRound: number | null;
   finishingPlace: number | null;
   place: number | null;
+  phaseAvailability?: PhaseSelectionAvailability;
 }
 
 export interface GameRoundView {
@@ -44,4 +45,5 @@ export interface GameRoundScoreView {
   counted: boolean;
   sourceTiebreakerValue: number;
   phaseAlreadyResolved?: boolean;
+  exclusionReason?: "Removed Phase";
 }

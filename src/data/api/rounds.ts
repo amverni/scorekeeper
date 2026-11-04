@@ -182,7 +182,7 @@ export const roundsApi = {
         throw new Error("Round history changed. Reload before saving.");
       }
 
-      const scores = data.scores.map(({ selectedPhase, ...input }) => {
+      const scores = data.scores.map(({ selectedPhase, selectedPhaseOccurrenceId, ...input }) => {
         const player = view.players.find((player) => player.id === input.playerId);
         if (!player || player.progress.isFinished) {
           throw new Error("Round entries must belong to Players still playing");
@@ -196,6 +196,17 @@ export const roundsApi = {
           currentPhase > game.phaseSet.phases.length
         ) {
           throw new Error("Choose a valid Phase Number.");
+        }
+        if (game.phaseOccurrences[currentPhase - 1].removed) {
+          throw new Error(`Phase ${currentPhase} is a Removed Phase. Choose a Remaining Phase.`);
+        }
+        if (
+          selectedPhaseOccurrenceId !== undefined &&
+          selectedPhaseOccurrenceId !== game.phaseOccurrences[currentPhase - 1].id
+        ) {
+          throw new Error(
+            "The selected occurrence is a Removed Phase or has moved. Choose a Remaining Phase.",
+          );
         }
         if (player.progress.selectable?.resolvedPhases.includes(currentPhase)) {
           throw new Error(`Phase ${currentPhase} is already resolved. Choose a Remaining Phase.`);

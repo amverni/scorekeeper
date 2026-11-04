@@ -15,6 +15,7 @@ export type GamePhaseOccurrenceId = string;
 export interface GamePhaseOccurrence {
   id: GamePhaseOccurrenceId;
   phaseId: PhaseId;
+  removed?: true;
 }
 
 export type GameTiebreaker =

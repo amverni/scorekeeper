@@ -13,6 +13,7 @@ interface PlayerResultCellProps {
   isRoundWinner: boolean;
   /** "completed" renders status icon + colored phase; "ghost" renders neutral phase, no icon. */
   variant: "completed" | "ghost";
+  removed?: boolean;
   /** Optional extra content rendered below the cell (per-round + running tiebreaker values). */
   extras?: React.ReactNode;
 }
@@ -37,19 +38,22 @@ export function PlayerResultCell({
   isDealer,
   isRoundWinner,
   variant,
+  removed = false,
   extras,
 }: PlayerResultCellProps) {
   const status = score?.phaseStatus;
   const isGhost = variant === "ghost";
   const StatusIcon = status ? STATUS_ICON[status] : null;
 
-  const phaseColor = isGhost
-    ? "text-text-secondary"
-    : (status && STATUS_COLOR_CLASS[status]) || "text-text-primary";
+  const phaseColor =
+    isGhost || removed
+      ? "text-text-secondary"
+      : (status && STATUS_COLOR_CLASS[status]) || "text-text-primary";
 
-  const iconColor = isGhost
-    ? "text-text-secondary"
-    : (status && STATUS_COLOR_CLASS[status]) || "text-text-secondary";
+  const iconColor =
+    isGhost || removed
+      ? "text-text-secondary"
+      : (status && STATUS_COLOR_CLASS[status]) || "text-text-secondary";
 
   return (
     <div className={`relative flex w-full flex-col items-center ${isGhost ? "opacity-55" : ""}`}>

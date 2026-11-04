@@ -1,4 +1,5 @@
 import type {
+  Game,
   GameReadModel,
   GameRoundView,
   GameTiebreaker,
@@ -26,8 +27,12 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
   const sortedRounds = rounds.slice().sort((a, b) => a.roundNumber - b.roundNumber);
   const version = JSON.stringify([game, sortedRounds]);
   const totalPhases = game.phaseSet.phases.length;
+  const requiredPhases = game.phaseOccurrences.flatMap((phase, index) =>
+    phase.removed ? [] : [index + 1],
+  );
   const selectable = game.settings.inOrderPhases === false;
-  const initialProgress = () => getInitialPlayerProgress(selectable ? totalPhases : undefined);
+  const initialProgress = () =>
+    getInitialPlayerProgress(selectable ? requiredPhases.length : undefined, requiredPhases);
   const joinBoundary = new Map(
     (game.playerJoins ?? []).map(({ playerId, afterRoundNumber }) => [playerId, afterRoundNumber]),
   );
@@ -130,12 +135,18 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
     const scores = orderedPlayers.map((player) => {
       const state = stateFor(player.id);
       const recorded = round.scores.find((entry) => entry.playerId === player.id);
+      const recordedPhase = recorded
+        ? (game.phaseOccurrences.find((phase) => phase.id === recorded.phaseOccurrenceId) ??
+          game.phaseOccurrences[recorded.currentPhase - 1])
+        : undefined;
+      const removed = recordedPhase?.removed === true;
       const joined = hasJoined(player.id, round.roundNumber);
       const entryCounts =
         counted &&
         joined &&
         !withdrawn.has(player.id) &&
         !state.progress.isFinished &&
+        !removed &&
         recorded !== undefined;
       // Selectable attempts retain their recorded numbered position through corrections.
       const effectiveScore =
@@ -154,7 +165,12 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
         state.progress.selectable?.resolvedPhases.includes(recorded.currentPhase) === true;
       const wasFinished = state.progress.isFinished;
       if (entryCounts && effectiveScore) {
-        state.progress = getProgressAfterScore(effectiveScore, state.progress, totalPhases);
+        state.progress = getProgressAfterScore(
+          effectiveScore,
+          state.progress,
+          totalPhases,
+          requiredPhases,
+        );
         state.tiebreakerTotal += tiebreakerValue;
         if (round.roundWinnerId === player.id) state.mostRecentWin = round.roundNumber;
         if (state.progress.isFinished) state.finishingRound = round.roundNumber;
@@ -180,6 +196,7 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
         tiebreakerValue,
         runningTiebreakerTotal: state.tiebreakerTotal,
         ...(selectable ? { phaseAlreadyResolved } : {}),
+        ...(removed ? { exclusionReason: "Removed Phase" as const } : {}),
       };
     });
     roundViews.push({ source: round, dealerId, scores, counted });
@@ -286,6 +303,15 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
       finishingRound: state.finishingRound,
       finishingPlace: state.progress.isFinished ? row.place : null,
       place: row.place,
+      ...(selectable
+        ? {
+            phaseAvailability: {
+              ...getPhaseSelectionSlots(game),
+              resolvedBeforeRound: state.progress.selectable?.resolvedPhases ?? [],
+              resolvedElsewhere: state.progress.selectable?.resolvedPhases ?? [],
+            },
+          }
+        : {}),
     };
   });
 
@@ -314,6 +340,15 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
           (gameOrder.get(a.id) ?? 0) - (gameOrder.get(b.id) ?? 0),
       )
       .map((player) => player.id),
+  };
+}
+
+export function getPhaseSelectionSlots(game: Game) {
+  return {
+    removedPhases: game.phaseOccurrences.flatMap((phase, index) =>
+      phase.removed ? [index + 1] : [],
+    ),
+    phaseOccurrenceIds: game.phaseOccurrences.map((phase) => phase.id),
   };
 }
 

@@ -1,6 +1,8 @@
 import { TabPanel } from "@headlessui/react";
-import { useForm } from "@tanstack/react-form";
+import { useForm, useStore } from "@tanstack/react-form";
+import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useRef, useState } from "react";
+import { gamePhaseRemovalOptions } from "../../data/hooks/useGames";
 import type {
   EditGamePlayersInput,
   GenericGameEditor,
@@ -62,6 +64,7 @@ export function GameMembershipEditor({
               phaseOccurrences: value.phases.map((phase) => ({
                 id: phase.occurrenceId,
                 phaseId: phase.id,
+                ...(phase.removed ? { removed: phase.removed } : {}),
               })),
             }
           : {}),
@@ -77,6 +80,15 @@ export function GameMembershipEditor({
         await save(input);
       }
     },
+  });
+  const roster = useStore(form.store, (state) => ({
+    players: state.values.players.map(({ id }) => id),
+    withdrawnPlayers: state.values.withdrawnPlayers,
+  }));
+  const historyPhases = "canEditPhases" in editor && !editor.canEditPhases;
+  const removalOptions = useQuery({
+    ...gamePhaseRemovalOptions({ gameId: game.id, version: editor.version, ...roster }),
+    enabled: historyPhases,
   });
 
   function rejoin(playerId: PlayerId) {
@@ -115,7 +127,8 @@ export function GameMembershipEditor({
             phases.some(
               (phase, index) =>
                 phase.occurrenceId !== game.phaseOccurrences[index]?.id ||
-                phase.id !== game.phaseOccurrences[index]?.phaseId,
+                phase.id !== game.phaseOccurrences[index]?.phaseId ||
+                phase.removed !== game.phaseOccurrences[index]?.removed,
             ));
         const changed =
           phasesChanged ||
@@ -125,8 +138,23 @@ export function GameMembershipEditor({
         const membershipInvalid =
           withdrawnPlayers.some((id) => !savedWithdrawn.includes(id)) &&
           players.length - withdrawnPlayers.length < 2;
+        const protectedRemoval =
+          historyPhases && game.scorekeeper === "phase10"
+            ? removalOptions.data?.find(
+                (option) =>
+                  option.reason &&
+                  !game.phaseOccurrences.find((phase) => phase.id === option.occurrenceId)
+                    ?.removed &&
+                  !phases.some(
+                    (phase) => phase.occurrenceId === option.occurrenceId && !phase.removed,
+                  ),
+              )?.reason
+            : null;
         const invalid =
-          membershipInvalid || (game.scorekeeper === "phase10" && phases.length === 0);
+          membershipInvalid ||
+          (game.scorekeeper === "phase10" && !phases.some((phase) => !phase.removed)) ||
+          Boolean(protectedRemoval) ||
+          (historyPhases && !removalOptions.isSuccess);
         return (
           <StagedGameEditor
             experience={experience}
@@ -146,9 +174,21 @@ export function GameMembershipEditor({
               selectedIndex={selectedIndex}
               onChange={setSelectedIndex}
               error={
-                submitError && (
+                (submitError || protectedRemoval || (historyPhases && removalOptions.isError)) && (
                   <div className="content-container w-full pb-2">
-                    <InlineError message={submitError} />
+                    <InlineError
+                      message={
+                        submitError ??
+                        protectedRemoval ??
+                        removalOptions.error?.message ??
+                        "Unable to load Phase removal eligibility."
+                      }
+                      onRetry={
+                        historyPhases && removalOptions.isError
+                          ? () => removalOptions.refetch()
+                          : undefined
+                      }
+                    />
                   </div>
                 )
               }
@@ -219,7 +259,13 @@ export function GameMembershipEditor({
                         <GamePhasesEditor
                           phases={field.state.value}
                           editable={editor.canEditPhases}
-                          isPending={isPending || isSubmitting}
+                          isPending={
+                            isPending ||
+                            isSubmitting ||
+                            (historyPhases && !removalOptions.isSuccess)
+                          }
+                          removalOptions={removalOptions.data}
+                          savedPhases={editor.phases}
                           onChange={(phases) => {
                             if (submitting.current) return;
                             setSubmitError(null);

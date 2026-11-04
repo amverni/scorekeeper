@@ -40,6 +40,7 @@ export const gamesApi = {
   deleteRound: phaseRoundEdits.delete,
 
   getEditor: phaseGameEdits.getEditor,
+  getPhaseRemovalOptions: phaseGameEdits.getRemovalOptions,
   previewEdit: phaseGameEdits.preview,
   edit: phaseGameEdits.edit,
 
@@ -115,15 +116,34 @@ export const gamesApi = {
     if (!game) throw new Error("Game not found.");
     const phases = await phasesApi.getByIds(game.phaseSet.phases);
     const byId = new Map(phases.map((phase) => [phase.id, phase]));
-    return game.phaseSet.phases.map((id, index) => {
+    return game.phaseSet.phases.flatMap((id, index) => {
       const phase = byId.get(id);
       if (!phase) throw new Error(`Phase no longer exists: ${id}`);
-      return {
-        phaseNumber: index + 1,
-        phaseOccurrenceId: game.phaseOccurrences[index].id,
-        objective: formatPhaseDisplayName(phase),
-      };
+      if (game.phaseOccurrences[index].removed) return [];
+      return [
+        {
+          phaseNumber: index + 1,
+          phaseOccurrenceId: game.phaseOccurrences[index].id,
+          objective: formatPhaseDisplayName(phase),
+        },
+      ];
     });
+  },
+
+  async getPhasesCard(id: GameId) {
+    const game = await this.getById(id);
+    if (!game) throw new Error("Game not found.");
+    const phases = await phasesApi.getByIds(game.phaseSet.phases);
+    const byId = new Map(phases.map((phase) => [phase.id, phase]));
+    return {
+      name: game.phaseSet.name,
+      hasRemovedPhases: game.phaseOccurrences.some((phase) => phase.removed),
+      phases: game.phaseOccurrences.map(({ phaseId, removed }) => {
+        const phase = byId.get(phaseId);
+        if (!phase) throw new Error("This Phase Set is missing phase data and cannot be shared.");
+        return { ...phase, ...(removed ? { removed } : {}) };
+      }),
+    };
   },
 
   async getPhasePlayers(id: GameId): Promise<PhasesCardPlayerGroups> {

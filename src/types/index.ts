@@ -20,6 +20,7 @@ export type {
   PhaseGameEditEffect,
   PhaseGameEditor,
   PhaseGameEditPreview,
+  PhaseRemovalOption,
 } from "./gameEditor";
 export type {
   ActiveGameMetadata,

@@ -21,7 +21,11 @@ import {
   requirePlayers,
   withGameTransaction,
 } from "./gameLifecycle";
-import { assertUniquePhaseResolutions, deriveGameReadModel } from "./gameReadModel";
+import {
+  assertUniquePhaseResolutions,
+  deriveGameReadModel,
+  getPhaseSelectionSlots,
+} from "./gameReadModel";
 import { assertActivePhaseGame, assertPhaseRounds } from "./games";
 import { resolveGameCompletion } from "./roundCompletion";
 import { assertConfiguredPenalty, assertPointsCardBreakdown, validateScore } from "./rounds";
@@ -96,6 +100,14 @@ export const phaseRoundEdits = {
           .filter((player) => round.scores.some((score) => score.playerId === player.id))
           .map((player) => ({
             ...player,
+            ...(roundView.scores.some(
+              (entry) => entry.playerId === player.id && entry.exclusionReason === "Removed Phase",
+            )
+              ? {
+                  removedPhase: round.scores.find((entry) => entry.playerId === player.id)
+                    ?.currentPhase,
+                }
+              : {}),
             ...(game.settings.inOrderPhases === false
               ? { phaseAvailability: getPhaseAvailability(view, player.id, roundNumber) }
               : {}),
@@ -192,6 +204,7 @@ function getPhaseAvailability(
   }
   return {
     resolvedBeforeRound: [...resolvedBeforeRound],
+    ...getPhaseSelectionSlots(view.game),
     resolvedElsewhere: [...resolvedElsewhere],
     recordedPhase: view.rounds
       .find((round) => round.source.roundNumber === roundNumber)
@@ -291,6 +304,7 @@ async function evaluateEdit(tx: GameLifecycleTransaction, input: EditPhaseRoundI
       interpreted.scores
         .filter((entry) => entry.counted)
         .map((entry) => entry.source?.phaseStatus ?? null),
+      interpreted.scores.some((entry) => entry.exclusionReason === "Removed Phase"),
     ) === "required"
   ) {
     throw new Error("A Round Winner is required.");

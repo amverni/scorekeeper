@@ -19,7 +19,9 @@ export interface PhaseRound extends RoundMetadata {
 export interface PhaseRoundEditor {
   game: Game;
   round: Round & { id: PhaseRoundId };
-  players: Array<PlayerIdentity & { phaseAvailability?: PhaseSelectionAvailability }>;
+  players: Array<
+    PlayerIdentity & { phaseAvailability?: PhaseSelectionAvailability; removedPhase?: number }
+  >;
   countedPlayerIds: PlayerId[];
   version: string;
 }
@@ -28,6 +30,8 @@ export interface PhaseSelectionAvailability {
   resolvedBeforeRound: number[];
   resolvedElsewhere: number[];
   recordedPhase?: number;
+  removedPhases?: number[];
+  phaseOccurrenceIds?: GamePhaseOccurrenceId[];
 }
 
 export interface DeletePhaseRoundInput {
@@ -68,4 +72,5 @@ export interface RoundScore {
 
 export type AddRoundScoreInput = Omit<RoundScore, "currentPhase" | "phaseOccurrenceId"> & {
   selectedPhase?: number;
+  selectedPhaseOccurrenceId?: GamePhaseOccurrenceId;
 };

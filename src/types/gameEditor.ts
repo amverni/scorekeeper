@@ -7,11 +7,18 @@ import type { Player, PlayerId, PlayerIdentity } from "./player";
 export interface PhaseGameEditor {
   game: ActiveGame;
   players: Player[];
-  phases: Array<Phase & { occurrenceId: GamePhaseOccurrence["id"] }>;
+  phases: Array<Phase & { occurrenceId: GamePhaseOccurrence["id"]; removed?: true }>;
   version: string;
   withdrawnPlayers: PlayerId[];
   finishedPlayers: PlayerId[];
   canEditPhases: boolean;
+}
+
+export interface PhaseRemovalOption {
+  occurrenceId: GamePhaseOccurrence["id"];
+  phaseNumber: number;
+  retainSlot: boolean;
+  reason: string | null;
 }
 
 export interface EditGamePlayersInput {
@@ -27,11 +34,19 @@ export interface EditGamePlayersInput {
   };
 }
 
-export interface PhaseGameEditEffect {
-  type: "join" | "withdrawal" | "rejoin";
-  players: PlayerIdentity[];
-  afterRoundNumber: number;
-}
+export type PhaseGameEditEffect =
+  | {
+      type: "join" | "withdrawal" | "rejoin";
+      players: PlayerIdentity[];
+      afterRoundNumber: number;
+    }
+  | {
+      type: "phaseRemoval";
+      phaseNumbers: number[];
+      resolvedPhaseNumbers: number[];
+      players: PlayerIdentity[];
+    }
+  | { type: "finished"; players: PlayerIdentity[] };
 
 export type PhaseGameEditCompletion =
   | { type: "none" }

@@ -1,9 +1,11 @@
 import type {
   AddRoundScoreInput,
   ArrayAtLeastOne,
+  GamePhaseOccurrenceId,
   GameSettings,
   GameTiebreaker,
   PhaseRoundEditor,
+  PhaseSelectionAvailability,
   PhaseStatus,
   PlayerId,
   PlayerIdentity,
@@ -43,6 +45,7 @@ export interface ScoreEntryCompletion {
 export interface PlayerDraft {
   playerId: PlayerId;
   selectedPhase?: number;
+  selectedPhaseOccurrenceId?: GamePhaseOccurrenceId;
   result: PhaseStatus | null;
   /** Polymorphic numeric value (semantics depend on tiebreaker — see addRound.md). */
   score: number;
@@ -362,12 +365,20 @@ function updatePlayer(
 }
 
 export function createInitialDraft(
-  players: Array<PlayerIdentity & { progress?: PlayerProgress }>,
+  players: Array<
+    PlayerIdentity & { progress?: PlayerProgress; phaseAvailability?: PhaseSelectionAvailability }
+  >,
 ): AddRoundDraft {
   return {
     players: players.map((p) => ({
       playerId: p.id,
-      ...(p.progress?.selectable ? { selectedPhase: p.progress.currentPhase } : {}),
+      ...(p.progress?.selectable
+        ? {
+            selectedPhase: p.progress.currentPhase,
+            selectedPhaseOccurrenceId:
+              p.phaseAvailability?.phaseOccurrenceIds?.[p.progress.currentPhase - 1],
+          }
+        : {}),
       result: null,
       score: 0,
       lastManualScore: 0,
@@ -391,7 +402,10 @@ export function createEditRoundDraft(editor: PhaseRoundEditor): AddRoundDraft {
       return {
         ...player,
         ...(editor.game.settings.inOrderPhases === false
-          ? { selectedPhase: source.currentPhase }
+          ? {
+              selectedPhase: source.currentPhase,
+              selectedPhaseOccurrenceId: source.phaseOccurrenceId,
+            }
           : {}),
         result: source.phaseStatus,
         score: source.score,
@@ -768,6 +782,7 @@ export function getDraftProgress(
   draft: AddRoundDraft,
   tiebreaker: GameTiebreaker,
   countedPlayerIds?: readonly PlayerId[],
+  hasRemovedEntries = false,
 ) {
   const winnerRequirement =
     countedPlayerIds?.length === 0
@@ -780,6 +795,7 @@ export function getDraftProgress(
                 countedPlayerIds === undefined || countedPlayerIds.includes(player.playerId),
             )
             .map((player) => player.result),
+          hasRemovedEntries,
         );
   const winnerComplete = draft.players.some(
     (player) => player.playerId === draft.roundWinnerId && player.result === "completed",
@@ -807,8 +823,9 @@ export function isDraftComplete(
   draft: AddRoundDraft,
   tiebreaker: GameTiebreaker,
   countedPlayerIds?: readonly PlayerId[],
+  hasRemovedEntries = false,
 ): draft is CompleteAddRoundDraft {
-  return getDraftProgress(draft, tiebreaker, countedPlayerIds).ready;
+  return getDraftProgress(draft, tiebreaker, countedPlayerIds, hasRemovedEntries).ready;
 }
 
 /**
@@ -823,8 +840,9 @@ export function toRoundScores(
   draft: AddRoundDraft,
   tiebreaker: GameTiebreaker,
   countedPlayerIds?: readonly PlayerId[],
+  hasRemovedEntries = false,
 ): ArrayAtLeastOne<AddRoundScoreInput> {
-  if (!isDraftComplete(draft, tiebreaker, countedPlayerIds)) {
+  if (!isDraftComplete(draft, tiebreaker, countedPlayerIds, hasRemovedEntries)) {
     throw new Error("Cannot build round scores from an incomplete draft.");
   }
 
@@ -833,6 +851,9 @@ export function toRoundScores(
     score: player.score,
     phaseStatus: player.result,
     ...(player.selectedPhase !== undefined ? { selectedPhase: player.selectedPhase } : {}),
+    ...(player.selectedPhaseOccurrenceId !== undefined
+      ? { selectedPhaseOccurrenceId: player.selectedPhaseOccurrenceId }
+      : {}),
     ...(isPointsTiebreaker(tiebreaker) && isManualResult(player.result)
       ? { pointsCardBreakdown: { ...player.quickCounts } }
       : {}),

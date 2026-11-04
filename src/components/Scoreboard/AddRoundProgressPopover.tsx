@@ -9,6 +9,7 @@ interface AddRoundProgressPopoverProps {
   draft: AddRoundDraft;
   tiebreaker: GameTiebreaker;
   countedPlayerIds?: readonly PlayerId[];
+  hasRemovedEntries?: boolean;
 }
 
 export function AddRoundProgressPopover({
@@ -16,8 +17,9 @@ export function AddRoundProgressPopover({
   draft,
   tiebreaker,
   countedPlayerIds,
+  hasRemovedEntries,
 }: AddRoundProgressPopoverProps) {
-  const progress = getDraftProgress(draft, tiebreaker, countedPlayerIds);
+  const progress = getDraftProgress(draft, tiebreaker, countedPlayerIds, hasRemovedEntries);
   const { completed, total, winnerComplete, winnerRequirement, ready } = progress;
   const { players: playerDrafts, roundWinnerId } = draft;
   const fraction = total === 0 ? 0 : completed / total;

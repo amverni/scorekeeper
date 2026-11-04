@@ -70,6 +70,7 @@ function PhasesCardRow({
     <div
       className={[
         "relative flex w-full min-w-0 text-sm",
+        phase.removed ? "text-text-secondary opacity-50" : "",
         occupied ? "items-start" : "items-center",
       ].join(" ")}
     >
@@ -93,6 +94,7 @@ function PhasesCardRow({
         >
           {displayName}
         </span>
+        {phase.removed && <span className="block text-xs">Removed</span>}
         {occupied && (
           // biome-ignore lint/a11y/useSemanticElements: This groups identities, not form controls.
           <div id={groupId} role="group" aria-label={`Players on Phase ${number}`} className="mt-2">

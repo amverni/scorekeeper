@@ -5,7 +5,7 @@ import { Button, Dialog } from "../ui";
 
 function describeEffect(effect: PhaseGameEditEffect) {
   const names = effect.players.map(({ name }) => name).join(", ");
-  const round = effect.afterRoundNumber + 1;
+  const round = "afterRoundNumber" in effect ? effect.afterRoundNumber + 1 : null;
   switch (effect.type) {
     case "join":
       return `${names} will join from Round ${round} with zero totals and no phase progress. Earlier Rounds will not be backfilled.`;
@@ -13,6 +13,20 @@ function describeEffect(effect: PhaseGameEditEffect) {
       return `${names} will become unranked and ineligible to win, and will not play or deal from Round ${round}. Saved history stays intact.`;
     case "rejoin":
       return `${names} will rejoin from Round ${round}, resuming existing totals and phase progress. Missed Rounds add no scores or penalties.`;
+    case "phaseRemoval": {
+      const resolved = effect.resolvedPhaseNumbers;
+      const attempted = effect.phaseNumbers.filter((number) => !resolved.includes(number));
+      const history = [
+        resolved.length > 0 && `Phases ${resolved.join(", ")} have recorded resolutions`,
+        attempted.length > 0 &&
+          `Phases ${attempted.join(", ")} have saved entries but no resolutions`,
+      ]
+        .filter(Boolean)
+        .join("; ");
+      return `${history}. Their entries will be excluded from phase progress and every Tiebreaker, including recorded Round wins. Saved Rounds and original values stay intact; no replacement winner is chosen.`;
+    }
+    case "finished":
+      return `${names} will become Finished Players under the remaining required Phases. Finishing Places and counted totals will be recalculated.`;
   }
 }
 

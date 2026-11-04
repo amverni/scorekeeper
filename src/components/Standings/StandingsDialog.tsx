@@ -72,7 +72,9 @@ export function StandingsDialog({ open, onClose, view }: StandingsDialogProps) {
               <PhaseGraph
                 series={standings.phaseGraphSeries}
                 rows={standings.rows}
-                totalPhases={game.phaseSet.phases.length}
+                totalPhases={
+                  view.players[0]?.progress.selectable?.totalPhases ?? game.phaseSet.phases.length
+                }
               />
             </TabPanel>
 

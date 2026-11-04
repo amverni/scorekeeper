@@ -83,18 +83,27 @@ export function RoundRow({
               "scoreboard-cell scoreboard-cell--anchor-top cursor-pointer",
               lastColClass(idx),
               lastRowClass,
-              score && !entry.counted ? "opacity-45" : "",
+              score && !entry.counted && !entry.exclusionReason ? "opacity-45" : "",
             ].join(" ")}
           >
             {score && (
               <>
-                {!entry.counted && <span className="sr-only">Retained entry, not counted. </span>}
+                {!entry.counted && (
+                  <span
+                    className={entry.exclusionReason ? "text-xs text-text-secondary" : "sr-only"}
+                  >
+                    {entry.exclusionReason
+                      ? "Removed Phase, not counted."
+                      : "Retained entry, not counted. "}
+                  </span>
+                )}
                 <PlayerResultCell
                   score={score}
                   phaseNumber={phaseNumber}
                   isDealer={dealerId === player.id}
                   isRoundWinner={round.roundWinnerId === player.id}
                   variant="completed"
+                  removed={entry.exclusionReason === "Removed Phase"}
                   extras={
                     <div
                       className={[

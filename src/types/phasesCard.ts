@@ -2,7 +2,7 @@ import type { Meld, Phase } from "./phase";
 import type { PhaseSet, PhaseSetId } from "./phaseSet";
 import type { PlayerIdentity } from "./player";
 
-export type PhasesCardPhase = Pick<Phase, "requirements">;
+export type PhasesCardPhase = Pick<Phase, "requirements"> & { removed?: true };
 export type PhasesCardPlayerGroups = Partial<Record<number, PlayerIdentity[]>>;
 
 export interface PhasesCardSharePayloadV1 {

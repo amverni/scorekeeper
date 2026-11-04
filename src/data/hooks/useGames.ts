@@ -16,7 +16,20 @@ export const gameKeys = {
   editor: (id: GameId) => [...gameKeys.detail(id), "editor"] as const,
   phasePlayers: (id: GameId) => [...gameKeys.detail(id), "phasePlayers"] as const,
   phaseOptions: (id: GameId) => [...gameKeys.detail(id), "phaseOptions"] as const,
+  phasesCard: (id: GameId) => [...gameKeys.detail(id), "phasesCard"] as const,
+  phaseRemoval: (
+    input: Pick<EditGamePlayersInput, "gameId" | "version" | "players" | "withdrawnPlayers">,
+  ) => [...gameKeys.detail(input.gameId), "phaseRemoval", input] as const,
 };
+
+export function gamePhaseRemovalOptions(
+  input: Pick<EditGamePlayersInput, "gameId" | "version" | "players" | "withdrawnPlayers">,
+) {
+  return queryOptions({
+    queryKey: gameKeys.phaseRemoval(input),
+    queryFn: () => gamesApi.getPhaseRemovalOptions(input),
+  });
+}
 
 export function gameEditorOptions(id: GameId) {
   return queryOptions({
@@ -56,6 +69,14 @@ export function gamePhaseOptionsOptions(id: GameId) {
   return queryOptions({
     queryKey: gameKeys.phaseOptions(id),
     queryFn: () => gamesApi.getPhaseOptions(id),
+    enabled: !!id,
+  });
+}
+
+export function gamePhasesCardOptions(id: GameId) {
+  return queryOptions({
+    queryKey: gameKeys.phasesCard(id),
+    queryFn: () => gamesApi.getPhasesCard(id),
     enabled: !!id,
   });
 }

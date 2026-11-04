@@ -52,6 +52,7 @@ interface AddRoundDialogProps {
     PlayerIdentity & {
       progress?: PlayerProgress;
       phaseAvailability?: PhaseSelectionAvailability;
+      removedPhase?: number;
     }
   >;
   draft: UseAddRoundDraft;
@@ -118,10 +119,12 @@ export function AddRoundDialog({
     target?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
   }, [visibleIndex]);
 
+  const hasRemovedEntries = players.some((player) => player.removedPhase !== undefined);
   const progress = getDraftProgress(
     draft.draft,
     game.settings.tiebreaker,
     editor?.countedPlayerIds,
+    hasRemovedEntries,
   );
   const winnerPlayer = players.find((player) => player.id === draft.draft.roundWinnerId);
   const unavailableWinner = draft.draft.roundWinnerId !== null && !winnerPlayer;
@@ -133,10 +136,15 @@ export function AddRoundDialog({
     ...gamePhaseOptionsOptions(game.id),
     enabled: open && selectable,
   });
-  const phaseError = (player: (typeof players)[number], selectedPhase: number | undefined) => {
+  const phaseError = (
+    player: (typeof players)[number],
+    selectedPhase: number | undefined,
+    selectedPhaseOccurrenceId?: string,
+  ) => {
     const resolved = player.progress?.selectable?.resolvedPhases ?? [];
     return getSelectedPhaseError({
       selectedPhase,
+      selectedPhaseOccurrenceId,
       result: draft.draft.players.find((entry) => entry.playerId === player.id)?.result ?? null,
       totalPhases: game.phaseSet.phases.length,
       availability: player.phaseAvailability ?? {
@@ -148,10 +156,12 @@ export function AddRoundDialog({
   };
   const phaseErrors = selectable
     ? players.flatMap((player) => {
-        const selected = draft.draft.players.find(
-          (entry) => entry.playerId === player.id,
-        )?.selectedPhase;
-        const error = phaseError(player, selected);
+        const selected = draft.draft.players.find((entry) => entry.playerId === player.id);
+        const error = phaseError(
+          player,
+          selected?.selectedPhase,
+          selected?.selectedPhaseOccurrenceId,
+        );
         return error ? [`${player.name}: ${error}`] : [];
       })
     : [];
@@ -185,7 +195,12 @@ export function AddRoundDialog({
   const handleSave = () => {
     if (!canSave || !selectionValid) return;
     return runSave(async () => {
-      const scores = toRoundScores(draft.draft, game.settings.tiebreaker, editor?.countedPlayerIds);
+      const scores = toRoundScores(
+        draft.draft,
+        game.settings.tiebreaker,
+        editor?.countedPlayerIds,
+        hasRemovedEntries,
+      );
       const roundWinnerId = draft.draft.roundWinnerId;
       if (editor) {
         const input: EditPhaseRoundInput = {
@@ -290,6 +305,7 @@ export function AddRoundDialog({
                 draft={draft.draft}
                 tiebreaker={game.settings.tiebreaker}
                 countedPlayerIds={editor?.countedPlayerIds}
+                hasRemovedEntries={hasRemovedEntries}
               />
               <Button
                 type="button"
@@ -475,6 +491,11 @@ export function AddRoundDialog({
 
                   return (
                     <TabPanel key={player.id} className="flex flex-col px-3 pb-3">
+                      {player.removedPhase !== undefined && (
+                        <p className="mb-3 text-sm text-text-secondary">
+                          Removed Phase, not counted.
+                        </p>
+                      )}
                       <List rowVariant="content">
                         {selectable && (
                           <Listbox
@@ -496,6 +517,11 @@ export function AddRoundDialog({
                                 transformOrigin="top-right"
                                 className="max-w-[min(24rem,calc(100vw-2rem))]"
                               >
+                                {player.removedPhase !== undefined && (
+                                  <ListboxOption value={player.removedPhase}>
+                                    Phase {player.removedPhase}: Removed Phase (not counted)
+                                  </ListboxOption>
+                                )}
                                 {phases.data?.map(({ phaseNumber, objective }) => (
                                   <ListboxOption
                                     key={phaseNumber}

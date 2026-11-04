@@ -1,5 +1,13 @@
 import { useForm, useStore } from "@tanstack/react-form";
-import type { GameId, GameSettings, PhaseStatus, PlayerId, PlayerIdentity } from "../../types";
+import type {
+  GameId,
+  GameSettings,
+  PhaseSelectionAvailability,
+  PhaseStatus,
+  PlayerId,
+  PlayerIdentity,
+  PlayerProgress,
+} from "../../types";
 import { useSessionRoundDrafts } from "../GameEditor/SessionRoundDrafts";
 import * as draftHelpers from "./addRoundDraft";
 
@@ -23,7 +31,9 @@ const POINTS_MAX = 250;
 
 export function useAddRoundDraft(
   gameId: GameId,
-  players: PlayerIdentity[],
+  players: Array<
+    PlayerIdentity & { progress?: PlayerProgress; phaseAvailability?: PhaseSelectionAvailability }
+  >,
   settings: GameSettings,
   initialDraft?: draftHelpers.AddRoundDraft,
   initialSelectedPlayerId?: PlayerId,
@@ -86,7 +96,14 @@ export function useAddRoundDraft(
       setNextDraft({
         ...current,
         players: current.players.map((player) =>
-          player.playerId === playerId ? { ...player, selectedPhase } : player,
+          player.playerId === playerId
+            ? {
+                ...player,
+                selectedPhase,
+                selectedPhaseOccurrenceId: players.find((entry) => entry.id === playerId)
+                  ?.phaseAvailability?.phaseOccurrenceIds?.[selectedPhase - 1],
+              }
+            : player,
         ),
       });
     },

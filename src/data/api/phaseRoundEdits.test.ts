@@ -10,6 +10,140 @@ import { roundsApi } from "./rounds";
 beforeEach(resetDatabase);
 afterEach(resetDatabase);
 
+it("corrects an excluded Round Winner to Failed without fabricating a counted winner", async () => {
+  const amy = await playersApi.create({ name: "Amy", color: "Jam", isFavorite: 0 });
+  const bob = await playersApi.create({ name: "Bob", color: "Ocean", isFavorite: 0 });
+  const game = await gamesApi.create({
+    players: [amy.id, bob.id],
+    phaseSet: {
+      id: "short",
+      type: "temporary",
+      name: "Short",
+      phases: ["classic-1", "classic-2", "classic-3"],
+    },
+    settings: {
+      inOrderPhases: false,
+      tiebreaker: "roundsWon",
+      roundSkipPenalty: 0,
+      sitOutPenalty: 0,
+    },
+  });
+  await roundsApi.add({
+    gameId: game.id,
+    roundWinnerId: amy.id,
+    scores: [
+      { playerId: amy.id, phaseStatus: "completed", score: 0, selectedPhase: 1 },
+      { playerId: bob.id, phaseStatus: "failed", score: 0, selectedPhase: 2 },
+    ],
+  });
+  const editor = await gamesApi.getEditor(game.id);
+  if (!editor) throw new Error("Missing editor");
+  const removal = {
+    gameId: game.id,
+    version: editor.version,
+    players: game.players,
+    phaseOccurrences: game.phaseOccurrences.slice(1),
+  };
+  const review = await gamesApi.previewEdit(removal);
+  await gamesApi.edit({ ...removal, approval: { token: review.token } });
+  const round = await gamesApi.getRoundEditor(game.id, 1);
+  await gamesApi.editRound({
+    gameId: game.id,
+    roundNumber: 1,
+    version: round.version,
+    roundWinnerId: null,
+    scores: round.round.scores.map((entry) => ({
+      ...entry,
+      selectedPhase: entry.currentPhase,
+      phaseStatus: "failed",
+    })),
+  });
+  closeDB();
+  const view = await gamesApi.getView(game.id);
+  expect(view?.rounds[0].source.roundWinnerId).toBeNull();
+  expect(view?.rounds[0].scores.map(({ counted }) => counted)).toEqual([false, true]);
+  expect(view?.players.map(({ tiebreakerTotal }) => tiebreakerTotal)).toEqual([0, 0]);
+});
+
+it.each([
+  true,
+  false,
+])("corrects Removed Phase entries without restoring their association or contribution (in order: %s)", async (inOrderPhases) => {
+  const amy = await playersApi.create({ name: "Amy", color: "Jam", isFavorite: 0 });
+  const bob = await playersApi.create({ name: "Bob", color: "Ocean", isFavorite: 0 });
+  const game = await gamesApi.create({
+    players: [amy.id, bob.id],
+    phaseSet: {
+      id: "short",
+      type: "temporary",
+      name: "Short",
+      phases: ["classic-1", "classic-2", "classic-3"],
+    },
+    settings: { inOrderPhases, tiebreaker: "fewestWilds", roundSkipPenalty: 0, sitOutPenalty: 0 },
+  });
+  for (const [phase, result] of [
+    [1, "completed"],
+    [2, "failed"],
+  ] as const) {
+    await roundsApi.add({
+      gameId: game.id,
+      roundWinnerId: phase === 1 ? amy.id : null,
+      scores: [
+        { playerId: amy.id, phaseStatus: result, score: 4, selectedPhase: phase },
+        { playerId: bob.id, phaseStatus: "failed", score: 3, selectedPhase: 1 },
+      ],
+    });
+  }
+  const editor = await gamesApi.getEditor(game.id);
+  if (!editor) throw new Error("Missing editor");
+  const removal = {
+    gameId: game.id,
+    version: editor.version,
+    players: game.players,
+    phaseOccurrences: game.phaseOccurrences.slice(1),
+  };
+  const review = await gamesApi.previewEdit(removal);
+  await gamesApi.edit({ ...removal, approval: { token: review.token } });
+  const original = await gamesApi.getRoundEditor(game.id, 1);
+  const correction = {
+    gameId: game.id,
+    roundNumber: 1,
+    version: original.version,
+    roundWinnerId: null,
+    scores: original.round.scores.map((entry) => ({
+      ...entry,
+      selectedPhase: entry.currentPhase,
+      phaseStatus: "failed" as const,
+      score: 7,
+    })),
+  };
+  await gamesApi.editRound(correction);
+  closeDB();
+  const view = await gamesApi.getView(game.id);
+  expect(view?.players.map(({ tiebreakerTotal }) => tiebreakerTotal)).toEqual([4, 0]);
+  expect(view?.rounds[0].scores.every((entry) => !entry.counted)).toBe(true);
+  expect(view?.rounds[0].source.scores[0]).toMatchObject({
+    phaseOccurrenceId: game.phaseOccurrences[0].id,
+    currentPhase: 1,
+    phaseStatus: "failed",
+    score: 7,
+  });
+  if (!inOrderPhases) {
+    const later = await gamesApi.getRoundEditor(game.id, 2);
+    await expect(
+      gamesApi.editRound({
+        gameId: game.id,
+        roundNumber: 2,
+        version: later.version,
+        roundWinnerId: null,
+        scores: later.round.scores.map((entry) => ({ ...entry, selectedPhase: 1 })),
+        confirmImpact: true,
+      }),
+    ).rejects.toThrow("Removed Phase");
+    expect(await gamesApi.getView(game.id)).toEqual(view);
+  }
+});
+
 it("previews without writing and reloads an exact full-Round correction without warning for totals alone", async () => {
   const { game, amy, bob } = await createGame();
   await roundsApi.add({

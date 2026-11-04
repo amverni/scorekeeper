@@ -1,6 +1,6 @@
-import { Plus } from "lucide-react";
+import { Minus, Plus } from "lucide-react";
 import { useState } from "react";
-import type { PhaseGameEditor } from "../../types";
+import type { PhaseGameEditor, PhaseRemovalOption } from "../../types";
 import { formatPhaseDisplayName } from "../../utils";
 import { PhaseSelectionDialog } from "../Create/Phases/AddPhasesDialog";
 import { PhaseRow } from "../Create/Phases/PhaseRow";
@@ -11,19 +11,106 @@ export function GamePhasesEditor({
   editable,
   isPending,
   onChange,
+  removalOptions,
+  savedPhases,
 }: {
   phases: PhaseGameEditor["phases"];
   editable: boolean;
   isPending: boolean;
   onChange: (phases: PhaseGameEditor["phases"]) => void;
+  removalOptions?: PhaseRemovalOption[];
+  savedPhases: PhaseGameEditor["phases"];
 }) {
   const [selectionOpen, setSelectionOpen] = useState(false);
+  if (!editable) {
+    return (
+      <section className="py-4">
+        <p className="mb-3 text-sm text-text-secondary">
+          Remove Phases from this Game without deleting saved Rounds. Removed history stays visible
+          and does not count. Phases cannot be added or reordered after a Round has been saved.
+        </p>
+        {!phases.some((phase) => !phase.removed) && (
+          <p role="alert" className="mb-3 text-sm text-text-secondary">
+            At least one required Phase must remain.
+          </p>
+        )}
+        <List role="list" aria-label="Game Phases" rowVariant="compact-content">
+          {phases.map((phase, index) => {
+            const option = removalOptions?.find(
+              (option) => option.occurrenceId === phase.occurrenceId,
+            );
+            const savedRemoved = savedPhases.find(
+              (saved) => saved.occurrenceId === phase.occurrenceId,
+            )?.removed;
+            return (
+              <li key={phase.occurrenceId} className="w-full min-w-0 list-none">
+                <div className="flex items-center gap-2">
+                  <div
+                    className={["min-w-0 flex-1", phase.removed && "text-text-secondary opacity-50"]
+                      .filter(Boolean)
+                      .join(" ")}
+                  >
+                    <PhaseRow phase={phase} index={index} />
+                  </div>
+                  {phase.removed ? (
+                    <span className="text-sm text-text-secondary">Removed</span>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="plain"
+                      aria-label={`Remove Phase ${index + 1}: ${formatPhaseDisplayName(phase)}`}
+                      disabled={isPending || Boolean(option?.reason)}
+                      onClick={() =>
+                        onChange(
+                          option?.retainSlot
+                            ? phases.map((entry) =>
+                                entry.occurrenceId === phase.occurrenceId
+                                  ? { ...entry, removed: true }
+                                  : entry,
+                              )
+                            : phases.filter((entry) => entry.occurrenceId !== phase.occurrenceId),
+                        )
+                      }
+                      className="size-10 shrink-0"
+                    >
+                      <Minus className="size-5" aria-hidden />
+                    </Button>
+                  )}
+                  {phase.removed && !savedRemoved && (
+                    <Button
+                      type="button"
+                      variant="plain"
+                      disabled={isPending}
+                      aria-label={`Undo removal of Phase ${index + 1}`}
+                      onClick={() =>
+                        onChange(
+                          phases.map((entry) => {
+                            if (entry.occurrenceId !== phase.occurrenceId) return entry;
+                            const { removed: _, ...rest } = entry;
+                            return rest;
+                          }),
+                        )
+                      }
+                      className="min-h-10 shrink-0 text-sm"
+                    >
+                      Undo
+                    </Button>
+                  )}
+                </div>
+                {!phase.removed && option?.reason && (
+                  <p className="mt-1 text-xs text-text-secondary">{option.reason}</p>
+                )}
+              </li>
+            );
+          })}
+        </List>
+      </section>
+    );
+  }
   return (
     <section className="py-4">
       <p className="mb-3 text-sm text-text-secondary">
-        {editable
-          ? "Add, remove or reorder Phases before the first saved Round. Changes apply only to this Game."
-          : "Phases cannot be edited after a Round has been saved."}
+        Add, remove or reorder Phases before the first saved Round. Changes apply only to this Game.
       </p>
       {phases.length === 0 && (
         <p role="alert" className="mb-3 text-sm text-text-secondary">
