@@ -51,6 +51,7 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
       player.id,
       {
         progress: initialProgress(),
+        resolvedPhases: new Set<number>(),
         tiebreakerTotal: 0,
         finishingRound: null as number | null,
         mostRecentWin: -1,
@@ -71,7 +72,7 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
     return state;
   };
   const canPlayAtRound = (id: PlayerId, roundNumber: number) => {
-    const { progress } = stateFor(id);
+    const { progress, resolvedPhases } = stateFor(id);
     return (
       !progress.isFinished &&
       requiredPhases.some(
@@ -79,7 +80,7 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
           (game.phaseOccurrences[phase - 1].addedAfterRoundNumber ?? 0) < roundNumber &&
           (progress.selectable
             ? !progress.selectable.resolvedPhases.includes(phase)
-            : phase >= progress.currentPhase),
+            : !resolvedPhases.has(phase)),
       )
     );
   };
@@ -162,7 +163,7 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
         wasPlaying &&
         !removed &&
         recorded !== undefined;
-      // Selectable attempts retain their recorded numbered position through corrections.
+      // Reordered attempts retain their objective even when sequential progress changes.
       const effectiveScore =
         entryCounts && !selectable && !recorded.preservePhaseLabel
           ? { ...recorded, currentPhase: state.progress.currentPhase }
@@ -178,14 +179,24 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
         recorded !== undefined &&
         state.progress.selectable?.resolvedPhases.includes(recorded.currentPhase) === true;
       if (entryCounts && effectiveScore) {
-        state.progress = getProgressAfterScore(
-          !selectable && !phaseStatusAdvances(effectiveScore.phaseStatus)
-            ? { ...effectiveScore, currentPhase: state.progress.currentPhase }
-            : effectiveScore,
-          state.progress,
-          totalPhases,
-          requiredPhases,
-        );
+        if (selectable) {
+          state.progress = getProgressAfterScore(
+            effectiveScore,
+            state.progress,
+            totalPhases,
+            requiredPhases,
+          );
+        } else {
+          if (phaseStatusAdvances(effectiveScore.phaseStatus)) {
+            state.resolvedPhases.add(effectiveScore.currentPhase);
+          }
+          const nextPhase = requiredPhases.find((phase) => !state.resolvedPhases.has(phase));
+          state.progress = {
+            currentPhase: nextPhase ?? requiredPhases.at(-1) ?? 1,
+            isFinished: nextPhase === undefined,
+            standingValue: nextPhase ?? totalPhases + 1,
+          };
+        }
         state.tiebreakerTotal += tiebreakerValue;
         if (round.roundWinnerId === player.id) state.mostRecentWin = round.roundNumber;
         if (state.progress.isFinished) state.finishingRound = round.roundNumber;
@@ -371,15 +382,22 @@ export function assertUniquePhaseResolutions(
   view: GameReadModel,
   edit?: { before: GameReadModel; roundNumber: number },
 ): void {
-  if (view.game.settings.inOrderPhases !== false) return;
+  const selectable = view.game.settings.inOrderPhases === false;
   const resolved = new Map<PlayerId, Set<number>>();
   for (const round of view.rounds) {
     for (const entry of round.scores) {
-      if (!entry.counted || !entry.source || !phaseStatusAdvances(entry.source.phaseStatus)) {
+      const phaseNumber = entry.phaseNumber;
+      if (
+        !entry.counted ||
+        !entry.source ||
+        phaseNumber === null ||
+        !phaseStatusAdvances(entry.source.phaseStatus)
+      ) {
         continue;
       }
       const phases = resolved.get(entry.playerId) ?? new Set<number>();
       const alreadyOwned =
+        selectable &&
         edit?.roundNumber === round.source.roundNumber &&
         edit.before.rounds.some(
           (previous) =>
@@ -389,14 +407,14 @@ export function assertUniquePhaseResolutions(
                 score.playerId === entry.playerId &&
                 score.counted &&
                 score.source !== undefined &&
-                score.source.currentPhase === entry.source?.currentPhase &&
+                score.phaseNumber === phaseNumber &&
                 phaseStatusAdvances(score.source.phaseStatus),
             ),
         );
-      if (phases.has(entry.source.currentPhase) || alreadyOwned) {
-        throw new Error(`Phase ${entry.source.currentPhase} is already resolved for this Player.`);
+      if (phases.has(phaseNumber) || alreadyOwned) {
+        throw new Error(`Phase ${phaseNumber} is already resolved for this Player.`);
       }
-      phases.add(entry.source.currentPhase);
+      phases.add(phaseNumber);
       resolved.set(entry.playerId, phases);
     }
   }

@@ -288,7 +288,9 @@ export const roundsApi = {
     gameId: GameId,
     roundNumber: number,
     playerId: PlayerId,
-    updates: Partial<Omit<RoundScore, "playerId" | "currentPhase" | "phaseOccurrenceId">>,
+    updates: Partial<
+      Omit<RoundScore, "playerId" | "currentPhase" | "phaseOccurrenceId" | "preservePhaseLabel">
+    >,
   ): Promise<Round> {
     return withGameTransaction(async (tx) => {
       const game = await tx.objectStore("games").get(gameId);
