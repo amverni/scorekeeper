@@ -22,6 +22,126 @@ beforeAll(async () => {
   browser = await webkit.launch();
 }, 60_000);
 
+it("reorders by keyboard and touch around a protected slot in one recoverable history-impact Save", async () => {
+  const page = await newPage(390, 844);
+  try {
+    const game = await seed(page, "phase10", "points", false);
+    const before = await page.evaluate<import("../../types").GameReadModel>(`(async () => {
+      const { playersApi } = await import("/scorekeeper/src/data/api/players.ts");
+      const { gamesApi } = await import("/scorekeeper/src/data/api/games.ts");
+      const { roundsApi } = await import("/scorekeeper/src/data/api/rounds.ts");
+      await playersApi.create({ name: "Cam", color: "Lime", isFavorite: 1 });
+      await gamesApi.addPhase(${JSON.stringify(game.id)}, "classic-4");
+      await gamesApi.addPhase(${JSON.stringify(game.id)}, "classic-5");
+      const ids = ${JSON.stringify(game.players)};
+      for (const [phase, result] of [[1, "failed"], [3, "completed"], [4, "failed"]]) {
+        await roundsApi.add({
+          gameId: ${JSON.stringify(game.id)}, roundWinnerId: result === "completed" ? ids[0] : null,
+          scores: ids.map((playerId, index) => ({
+            playerId, phaseStatus: index === 0 ? result : "failed", score: index + 2,
+            selectedPhase: index === 0 ? phase : phase === 1 ? 1 : 2,
+          })),
+        });
+      }
+      return gamesApi.getView(${JSON.stringify(game.id)});
+    })()`);
+    await page.goto(`${appUrl}#/phaseCompan10n/game/${game.id}`);
+    await openEditor(page);
+    await page.getByRole("button", { name: "Cam", exact: true }).tap();
+    await page.getByRole("tab", { name: "Phases", exact: true }).click();
+    const list = page.getByRole("list", { name: "Game Phases", exact: true });
+    await list.getByText(/Phase 3 has been resolved by a Player and cannot be reordered/).waitFor();
+    expect(await list.getByRole("button", { name: /^Move Phase 3 / }).count()).toBe(0);
+    await page.getByRole("button", { name: /^Remove Phase 1:/ }).tap();
+    const protectedPhase = await list.getByRole("listitem").nth(2).innerText();
+    await page.getByRole("button", { name: "Move Phase 2 down", exact: true }).focus();
+    await page.keyboard.press("Enter");
+    expect(await list.getByRole("listitem").nth(2).innerText()).toBe(protectedPhase);
+    await page.getByRole("button", { name: "Move Phase 4 up", exact: true }).tap();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    const review = page.getByRole("dialog", { name: "Review game changes", exact: true });
+    await review.getByText(/Cam will join from Round 4/).waitFor();
+    expect(await review.getByText(/Reordering changes saved Phase Numbers/).count()).toBe(0);
+    await review.getByRole("button", { name: "Keep editing", exact: true }).click();
+    await review.waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Move Phase 2 down", exact: true }).tap();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await review.getByText(/Reordering changes saved Phase Numbers.*2 to 4, 4 to 2/).waitFor();
+    await review
+      .getByText(/original objective.*outcome, score, card breakdown and Round Winner/)
+      .waitFor();
+    await review.getByText(/saved entries but no resolutions/).waitFor();
+    expect(await page.getByRole("dialog").count()).toBe(1);
+    await review.getByRole("button", { name: "Keep editing", exact: true }).click();
+    await review.waitFor({ state: "detached" });
+    const unchanged = await page.evaluate<import("../../types").GameReadModel>(`(async () => {
+      const { gamesApi } = await import("/scorekeeper/src/data/api/games.ts");
+      return gamesApi.getView(${JSON.stringify(game.id)});
+    })()`);
+    expect(unchanged).toEqual(before);
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await holdRoundStorage(page);
+    await page.evaluate((id) => {
+      const put = IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put = function (value, key) {
+        if (value?.id === id) {
+          IDBObjectStore.prototype.put = put;
+          throw new DOMException("Reorder storage unavailable", "QuotaExceededError");
+        }
+        return put.call(this, value, key);
+      };
+    }, game.id);
+    const confirmSave = review.getByRole("button", { name: "Save changes", exact: true });
+    await confirmSave.click();
+    await expect.poll(() => confirmSave.isDisabled()).toBe(true);
+    await confirmSave.evaluate((button: HTMLButtonElement) => {
+      button.click();
+      button.click();
+    });
+    await releaseRoundStorage(page);
+    await page.getByRole("alert").filter({ hasText: "Reorder storage unavailable" }).waitFor();
+    await list.getByText("Removed", { exact: true }).waitFor();
+    expect(await list.getByRole("listitem").count()).toBe(5);
+    const failed = await page.evaluate<import("../../types").GameReadModel>(`(async () => {
+      const { gamesApi } = await import("/scorekeeper/src/data/api/games.ts");
+      return gamesApi.getView(${JSON.stringify(game.id)});
+    })()`);
+    expect(failed).toEqual(before);
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await confirmSave.click();
+    await page.getByRole("button", { name: "Menu", exact: true }).waitFor();
+    await page.reload();
+    const after = await page.evaluate<import("../../types").GameReadModel>(`(async () => {
+      const { gamesApi } = await import("/scorekeeper/src/data/api/games.ts");
+      return gamesApi.getView(${JSON.stringify(game.id)});
+    })()`);
+    expect(after.game.phaseOccurrences.map(({ id }) => id)).toEqual([
+      before.game.phaseOccurrences[0].id,
+      before.game.phaseOccurrences[3].id,
+      before.game.phaseOccurrences[2].id,
+      before.game.phaseOccurrences[1].id,
+      before.game.phaseOccurrences[4].id,
+    ]);
+    expect(
+      after.rounds.map(({ scores }) => scores.slice(0, 2).map(({ phaseNumber }) => phaseNumber)),
+    ).toEqual([
+      [1, 1],
+      [3, 4],
+      [2, 4],
+    ]);
+    expect(after.rounds.map(({ source }) => source.roundWinnerId)).toEqual(
+      before.rounds.map(({ source }) => source.roundWinnerId),
+    );
+    await page.getByRole("button", { name: "Open Phases Card", exact: true }).click();
+    const card = page.getByRole("dialog", { name: "Phases Card", exact: true });
+    await card.locator('[aria-label="Phases Card phase list"][aria-busy="false"]').waitFor();
+    await card.getByText("Removed", { exact: true }).waitFor();
+  } finally {
+    await releaseRoundStorage(page);
+    await page.close();
+  }
+}, 60_000);
+
 it.each([
   { operation: "add", inOrderPhases: true },
   { operation: "restore", inOrderPhases: false },
@@ -607,7 +727,7 @@ it.each([
       await page.getByRole("link", { name: "Cancel", exact: true }).click();
       await openEditor(page);
       await page.getByRole("tab", { name: "Phases", exact: true }).click();
-      await page.getByText(/Phases cannot be reordered after a Round has been saved./).waitFor();
+      await page.getByText(/Move controls trade the other slots/).waitFor();
       expect(await page.getByRole("button", { name: /^Reorder Phase / }).count()).toBe(0);
       await page.getByRole("button", { name: "Add Phase", exact: true }).waitFor();
       expect(await page.getByRole("button", { name: /^Remove Phase / }).count()).toBe(3);

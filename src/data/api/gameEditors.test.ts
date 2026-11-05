@@ -19,6 +19,415 @@ beforeEach(resetDatabase);
 afterEach(resetDatabase);
 
 it.each([
+  true,
+  false,
+])("moves a fresh repeated requirement into an editable slot without inheriting attempts (in order: %s)", async (inOrderPhases) => {
+  const [amy, bob] = await Promise.all(
+    ["Amy", "Bob"].map((name) => playersApi.create({ name, color: "Jam", isFavorite: 0 })),
+  );
+  const game = await gamesApi.create({
+    players: [amy.id, bob.id],
+    phaseSet: {
+      id: "short",
+      type: "temporary",
+      name: "Short",
+      phases: ["classic-1", "classic-2"],
+    },
+    settings: {
+      inOrderPhases,
+      tiebreaker: "fewestWilds",
+      roundSkipPenalty: 0,
+      sitOutPenalty: 0,
+    },
+  });
+  await roundsApi.add({
+    gameId: game.id,
+    roundWinnerId: null,
+    scores: [
+      { playerId: amy.id, phaseStatus: "failed", score: 2, selectedPhase: 1 },
+      { playerId: bob.id, phaseStatus: "satOut", score: 0, selectedPhase: 1 },
+    ],
+  });
+  const editor = await gamesApi.getEditor(game.id);
+  if (!editor) throw new Error("Missing editor");
+  const added = { id: crypto.randomUUID(), phaseId: "classic-1" };
+  const input = {
+    gameId: game.id,
+    version: editor.version,
+    players: game.players,
+    phaseOccurrences: [added, game.phaseOccurrences[0], game.phaseOccurrences[1]],
+  };
+  const review = await gamesApi.previewEdit(input);
+  await gamesApi.edit({ ...input, approval: { token: review.token } });
+  closeDB();
+  const view = await gamesApi.getView(game.id);
+  expect(view?.game.phaseOccurrences[0]).toEqual({ ...added, addedAfterRoundNumber: 1 });
+  expect(
+    view?.rounds[0].scores.map(({ phaseOccurrenceId, phaseNumber, counted }) => ({
+      phaseOccurrenceId,
+      phaseNumber,
+      counted,
+    })),
+  ).toEqual(
+    game.players.map(() => ({
+      phaseOccurrenceId: game.phaseOccurrences[0].id,
+      phaseNumber: 2,
+      counted: true,
+    })),
+  );
+  expect(
+    view?.players.map(({ progress, tiebreakerTotal }) => ({
+      currentPhase: progress.currentPhase,
+      isFinished: progress.isFinished,
+      tiebreakerTotal,
+    })),
+  ).toEqual([
+    { currentPhase: 1, isFinished: false, tiebreakerTotal: 2 },
+    { currentPhase: 1, isFinished: false, tiebreakerTotal: 0 },
+  ]);
+  const correction = await gamesApi.getRoundEditor(game.id, 1);
+  const edit = {
+    gameId: game.id,
+    roundNumber: 1,
+    version: correction.version,
+    roundWinnerId: null,
+    scores: correction.round.scores.map((entry) => ({
+      ...entry,
+      selectedPhase: entry.currentPhase,
+    })),
+  };
+  expect(await gamesApi.previewRoundEdit(edit)).toEqual({ requiresConfirmation: false });
+  await gamesApi.editRound(edit);
+  closeDB();
+  expect(
+    (await gamesApi.getView(game.id))?.rounds[0].scores.map(({ phaseNumber }) => phaseNumber),
+  ).toEqual([2, 2]);
+  await roundsApi.add({
+    gameId: game.id,
+    roundWinnerId: amy.id,
+    scores: [
+      { playerId: amy.id, phaseStatus: "completed", score: 1, selectedPhase: 1 },
+      { playerId: bob.id, phaseStatus: "failed", score: 1, selectedPhase: 1 },
+    ],
+  });
+  closeDB();
+  const after = await gamesApi.getView(game.id);
+  expect(after?.players[0]).toMatchObject({
+    progress: { currentPhase: 2, isFinished: false },
+    tiebreakerTotal: 3,
+  });
+  expect(after?.rounds[1].scores[0]).toMatchObject({ phaseOccurrenceId: added.id, phaseNumber: 1 });
+});
+
+it("rejects a stale history-bearing reorder approval and rolls back a partially written relabeling", async () => {
+  const [amy, bob] = await Promise.all(
+    ["Amy", "Bob"].map((name) => playersApi.create({ name, color: "Jam", isFavorite: 0 })),
+  );
+  const game = await gamesApi.create({
+    players: [amy.id, bob.id],
+    phaseSet: {
+      id: "short",
+      type: "temporary",
+      name: "Short",
+      phases: ["classic-1", "classic-2"],
+    },
+    settings: { tiebreaker: "fewestWilds", roundSkipPenalty: 0, sitOutPenalty: 0 },
+  });
+  for (let roundNumber = 1; roundNumber <= 2; roundNumber++) {
+    await roundsApi.add({
+      gameId: game.id,
+      roundWinnerId: null,
+      scores: [
+        { playerId: amy.id, phaseStatus: "failed", score: roundNumber },
+        { playerId: bob.id, phaseStatus: "failed", score: 2 },
+      ],
+    });
+  }
+  const editor = await gamesApi.getEditor(game.id);
+  if (!editor) throw new Error("Missing editor");
+  const input = {
+    gameId: game.id,
+    version: editor.version,
+    players: game.players,
+    phaseOccurrences: [...game.phaseOccurrences].reverse(),
+  };
+  const preview = await gamesApi.previewEdit(input);
+  const before = await gamesApi.getView(game.id);
+  const put = IDBObjectStore.prototype.put;
+  const failure = vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function (
+    this: IDBObjectStore,
+    value,
+    key,
+  ) {
+    if (value?.gameId === game.id && value.roundNumber === 2) {
+      throw new DOMException("Relabeling storage unavailable", "QuotaExceededError");
+    }
+    return put.call(this, value, key);
+  });
+  try {
+    await expect(gamesApi.edit({ ...input, approval: { token: preview.token } })).rejects.toThrow(
+      "Relabeling storage unavailable",
+    );
+  } finally {
+    failure.mockRestore();
+  }
+  closeDB();
+  expect(await gamesApi.getView(game.id)).toEqual(before);
+  const correction = await gamesApi.getRoundEditor(game.id, 1);
+  await gamesApi.editRound({
+    gameId: game.id,
+    roundNumber: 1,
+    version: correction.version,
+    roundWinnerId: null,
+    scores: correction.round.scores.map((entry) => ({ ...entry, score: 7 })),
+    confirmImpact: true,
+  });
+  const corrected = await gamesApi.getView(game.id);
+  await expect(gamesApi.previewEdit(input)).rejects.toThrow("history changed");
+  await expect(gamesApi.edit({ ...input, approval: { token: preview.token } })).rejects.toThrow(
+    "history changed",
+  );
+  closeDB();
+  expect(await gamesApi.getView(game.id)).toEqual(corrected);
+});
+
+it.each([
+  "completed",
+  "skipped",
+] as const)("trades only editable slots around gray anchors and a withdrawn Player's %s resolution", async (phaseStatus) => {
+  const [amy, bob, cam] = await Promise.all(
+    ["Amy", "Bob", "Cam"].map((name) => playersApi.create({ name, color: "Jam", isFavorite: 0 })),
+  );
+  const game = await gamesApi.create({
+    players: [amy.id, bob.id, cam.id],
+    phaseSet: {
+      id: "slots",
+      type: "temporary",
+      name: "Slots",
+      phases: ["classic-1", "classic-2", "classic-3", "classic-4", "classic-5"],
+    },
+    settings: {
+      inOrderPhases: false,
+      tiebreaker: "fewestWilds",
+      roundSkipPenalty: 0,
+      sitOutPenalty: 0,
+    },
+  });
+  await roundsApi.add({
+    gameId: game.id,
+    roundWinnerId: phaseStatus === "completed" ? cam.id : null,
+    scores: [
+      { playerId: amy.id, phaseStatus: "failed", score: 2, selectedPhase: 2 },
+      { playerId: bob.id, phaseStatus: "satOut", score: 0, selectedPhase: 4 },
+      { playerId: cam.id, phaseStatus, score: 0, selectedPhase: 3 },
+    ],
+  });
+  let editor = await gamesApi.getEditor(game.id);
+  if (!editor) throw new Error("Missing editor");
+  await gamesApi.edit({
+    gameId: game.id,
+    version: editor.version,
+    players: game.players,
+    phaseOccurrences: game.phaseOccurrences.slice(1),
+  });
+  editor = await gamesApi.getEditor(game.id);
+  if (!editor) throw new Error("Missing editor");
+  expect(editor.phases.map(({ reorderReason }) => reorderReason)).toEqual([
+    expect.stringContaining("Removed Phase 1"),
+    null,
+    expect.stringContaining("resolved by a Player"),
+    null,
+    null,
+  ]);
+  const [gray, second, third, fourth, fifth] = editor.game.phaseOccurrences;
+  const base = {
+    gameId: game.id,
+    version: editor.version,
+    players: game.players,
+    withdrawnPlayers: [cam.id],
+  };
+  for (const phaseOccurrences of [
+    [gray, second, fourth, third, fifth],
+    [fourth, second, third, gray, fifth],
+    [{ ...gray, removed: undefined }, second, fourth, third, fifth],
+    [gray, fourth, third, { ...second, removed: true as const }, fifth],
+  ]) {
+    const input = { ...base, phaseOccurrences };
+    await expect(gamesApi.previewEdit(input)).rejects.toThrow("cannot be reordered");
+    await expect(gamesApi.edit({ ...input, approval: { token: "forced" } })).rejects.toThrow(
+      "cannot be reordered",
+    );
+  }
+  const input = { ...base, phaseOccurrences: [gray, fourth, third, second, fifth] };
+  const preview = await gamesApi.previewEdit(input);
+  expect(preview.effects.map(({ type }) => type)).toEqual(["withdrawal", "phaseReorder"]);
+  await gamesApi.edit({ ...input, approval: { token: preview.token } });
+  closeDB();
+  const after = await gamesApi.getEditor(game.id);
+  if (!after) throw new Error("Missing editor");
+  expect(after.withdrawnPlayers).toEqual([cam.id]);
+  expect(after.game.phaseOccurrences).toEqual(input.phaseOccurrences);
+  expect(after.phases[2].reorderReason).toContain("resolved by a Player");
+  expect(
+    (await gamesApi.getView(game.id))?.rounds[0].scores.map(({ phaseNumber }) => phaseNumber),
+  ).toEqual([4, 2, 3]);
+  await expect(
+    gamesApi.previewEdit({
+      ...base,
+      version: after.version,
+      phaseOccurrences: [gray, third, fourth, second, fifth],
+    }),
+  ).rejects.toThrow("cannot be reordered");
+});
+
+it.each([
+  true,
+  false,
+])("relabels unresolved attempts by occurrence without inventing progress after reload (in order: %s)", async (inOrderPhases) => {
+  const [amy, bob] = await Promise.all(
+    ["Amy", "Bob"].map((name) => playersApi.create({ name, color: "Jam", isFavorite: 0 })),
+  );
+  const game = await gamesApi.create({
+    players: [amy.id, bob.id],
+    phaseSet: {
+      id: "repeated",
+      type: "temporary",
+      name: "Repeated",
+      phases: ["classic-1", "classic-2", "classic-1", "classic-4"],
+    },
+    settings: {
+      inOrderPhases,
+      tiebreaker: "lowestPoints",
+      roundSkipPenalty: 100,
+      sitOutPenalty: 50,
+    },
+  });
+  await roundsApi.add({
+    gameId: game.id,
+    roundWinnerId: amy.id,
+    scores: [
+      {
+        playerId: amy.id,
+        phaseStatus: "completed",
+        score: 0,
+        selectedPhase: 1,
+        pointsCardBreakdown: { p5: 0, p10: 0, skipCard: 0, wild: 0 },
+      },
+      {
+        playerId: bob.id,
+        phaseStatus: "failed",
+        score: 55,
+        selectedPhase: 1,
+        pointsCardBreakdown: { p5: 9, p10: 1, skipCard: 0, wild: 0 },
+      },
+    ],
+  });
+  await roundsApi.add({
+    gameId: game.id,
+    roundWinnerId: null,
+    scores: [
+      {
+        playerId: amy.id,
+        phaseStatus: "failed",
+        score: 100,
+        selectedPhase: 2,
+        pointsCardBreakdown: { p5: 0, p10: 10, skipCard: 0, wild: 0 },
+      },
+      { playerId: bob.id, phaseStatus: "satOut", score: 50, selectedPhase: 3 },
+    ],
+  });
+  const before = await gamesApi.getView(game.id);
+  const editor = await gamesApi.getEditor(game.id);
+  if (!editor || !before) throw new Error("Missing editor");
+  const input = {
+    gameId: game.id,
+    version: editor.version,
+    players: game.players,
+    phaseOccurrences: [
+      game.phaseOccurrences[0],
+      game.phaseOccurrences[2],
+      game.phaseOccurrences[1],
+      game.phaseOccurrences[3],
+    ],
+  };
+  const review = await gamesApi.previewEdit(input);
+  expect(review.requiresConfirmation).toBe(true);
+  expect(review.effects).toContainEqual({
+    type: "phaseReorder",
+    moves: [
+      { occurrenceId: game.phaseOccurrences[1].id, from: 2, to: 3 },
+      ...(inOrderPhases ? [] : [{ occurrenceId: game.phaseOccurrences[2].id, from: 3, to: 2 }]),
+    ],
+    players: inOrderPhases ? [amy] : [amy, bob],
+  });
+  closeDB();
+  expect(await gamesApi.getView(game.id)).toEqual(before);
+  await expect(gamesApi.edit(input)).rejects.toThrow("Confirm the reviewed");
+  await gamesApi.edit({ ...input, approval: { token: review.token } });
+  closeDB();
+  const after = await gamesApi.getView(game.id);
+  if (!after) throw new Error("Missing Game view");
+  expect(after.game.phaseOccurrences).toEqual(input.phaseOccurrences);
+  expect(after.rounds[0].source).toEqual(before.rounds[0].source);
+  expect(
+    after.rounds[1].scores.map(({ phaseNumber, phaseOccurrenceId, counted }) => ({
+      phaseNumber,
+      phaseOccurrenceId,
+      counted,
+    })),
+  ).toEqual([
+    { phaseNumber: 3, phaseOccurrenceId: game.phaseOccurrences[1].id, counted: true },
+    {
+      phaseNumber: inOrderPhases ? 1 : 2,
+      phaseOccurrenceId: game.phaseOccurrences[inOrderPhases ? 0 : 2].id,
+      counted: true,
+    },
+  ]);
+  expect(after.players).toEqual(
+    before.players.map((player) =>
+      inOrderPhases
+        ? player
+        : {
+            ...player,
+            phaseAvailability: {
+              ...player.phaseAvailability,
+              phaseOccurrenceIds: input.phaseOccurrences.map(({ id }) => id),
+            },
+          },
+    ),
+  );
+  expect(after.standings).toEqual(before.standings);
+  expect(
+    after.rounds[1].source.scores.map((entry) => ({
+      playerId: entry.playerId,
+      phaseStatus: entry.phaseStatus,
+      score: entry.score,
+      pointsCardBreakdown: entry.pointsCardBreakdown,
+    })),
+  ).toEqual(
+    before.rounds[1].source.scores.map((entry) => ({
+      playerId: entry.playerId,
+      phaseStatus: entry.phaseStatus,
+      score: entry.score,
+      pointsCardBreakdown: entry.pointsCardBreakdown,
+    })),
+  );
+  expect((await gamesApi.getRoundEditor(game.id, 2)).round.scores[0].currentPhase).toBe(3);
+  expect(
+    (await gamesApi.getPhaseOptions(game.id)).map(({ phaseOccurrenceId }) => phaseOccurrenceId),
+  ).toEqual(input.phaseOccurrences.map(({ id }) => id));
+  expect((await gamesApi.getPhasesCard(game.id)).phases.map(({ id }) => id)).toEqual([
+    "classic-1",
+    "classic-1",
+    "classic-2",
+    "classic-4",
+  ]);
+  await expect(gamesApi.edit({ ...input, approval: { token: review.token } })).rejects.toThrow(
+    "history changed",
+  );
+});
+
+it.each([
   { deletion: "latest", inOrderPhases: true },
   { deletion: "latest", inOrderPhases: false },
   { deletion: "all", inOrderPhases: true },
@@ -1717,12 +2126,12 @@ it("rejects invalid, obsolete and history-aware reordering drafts even with appr
       ],
     }),
   ).rejects.toThrow("cannot change its objective");
-  await expect(gamesApi.previewEdit({ ...input, version: fresh.version })).rejects.toThrow(
-    "cannot be reordered",
-  );
+  expect(
+    (await gamesApi.previewEdit({ ...input, version: fresh.version })).requiresConfirmation,
+  ).toBe(true);
   await expect(
     gamesApi.edit({ ...input, version: fresh.version, approval: { token: "forced" } }),
-  ).rejects.toThrow("cannot be reordered");
+  ).rejects.toThrow("differ from the review");
   await expect(gamesApi.removePhase(game.id, "classic-1")).rejects.toThrow(
     "Confirm the reviewed Game changes",
   );

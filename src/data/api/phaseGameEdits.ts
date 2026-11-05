@@ -10,6 +10,7 @@ import type {
   PhaseGameEditPreview,
   PhaseRemovalOption,
   PlayerId,
+  Round,
 } from "../../types";
 import { phaseStatusAdvances } from "../../utils";
 import { builtInPhases } from "../constants/phases";
@@ -38,10 +39,16 @@ export const phaseGameEdits = {
     if (!saved) return null;
     const found = await phasesApi.getByIds(saved.game.phaseSet.phases);
     const byId = new Map(found.map((phase) => [phase.id, phase]));
-    const phases = saved.game.phaseOccurrences.map(({ id, phaseId, removed }) => {
+    const phases = saved.game.phaseOccurrences.map((occurrence, index) => {
+      const { id, phaseId, removed } = occurrence;
       const phase = byId.get(phaseId);
       if (!phase) throw new Error(`Phase no longer exists: ${phaseId}`);
-      return { ...phase, occurrenceId: id, ...(removed ? { removed } : {}) };
+      return {
+        ...phase,
+        occurrenceId: id,
+        reorderReason: getReorderReason(occurrence, index, saved.view),
+        ...(removed ? { removed } : {}),
+      };
     });
     return {
       game: saved.game,
@@ -77,7 +84,7 @@ export const phaseGameEdits = {
 
   edit(input: EditGamePlayersInput) {
     return withGameTransaction(async (tx) => {
-      const { game, players, rounds, preview } = await evaluateEdit(tx, input);
+      const { game, players, rounds, changedRounds, preview } = await evaluateEdit(tx, input);
       if (preview.requiresConfirmation && !input.approval) {
         throw new Error("Confirm the reviewed Game changes before saving.");
       }
@@ -97,6 +104,7 @@ export const phaseGameEdits = {
         ...(choice === "continue" ? { continuation: true } : {}),
         lastActivityAt: Date.now(),
       };
+      for (const round of changedRounds) await tx.objectStore("rounds").put(round);
       if (choice === "finish") {
         const completed = resolveEarlyGameCompletion({
           game: saved,
@@ -139,7 +147,8 @@ async function evaluateEdit(
   input: EditGamePlayersInput,
   inspectOnly = false,
 ) {
-  const { game, players, rounds, view } = await loadEditor(tx, input.gameId);
+  const { game, players, rounds: savedRounds, view } = await loadEditor(tx, input.gameId);
+  let rounds = savedRounds;
   if (input.version !== view.version) {
     throw new Error("Game history changed. Close and reopen Edit game to load the saved values.");
   }
@@ -196,31 +205,33 @@ async function evaluateEdit(
   ) {
     const intended = new Map(phaseOccurrences.map((phase) => [phase.id, phase]));
     const savedIds = new Set(game.phaseOccurrences.map((phase) => phase.id));
-    const existing = phaseOccurrences.filter((phase) => savedIds.has(phase.id));
     const added = phaseOccurrences.filter((phase) => !savedIds.has(phase.id));
-    const remaining = game.phaseOccurrences.filter((phase) => intended.has(phase.id));
-    if (
-      existing.some((phase, index) => phase.id !== remaining[index]?.id) ||
-      phaseOccurrences.slice(0, existing.length).some((phase) => !savedIds.has(phase.id))
-    ) {
-      throw new Error(
-        "Phases cannot be reordered after the first saved Round. Append new Phases after retained slots.",
-      );
-    }
     if (added.some((phase) => phase.removed)) {
       throw new Error("New Phases must be appended as required Phases.");
     }
     const lastReferenced = lastAnchoredPhase(game, rounds);
-    phaseOccurrences = [
-      ...game.phaseOccurrences.flatMap((phase, index) => {
-        const draft = intended.get(phase.id);
-        if (draft && !draft.removed) return [draft];
-        return index < lastReferenced || phase.removed
-          ? [{ ...phase, removed: true as const }]
-          : [];
-      }),
-      ...added,
-    ];
+    phaseOccurrences = phaseOccurrences.filter((phase) => {
+      const savedIndex = game.phaseOccurrences.findIndex((saved) => saved.id === phase.id);
+      return !phase.removed || savedIndex < lastReferenced;
+    });
+    for (const [index, phase] of game.phaseOccurrences.entries()) {
+      if (!intended.has(phase.id) && (index < lastReferenced || phase.removed)) {
+        phaseOccurrences.splice(index, 0, { ...phase, removed: true });
+      }
+    }
+    for (const [index, phase] of game.phaseOccurrences.entries()) {
+      const reason = getReorderReason(phase, index, view);
+      const draft = phaseOccurrences.find((intended) => intended.id === phase.id);
+      if (
+        (reason || draft?.removed) &&
+        phaseOccurrences.findIndex((intended) => intended.id === phase.id) !== index
+      ) {
+        throw new Error(
+          reason ?? `Removed Phase ${index + 1} cannot be reordered from its retained slot.`,
+        );
+      }
+    }
+    rounds = relabelAttempts(game, phaseOccurrences, view);
   }
   if (!phaseOccurrences.some((phase) => !phase.removed)) {
     throw new Error("At least one required Phase must remain.");
@@ -367,6 +378,31 @@ async function evaluateEdit(
       ),
     });
   }
+  const movedWithEntries = phaseHistory.flatMap(({ phase, phaseNumber }) => {
+    const to = phaseOccurrences.findIndex((intended) => intended.id === phase.id) + 1;
+    return to > 0 &&
+      to !== phaseNumber &&
+      view.rounds.some((round) =>
+        round.scores.some((entry) => entry.phaseOccurrenceId === phase.id),
+      )
+      ? [{ occurrenceId: phase.id, from: phaseNumber, to }]
+      : [];
+  });
+  if (movedWithEntries.length > 0) {
+    effects.push({
+      type: "phaseReorder",
+      moves: movedWithEntries,
+      players: intendedPlayers.filter(({ id }) =>
+        view.rounds.some((round) =>
+          round.scores.some(
+            (entry) =>
+              entry.playerId === id &&
+              movedWithEntries.some((move) => move.occurrenceId === entry.phaseOccurrenceId),
+          ),
+        ),
+      ),
+    });
+  }
   const newlyFinished = intendedPlayers.filter(
     ({ id }) =>
       projected.players.some((player) => player.id === id && player.progress.isFinished) &&
@@ -403,9 +439,60 @@ async function evaluateEdit(
     game: proposed,
     players: intendedPlayers,
     rounds,
+    changedRounds: rounds.filter((round) => !savedRounds.includes(round)),
     preview,
     removalOptions,
   };
+}
+
+function getReorderReason(
+  phase: GamePhaseOccurrence,
+  index: number,
+  view: GameReadModel,
+): string | null {
+  if (phase.removed)
+    return `Removed Phase ${index + 1} cannot be reordered from its retained slot.`;
+  const resolved = view.rounds.some((round) =>
+    round.scores.some(
+      (entry) =>
+        entry.source !== undefined &&
+        phaseStatusAdvances(entry.source.phaseStatus) &&
+        (entry.phaseOccurrenceId === phase.id || entry.source.phaseOccurrenceId === phase.id),
+    ),
+  );
+  return resolved
+    ? `Phase ${index + 1} has been resolved by a Player and cannot be reordered. Withdrawal does not unlock recorded resolutions.`
+    : null;
+}
+
+function relabelAttempts(
+  game: ActiveGame,
+  intended: GamePhaseOccurrence[],
+  view: GameReadModel,
+): Round[] {
+  return view.rounds.map(({ source, scores }) => {
+    const relabel = (score: Round["scores"][number]) => {
+      const interpreted = scores.find((entry) => entry.playerId === score.playerId);
+      const occurrenceId =
+        interpreted?.phaseOccurrenceId ??
+        score.phaseOccurrenceId ??
+        game.phaseOccurrences[score.currentPhase - 1]?.id;
+      const from = game.phaseOccurrences.findIndex((phase) => phase.id === occurrenceId);
+      const to = intended.findIndex((phase) => phase.id === occurrenceId);
+      if (to < 0 || from === to) return score;
+      return {
+        ...score,
+        currentPhase: to + 1,
+        phaseOccurrenceId: occurrenceId,
+        ...(game.settings.inOrderPhases !== false ? { preservePhaseLabel: true as const } : {}),
+      };
+    };
+    const [first, ...rest] = source.scores;
+    const relabeled: Round["scores"] = [relabel(first), ...rest.map(relabel)];
+    return relabeled.some((score, index) => score !== source.scores[index])
+      ? { ...source, scores: relabeled }
+      : source;
+  });
 }
 
 function getRemovalOptions(

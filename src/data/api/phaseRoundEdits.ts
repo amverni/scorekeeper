@@ -271,6 +271,9 @@ async function evaluateEdit(tx: GameLifecycleTransaction, input: EditPhaseRoundI
       score: score.score,
       currentPhase,
       phaseOccurrenceId: game.phaseOccurrences[currentPhase - 1].id,
+      ...(previous.preservePhaseLabel && !phaseStatusAdvances(score.phaseStatus)
+        ? { preservePhaseLabel: true as const }
+        : {}),
       ...(score.pointsCardBreakdown !== undefined
         ? { pointsCardBreakdown: score.pointsCardBreakdown }
         : {}),

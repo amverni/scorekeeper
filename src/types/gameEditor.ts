@@ -7,7 +7,13 @@ import type { Player, PlayerId, PlayerIdentity } from "./player";
 export interface PhaseGameEditor {
   game: ActiveGame;
   players: Player[];
-  phases: Array<Phase & { occurrenceId: GamePhaseOccurrence["id"]; removed?: true }>;
+  phases: Array<
+    Phase & {
+      occurrenceId: GamePhaseOccurrence["id"];
+      removed?: true;
+      reorderReason?: string | null;
+    }
+  >;
   version: string;
   withdrawnPlayers: PlayerId[];
   finishedPlayers: PlayerId[];
@@ -49,6 +55,11 @@ export type PhaseGameEditEffect =
   | {
       type: "phaseRestoration";
       phaseNumbers: number[];
+      players: PlayerIdentity[];
+    }
+  | {
+      type: "phaseReorder";
+      moves: Array<{ occurrenceId: GamePhaseOccurrence["id"]; from: number; to: number }>;
       players: PlayerIdentity[];
     }
   | { type: "finished" | "finishingChanged"; players: PlayerIdentity[] };

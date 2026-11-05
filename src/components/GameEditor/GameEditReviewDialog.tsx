@@ -33,6 +33,8 @@ function describeEffect(effect: PhaseGameEditEffect) {
       return `${names} will become Finished Players under the remaining required Phases. Finishing Places and counted totals will be recalculated.`;
     case "phaseRestoration":
       return `Phases ${effect.phaseNumbers.join(", ")} will be restored under their original numbers. Their saved entries for ${names} become eligible to count again, including Tiebreaker values and recorded Round wins. History, totals and finishing results will be recalculated under normal participation and Game-ending rules; other excluded entries stay excluded.`;
+    case "phaseReorder":
+      return `Reordering changes saved Phase Numbers (${effect.moves.map(({ from, to }) => `${from} to ${to}`).join(", ")}) for ${names}. Each attempt follows its original objective, preserving its outcome, score, card breakdown and Round Winner association. This intentionally relabels history without granting phase progress.`;
   }
 }
 

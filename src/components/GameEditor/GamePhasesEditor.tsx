@@ -1,4 +1,4 @@
-import { Minus, Plus } from "lucide-react";
+import { ChevronDown, ChevronUp, Minus, Plus } from "lucide-react";
 import { useState } from "react";
 import type { PhaseGameEditor, PhaseRemovalOption } from "../../types";
 import { formatPhaseDisplayName } from "../../utils";
@@ -22,6 +22,21 @@ export function GamePhasesEditor({
   savedPhases: PhaseGameEditor["phases"];
 }) {
   const [selectionOpen, setSelectionOpen] = useState(false);
+  const [moveAnnouncement, setMoveAnnouncement] = useState("");
+  const editableSlots = phases.flatMap((phase, index) =>
+    phase.removed || phase.reorderReason ? [] : [index],
+  );
+  function movePhase(index: number, direction: -1 | 1) {
+    if (isPending) return;
+    const target = editableSlots[editableSlots.indexOf(index) + direction];
+    if (target === undefined) return;
+    const reordered = [...phases];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    onChange(reordered);
+    setMoveAnnouncement(
+      `${formatPhaseDisplayName(phases[index])} moved from Phase ${index + 1} to Phase ${target + 1}. Protected slots stay fixed.`,
+    );
+  }
   const addPhaseButton = (
     <Button
       key="add-phase"
@@ -50,10 +65,14 @@ export function GamePhasesEditor({
     return (
       <section className="py-4">
         <p className="mb-3 text-sm text-text-secondary">
-          Add, remove or restore Phases for all Players in this Game without deleting saved Rounds.
-          Removed history stays visible and does not count. New Phases append after retained slots.
-          Phases cannot be reordered after a Round has been saved.
+          Add, remove, restore or reorder unresolved Phases without deleting saved Rounds. Resolved
+          Phases and retained Removed Phases stay in their numbered slots. Move controls trade the
+          other slots; saved attempts follow their original objectives. New Phases append after
+          retained slots.
         </p>
+        <output className="sr-only" aria-live="polite">
+          {moveAnnouncement}
+        </output>
         {!phases.some((phase) => !phase.removed) && (
           <p role="alert" className="mb-3 text-sm text-text-secondary">
             At least one required Phase must remain.
@@ -144,7 +163,39 @@ export function GamePhasesEditor({
                       {savedRemoved ? "Restore" : "Undo"}
                     </Button>
                   )}
+                  {!phase.removed && !phase.reorderReason && (
+                    <div className="flex shrink-0">
+                      <Button
+                        type="button"
+                        variant="plain"
+                        className="size-10"
+                        aria-label={`Move Phase ${index + 1} up`}
+                        disabled={isPending || editableSlots.indexOf(index) === 0}
+                        onClick={() => movePhase(index, -1)}
+                      >
+                        <ChevronUp className="size-5" aria-hidden />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="plain"
+                        className="size-10"
+                        aria-label={`Move Phase ${index + 1} down`}
+                        disabled={
+                          isPending || editableSlots.indexOf(index) === editableSlots.length - 1
+                        }
+                        onClick={() => movePhase(index, 1)}
+                      >
+                        <ChevronDown className="size-5" aria-hidden />
+                      </Button>
+                    </div>
+                  )}
                 </div>
+                {(phase.reorderReason || phase.removed) && (
+                  <p className="mt-1 text-xs text-text-secondary">
+                    {phase.reorderReason ??
+                      `Removed Phase ${index + 1} stays in its retained slot.`}
+                  </p>
+                )}
                 {!phase.removed && !savedRemoved && option?.reason && (
                   <p className="mt-1 text-xs text-text-secondary">{option.reason}</p>
                 )}

@@ -164,7 +164,7 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
         recorded !== undefined;
       // Selectable attempts retain their recorded numbered position through corrections.
       const effectiveScore =
-        entryCounts && !selectable
+        entryCounts && !selectable && !recorded.preservePhaseLabel
           ? { ...recorded, currentPhase: state.progress.currentPhase }
           : recorded;
       const sourceTiebreakerValue = getRoundTiebreakerValue(
@@ -179,7 +179,9 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
         state.progress.selectable?.resolvedPhases.includes(recorded.currentPhase) === true;
       if (entryCounts && effectiveScore) {
         state.progress = getProgressAfterScore(
-          effectiveScore,
+          !selectable && !phaseStatusAdvances(effectiveScore.phaseStatus)
+            ? { ...effectiveScore, currentPhase: state.progress.currentPhase }
+            : effectiveScore,
           state.progress,
           totalPhases,
           requiredPhases,

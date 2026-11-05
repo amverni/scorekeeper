@@ -67,11 +67,16 @@ export interface RoundScore {
   currentPhase: number;
   /** Saved occurrence association; absent only in legacy Round fixtures/data. */
   phaseOccurrenceId?: GamePhaseOccurrenceId;
+  /** An intentional reorder pins this attempt's label, not sequential progress. */
+  preservePhaseLabel?: true;
   /** Remaining cards for a Points entry; absent for penalties, Count Tiebreakers and legacy data. */
   pointsCardBreakdown?: PointsCardBreakdown;
 }
 
-export type AddRoundScoreInput = Omit<RoundScore, "currentPhase" | "phaseOccurrenceId"> & {
+export type AddRoundScoreInput = Omit<
+  RoundScore,
+  "currentPhase" | "phaseOccurrenceId" | "preservePhaseLabel"
+> & {
   selectedPhase?: number;
   selectedPhaseOccurrenceId?: GamePhaseOccurrenceId;
 };
