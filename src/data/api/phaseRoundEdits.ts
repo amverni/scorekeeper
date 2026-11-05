@@ -52,6 +52,16 @@ export const phaseRoundEdits = {
       const activeGame = {
         ...game,
         deferFinishChoiceUntilSave: undefined,
+        phaseOccurrences: game.phaseOccurrences.map((phase) =>
+          phase.addedAfterRoundNumber === undefined
+            ? phase
+            : {
+                ...phase,
+                addedAfterRoundNumber:
+                  phase.addedAfterRoundNumber -
+                  Number(selected.roundNumber <= phase.addedAfterRoundNumber),
+              },
+        ),
         ...(game.playerJoins
           ? {
               playerJoins: game.playerJoins.map((join) => ({
@@ -205,6 +215,9 @@ function getPhaseAvailability(
   return {
     resolvedBeforeRound: [...resolvedBeforeRound],
     ...getPhaseSelectionSlots(view.game),
+    notYetAddedPhases: view.game.phaseOccurrences.flatMap((phase, index) =>
+      (phase.addedAfterRoundNumber ?? 0) >= roundNumber ? [index + 1] : [],
+    ),
     resolvedElsewhere: [...resolvedElsewhere],
     recordedPhase: view.rounds
       .find((round) => round.source.roundNumber === roundNumber)

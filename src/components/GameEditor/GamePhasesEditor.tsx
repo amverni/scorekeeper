@@ -22,12 +22,37 @@ export function GamePhasesEditor({
   savedPhases: PhaseGameEditor["phases"];
 }) {
   const [selectionOpen, setSelectionOpen] = useState(false);
+  const addPhaseButton = (
+    <Button
+      key="add-phase"
+      type="button"
+      variant="plain"
+      className="-mx-3 h-full w-[calc(100%+1.5rem)] justify-start gap-2 rounded-none px-3 text-sm"
+      disabled={isPending}
+      onClick={() => setSelectionOpen(true)}
+    >
+      <Plus className="size-4" aria-hidden />
+      Add Phase
+    </Button>
+  );
+  const phaseSelection = (
+    <PhaseSelectionDialog
+      open={selectionOpen}
+      onClose={() => setSelectionOpen(false)}
+      onAddPhase={(phase) => {
+        if (!isPending) {
+          onChange([...phases, { ...phase, occurrenceId: crypto.randomUUID() }]);
+        }
+      }}
+    />
+  );
   if (!editable) {
     return (
       <section className="py-4">
         <p className="mb-3 text-sm text-text-secondary">
-          Remove Phases from this Game without deleting saved Rounds. Removed history stays visible
-          and does not count. Phases cannot be added or reordered after a Round has been saved.
+          Add, remove or restore Phases for all Players in this Game without deleting saved Rounds.
+          Removed history stays visible and does not count. New Phases append after retained slots.
+          Phases cannot be reordered after a Round has been saved.
         </p>
         {!phases.some((phase) => !phase.removed) && (
           <p role="alert" className="mb-3 text-sm text-text-secondary">
@@ -54,6 +79,25 @@ export function GamePhasesEditor({
                   </div>
                   {phase.removed ? (
                     <span className="text-sm text-text-secondary">Removed</span>
+                  ) : savedRemoved ? (
+                    <Button
+                      type="button"
+                      variant="plain"
+                      disabled={isPending}
+                      aria-label={`Undo restoration of Phase ${index + 1}`}
+                      onClick={() =>
+                        onChange(
+                          phases.map((entry) =>
+                            entry.occurrenceId === phase.occurrenceId
+                              ? { ...entry, removed: true }
+                              : entry,
+                          ),
+                        )
+                      }
+                      className="min-h-10 shrink-0 text-sm"
+                    >
+                      Undo
+                    </Button>
                   ) : (
                     <Button
                       type="button"
@@ -76,12 +120,16 @@ export function GamePhasesEditor({
                       <Minus className="size-5" aria-hidden />
                     </Button>
                   )}
-                  {phase.removed && !savedRemoved && (
+                  {phase.removed && (
                     <Button
                       type="button"
                       variant="plain"
                       disabled={isPending}
-                      aria-label={`Undo removal of Phase ${index + 1}`}
+                      aria-label={
+                        savedRemoved
+                          ? `Restore Phase ${index + 1}`
+                          : `Undo removal of Phase ${index + 1}`
+                      }
                       onClick={() =>
                         onChange(
                           phases.map((entry) => {
@@ -93,17 +141,19 @@ export function GamePhasesEditor({
                       }
                       className="min-h-10 shrink-0 text-sm"
                     >
-                      Undo
+                      {savedRemoved ? "Restore" : "Undo"}
                     </Button>
                   )}
                 </div>
-                {!phase.removed && option?.reason && (
+                {!phase.removed && !savedRemoved && option?.reason && (
                   <p className="mt-1 text-xs text-text-secondary">{option.reason}</p>
                 )}
               </li>
             );
           })}
+          {addPhaseButton}
         </List>
+        {phaseSelection}
       </section>
     );
   }
@@ -144,31 +194,9 @@ export function GamePhasesEditor({
             <PhaseRow phase={phase} index={index} />
           </li>
         ))}
-        {editable && (
-          <Button
-            key="add-phase"
-            type="button"
-            variant="plain"
-            className="-mx-3 h-full w-[calc(100%+1.5rem)] justify-start gap-2 rounded-none px-3 text-sm"
-            disabled={isPending}
-            onClick={() => setSelectionOpen(true)}
-          >
-            <Plus className="size-4" aria-hidden />
-            Add Phase
-          </Button>
-        )}
+        {addPhaseButton}
       </List>
-      {editable && (
-        <PhaseSelectionDialog
-          open={selectionOpen}
-          onClose={() => setSelectionOpen(false)}
-          onAddPhase={(phase) => {
-            if (!isPending) {
-              onChange([...phases, { ...phase, occurrenceId: crypto.randomUUID() }]);
-            }
-          }}
-        />
-      )}
+      {phaseSelection}
     </section>
   );
 }

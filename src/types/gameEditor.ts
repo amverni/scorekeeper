@@ -36,7 +36,7 @@ export interface EditGamePlayersInput {
 
 export type PhaseGameEditEffect =
   | {
-      type: "join" | "withdrawal" | "rejoin";
+      type: "join" | "withdrawal" | "rejoin" | "returning";
       players: PlayerIdentity[];
       afterRoundNumber: number;
     }
@@ -46,7 +46,12 @@ export type PhaseGameEditEffect =
       resolvedPhaseNumbers: number[];
       players: PlayerIdentity[];
     }
-  | { type: "finished"; players: PlayerIdentity[] };
+  | {
+      type: "phaseRestoration";
+      phaseNumbers: number[];
+      players: PlayerIdentity[];
+    }
+  | { type: "finished" | "finishingChanged"; players: PlayerIdentity[] };
 
 export type PhaseGameEditCompletion =
   | { type: "none" }

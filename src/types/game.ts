@@ -16,6 +16,8 @@ export interface GamePhaseOccurrence {
   id: GamePhaseOccurrenceId;
   phaseId: PhaseId;
   removed?: true;
+  /** New requirements cannot consume entries recorded before their addition. */
+  addedAfterRoundNumber?: number;
 }
 
 export type GameTiebreaker =

@@ -48,6 +48,9 @@ export function getSelectedPhaseError({
   ) {
     return "Choose a valid Phase Number.";
   }
+  if (availability.notYetAddedPhases?.includes(selectedPhase)) {
+    return `Phase ${selectedPhase} was added after this Round. Choose a Phase available at that Round.`;
+  }
   if (
     selectedPhaseOccurrenceId !== undefined &&
     availability.phaseOccurrenceIds?.[selectedPhase - 1] !== selectedPhaseOccurrenceId
