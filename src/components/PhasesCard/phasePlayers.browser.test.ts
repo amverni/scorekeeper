@@ -19,6 +19,8 @@ beforeAll(async () => {
   const address = server.httpServer?.address();
   if (!address || typeof address === "string") throw new Error("Missing test server address");
   appUrl = `http://127.0.0.1:${address.port}/scorekeeper/`;
+  await server.warmupRequest("/src/main.tsx");
+  await server.waitForRequestsIdle();
   browser = await webkit.launch();
 }, 60_000);
 
@@ -810,6 +812,337 @@ it("shares only ordered objectives and keeps standalone and shared Phases Cards 
     await page.close();
   }
 }, 30_000);
+
+it("shares an edited Game's ordered occurrences and retained Removed Phase Numbers into an isolated browser", async () => {
+  const page = await browser.newPage({ viewport: { width: 320, height: 568 } });
+  const recipient = await browser.newPage({ viewport: { width: 320, height: 568 } });
+  page.setDefaultTimeout(5_000);
+  recipient.setDefaultTimeout(5_000);
+  page.setDefaultNavigationTimeout(30_000);
+  recipient.setDefaultNavigationTimeout(30_000);
+  try {
+    await page.goto(`${appUrl}#/phaseCompan10n/players`);
+    await page.getByText("No players yet", { exact: true }).waitFor();
+    const ids = await page.evaluate<{
+      gameId: string;
+      otherGameId: string;
+      phaseId: string;
+      phaseSetId: string;
+    }>(`(async () => {
+      const { playersApi } = await import("/scorekeeper/src/data/api/players.ts");
+      const { phasesApi } = await import("/scorekeeper/src/data/api/phases.ts");
+      const { phaseSetsApi } = await import("/scorekeeper/src/data/api/phaseSets.ts");
+      const { gamesApi } = await import("/scorekeeper/src/data/api/games.ts");
+      const { roundsApi } = await import("/scorekeeper/src/data/api/rounds.ts");
+      const players = await Promise.all(["Amy", "Bob"].map(name =>
+        playersApi.create({ name, color: "Jam", isFavorite: 0 })));
+      const phase = await phasesApi.create({
+        type: "saved",
+        requirements: [{ type: "run", count: 9, quantity: 1, isSameColor: true }],
+      });
+      const phaseSet = await phaseSetsApi.create({
+        type: "saved", name: "Edited travel card",
+        phases: ["classic-1", phase.id, "classic-2"],
+      });
+      const input = {
+        players: players.map(player => player.id),
+        phaseSet: { ...phaseSet, type: "temporary" },
+        settings: {
+          inOrderPhases: false, tiebreaker: "fewestWilds",
+          roundSkipPenalty: 0, sitOutPenalty: 0,
+        },
+      };
+      const game = await gamesApi.create(input);
+      const other = await gamesApi.create(input);
+      let editor = await gamesApi.getEditor(game.id);
+      await gamesApi.edit({
+        gameId: game.id, version: editor.version, players: game.players,
+        phaseOccurrences: [
+          game.phaseOccurrences[2], game.phaseOccurrences[0],
+          { id: crypto.randomUUID(), phaseId: "classic-1" },
+          game.phaseOccurrences[1],
+          { id: crypto.randomUUID(), phaseId: "classic-1" },
+        ],
+      });
+      for (const selectedPhase of [3, 4]) {
+        await roundsApi.add({
+          gameId: game.id, roundWinnerId: null,
+          scores: players.map(player => ({
+            playerId: player.id, phaseStatus: "failed", score: 0, selectedPhase,
+          })),
+        });
+      }
+      editor = await gamesApi.getEditor(game.id);
+      const removal = {
+        gameId: game.id, version: editor.version, players: game.players,
+        phaseOccurrences: editor.game.phaseOccurrences.filter((_, index) =>
+          index !== 1 && index !== 2),
+      };
+      const review = await gamesApi.previewEdit(removal);
+      await gamesApi.edit({ ...removal, approval: { token: review.token } });
+      return {
+        gameId: game.id, otherGameId: other.id, phaseId: phase.id, phaseSetId: phaseSet.id,
+      };
+    })()`);
+    const readSource = `(async () => {
+      const { gamesApi } = await import("/scorekeeper/src/data/api/games.ts");
+      const { phasesApi } = await import("/scorekeeper/src/data/api/phases.ts");
+      const { phaseSetsApi } = await import("/scorekeeper/src/data/api/phaseSets.ts");
+      const { roundsApi } = await import("/scorekeeper/src/data/api/rounds.ts");
+      return Promise.all([
+        gamesApi.getById(${JSON.stringify(ids.gameId)}),
+        gamesApi.getById(${JSON.stringify(ids.otherGameId)}),
+        roundsApi.getByGameId(${JSON.stringify(ids.gameId)}),
+        phasesApi.getById(${JSON.stringify(ids.phaseId)}),
+        phaseSetsApi.getById(${JSON.stringify(ids.phaseSetId)}),
+        phaseSetsApi.getById("original"),
+      ]);
+    })()`;
+    const before = await page.evaluate(readSource);
+    await page.goto(`${appUrl}#/phaseCompan10n/game/${ids.gameId}`);
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: (text: string) => {
+            document.documentElement.dataset.copiedUrl = text;
+            return Promise.resolve();
+          },
+        },
+      });
+    });
+    const card = await openCard(page);
+    const share = card.getByRole("button", { name: "Share Phases Card", exact: true });
+    await expect.poll(() => share.isEnabled()).toBe(true);
+    await share.click();
+    await card.getByRole("button", { name: "Phases Card link copied", exact: true }).waitFor();
+    const url = await page.locator("html").getAttribute("data-copied-url");
+    if (!url) throw new Error("Missing edited Game share URL");
+    expect(url.startsWith(`${appUrl}#/phaseCompan10n/phasescard/custom?data=`)).toBe(true);
+    const expectedObjectives = [
+      "1 set of 3 and 1 run of 4",
+      "2 sets of 3",
+      "2 sets of 3",
+      "1 run of 9 of the same color",
+      "2 sets of 3",
+    ];
+    const sourceList = card.getByRole("region", { name: "Phases Card phase list", exact: true });
+    expect(await sourceList.locator("span[title]").allTextContents()).toEqual(expectedObjectives);
+    await recipient.goto(url);
+    await recipient.reload();
+    await recipient.getByText("Edited travel card", { exact: true }).waitFor();
+    const list = recipient.getByRole("region", { name: "Phases Card phase list", exact: true });
+    await expect
+      .poll(() => list.locator("span[title]").allTextContents())
+      .toEqual(expectedObjectives);
+    expect(
+      await list.locator(".list-row-shell").evaluateAll((rows) =>
+        rows.map((row) => ({
+          number: row.querySelector("span")?.textContent,
+          removed: Array.from(row.querySelectorAll("span")).some(
+            (span) => span.textContent === "Removed",
+          ),
+        })),
+      ),
+    ).toEqual([
+      { number: "1", removed: false },
+      { number: "2", removed: true },
+      { number: "3", removed: true },
+      { number: "4", removed: false },
+      { number: "5", removed: false },
+    ]);
+    expect(await list.getByRole("button").count()).toBe(0);
+    const sourceRemoved = sourceList.getByText("Removed", { exact: true }).first();
+    const sharedRemoved = list.getByText("Removed", { exact: true }).first();
+    const color = (element: HTMLElement | SVGElement) => getComputedStyle(element).color;
+    expect(await sharedRemoved.evaluate(color)).toBe(await sourceRemoved.evaluate(color));
+    for (const row of await list.locator(".list-row-shell").all()) {
+      const box = await bounds(row);
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(320);
+    }
+    await list.focus();
+    await recipient.keyboard.press("End");
+    expect(await page.evaluate(readSource)).toEqual(before);
+    expect(
+      await recipient.evaluate(`(async () => {
+        const { gamesApi } = await import("/scorekeeper/src/data/api/games.ts");
+        const { phasesApi } = await import("/scorekeeper/src/data/api/phases.ts");
+        const { phaseSetsApi } = await import("/scorekeeper/src/data/api/phaseSets.ts");
+        return [
+          await gamesApi.getById(${JSON.stringify(ids.gameId)}),
+          await phasesApi.getById(${JSON.stringify(ids.phaseId)}),
+          await phaseSetsApi.getById(${JSON.stringify(ids.phaseSetId)}),
+        ];
+      })()`),
+    ).toEqual([undefined, undefined, undefined]);
+    await recipient.evaluate(() => {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: (text: string) => {
+            document.documentElement.dataset.copiedUrl = text;
+            return Promise.resolve();
+          },
+        },
+      });
+    });
+    await recipient.getByRole("button", { name: "Share Phases Card", exact: true }).click();
+    await recipient.getByRole("button", { name: "Phases Card link copied", exact: true }).waitFor();
+    const resharedUrl = await recipient.locator("html").getAttribute("data-copied-url");
+    if (!resharedUrl) throw new Error("Missing re-shared Game card URL");
+    await recipient.goto(resharedUrl);
+    await list.getByText("Removed", { exact: true }).first().waitFor();
+    expect(await list.getByText("Removed", { exact: true }).count()).toBe(2);
+    expect(await list.locator("span[title]").allTextContents()).toEqual(expectedObjectives);
+    await recipient.getByRole("button", { name: "Save Phases Card", exact: true }).click();
+    await recipient.getByRole("button", { name: "Phases Card saved", exact: true }).waitFor();
+    expect(await list.getByText("Removed", { exact: true }).count()).toBe(2);
+    const savedId = await recipient.evaluate<string>(`(async () => {
+      const { phaseSetsApi } = await import("/scorekeeper/src/data/api/phaseSets.ts");
+      const saved = await phaseSetsApi.getAll({ type: "saved" });
+      if (saved.length !== 1) throw new Error("Expected one imported Phase Set");
+      return saved[0].id;
+    })()`);
+    await recipient.goto(`${appUrl}#/phaseCompan10n/phasescard/${savedId}`);
+    const savedList = recipient.getByRole("region", {
+      name: "Phases Card phase list",
+      exact: true,
+    });
+    await expect
+      .poll(() => savedList.locator("span[title]").allTextContents())
+      .toEqual(["1 set of 3 and 1 run of 4", "1 run of 9 of the same color", "2 sets of 3"]);
+    expect(await savedList.getByText("Removed", { exact: true }).count()).toBe(0);
+    expect(
+      await savedList
+        .locator(".list-row-shell")
+        .evaluateAll((rows) => rows.map((row) => row.querySelector("span")?.textContent)),
+    ).toEqual(["1", "2", "3"]);
+    await recipient.goto(url);
+    await list.getByText("Removed", { exact: true }).first().waitFor();
+    expect(await list.locator("span[title]").allTextContents()).toEqual(expectedObjectives);
+    expect(
+      await recipient.getByRole("button", { name: "Save Phases Card", exact: true }).count(),
+    ).toBe(0);
+    expect(await page.evaluate(readSource)).toEqual(before);
+  } finally {
+    await recipient.close();
+    await page.close();
+  }
+}, 60_000);
+
+it("keeps a removed built-in objective list self-contained and reports clipboard errors before retry", async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  page.setDefaultTimeout(5_000);
+  page.setDefaultNavigationTimeout(30_000);
+  try {
+    await page.goto(`${appUrl}#/phaseCompan10n/players`);
+    await page.getByText("No players yet", { exact: true }).waitFor();
+    const gameId = await page.evaluate<string>(`(async () => {
+      const { playersApi } = await import("/scorekeeper/src/data/api/players.ts");
+      const { phaseSetsApi } = await import("/scorekeeper/src/data/api/phaseSets.ts");
+      const { gamesApi } = await import("/scorekeeper/src/data/api/games.ts");
+      const { roundsApi } = await import("/scorekeeper/src/data/api/rounds.ts");
+      const players = await Promise.all(["Amy", "Bob"].map(name =>
+        playersApi.create({ name, color: "Jam", isFavorite: 0 })));
+      const original = await phaseSetsApi.getById("original");
+      const game = await gamesApi.create({
+        players: players.map(player => player.id),
+        phaseSet: { ...original, type: "temporary" },
+        settings: { tiebreaker: "fewestWilds", roundSkipPenalty: 0, sitOutPenalty: 0 },
+      });
+      await roundsApi.add({
+        gameId: game.id, roundWinnerId: null,
+        scores: players.map(player => ({
+          playerId: player.id, phaseStatus: "failed", score: 0,
+        })),
+      });
+      const editor = await gamesApi.getEditor(game.id);
+      const removal = {
+        gameId: game.id, version: editor.version, players: game.players,
+        phaseOccurrences: game.phaseOccurrences.slice(1),
+      };
+      const review = await gamesApi.previewEdit(removal);
+      await gamesApi.edit({ ...removal, approval: { token: review.token } });
+      return game.id;
+    })()`);
+    await page.goto(`${appUrl}#/phaseCompan10n/game/${gameId}`);
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: () => Promise.reject(new Error("Clipboard unavailable")),
+        },
+      });
+    });
+    const card = await openCard(page);
+    await card.getByRole("button", { name: "Share Phases Card", exact: true }).click();
+    await card.getByRole("status").filter({ hasText: "Clipboard unavailable" }).waitFor();
+    expect(
+      await card.getByRole("button", { name: "Phases Card link copied", exact: true }).count(),
+    ).toBe(0);
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: (text: string) => {
+            document.documentElement.dataset.copiedUrl = text;
+            return Promise.resolve();
+          },
+        },
+      });
+    });
+    await card.getByRole("button", { name: "Share Phases Card", exact: true }).click();
+    await card.getByRole("button", { name: "Phases Card link copied", exact: true }).waitFor();
+    const url = await page.locator("html").getAttribute("data-copied-url");
+    if (!url) throw new Error("Missing self-contained Game card URL");
+    expect(url.startsWith(`${appUrl}#/phaseCompan10n/phasescard/custom?data=`)).toBe(true);
+    await page.goto(url);
+    const list = page.getByRole("region", { name: "Phases Card phase list", exact: true });
+    await list.getByText("Removed", { exact: true }).waitFor();
+    expect(await list.locator(".list-row-shell").count()).toBe(10);
+    await page.goto(`${appUrl}#/phaseCompan10n/phasescard/original`);
+    await list.getByText("2 sets of 3", { exact: true }).waitFor();
+    expect(await list.getByText("Removed", { exact: true }).count()).toBe(0);
+  } finally {
+    await page.close();
+  }
+}, 60_000);
+
+it("rejects malformed or unsupported Removed Phase links without showing an inaccurate card", async () => {
+  const page = await browser.newPage({ viewport: { width: 320, height: 568 } });
+  page.setDefaultTimeout(5_000);
+  page.setDefaultNavigationTimeout(30_000);
+  try {
+    const phase = {
+      requirements: [{ type: "set", count: 3, quantity: 2, isSameColor: false }],
+    };
+    for (const payload of [
+      { v: 2, name: "All removed", phases: [{ ...phase, removed: true }] },
+      { v: 2, name: "Wrong flag", phases: [phase, { ...phase, removed: false }] },
+      { v: 2, name: "Wrong flag type", phases: [phase, { ...phase, removed: "true" }] },
+      { v: 2, name: "Unsupported numbering", phases: [{ ...phase, phaseNumber: 7 }] },
+      { v: 1, name: "Unsupported metadata", phases: [phase, { ...phase, removed: true }] },
+      { v: 3, name: "Future format", phases: [phase] },
+    ]) {
+      const data = Buffer.from(JSON.stringify(payload)).toString("base64url");
+      await page.goto(`${appUrl}#/phaseCompan10n/phasescard/custom?data=${data}`);
+      await page
+        .getByRole("alert")
+        .filter({ hasText: /This Phases Card link/ })
+        .waitFor();
+      expect(await page.getByRole("region", { name: "Phases Card phase list" }).count()).toBe(0);
+      expect(
+        await page.getByRole("button", { name: "Share Phases Card", exact: true }).count(),
+      ).toBe(0);
+      expect(
+        await page.getByRole("button", { name: "Save Phases Card", exact: true }).count(),
+      ).toBe(0);
+    }
+  } finally {
+    await page.close();
+  }
+}, 60_000);
 
 afterAll(async () => {
   await browser?.close();

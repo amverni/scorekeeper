@@ -18,10 +18,10 @@ export interface ImportedPhasesCardInput {
 
 export const phasesCardImportApi = {
   async findSavedMatch(input: ImportedPhasesCardInput): Promise<SavedPhaseSet | undefined> {
-    const name = normalizeName(input.name);
+    const requiredInput = normalizeInput(input);
     const db = await getDB();
     const customPhaseSets = await db.getAll("customPhaseSets");
-    const candidates = getSavedPhaseSetCandidates(name, customPhaseSets);
+    const candidates = getSavedPhaseSetCandidates(requiredInput.name, customPhaseSets);
     if (candidates.length === 0) return undefined;
 
     const candidatePhaseIds = [...new Set(candidates.flatMap((phaseSet) => phaseSet.phases))];
@@ -29,15 +29,14 @@ export const phasesCardImportApi = {
       candidatePhaseIds.map((phaseId) => db.get("customPhases", phaseId)),
     );
     return findSavedMatchInCandidates(
-      input,
+      requiredInput,
       candidates,
       savedPhases.filter((phase): phase is Phase => phase !== undefined).filter(isSavedPhase),
     );
   },
 
   async saveImported(input: ImportedPhasesCardInput): Promise<SavedPhaseSet> {
-    const name = normalizeName(input.name);
-    if (input.phases.length === 0) throw new Error("At least one phase is required");
+    const { name, phases } = normalizeInput(input);
 
     const db = await getDB();
     const tx = db.transaction(["customPhases", "customPhaseSets"], "readwrite");
@@ -48,11 +47,7 @@ export const phasesCardImportApi = {
       phaseStore.index("by-type").getAll("saved"),
     ]);
     const savedPhases = customPhases.filter(isSavedPhase);
-    const existing = findSavedMatchInRecords(
-      { name, phases: input.phases },
-      customPhaseSets,
-      savedPhases,
-    );
+    const existing = findSavedMatchInRecords({ name, phases }, customPhaseSets, savedPhases);
     if (existing) {
       await tx.done;
       return existing;
@@ -60,7 +55,7 @@ export const phasesCardImportApi = {
 
     const phaseIds: PhaseId[] = [];
     const usedPhaseIds = new Set<PhaseId>();
-    for (const importedPhase of input.phases) {
+    for (const importedPhase of phases) {
       const existingPhase = savedPhases.find(
         (phase) => !usedPhaseIds.has(phase.id) && arePhaseRequirementsEqual(phase, importedPhase),
       );
@@ -92,6 +87,13 @@ export const phasesCardImportApi = {
     return phaseSet;
   },
 };
+
+function normalizeInput(input: ImportedPhasesCardInput): ImportedPhasesCardInput {
+  const name = normalizeName(input.name);
+  const phases = input.phases.filter((phase) => !phase.removed);
+  if (phases.length === 0) throw new Error("At least one required Phase must remain.");
+  return { name, phases };
+}
 
 function normalizeName(name: string): string {
   const trimmed = name.trim();

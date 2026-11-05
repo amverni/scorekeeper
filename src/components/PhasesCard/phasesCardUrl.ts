@@ -3,11 +3,10 @@ import type {
   Phase,
   PhaseSetId,
   PhasesCardPhase,
-  PhasesCardSharePayloadV1,
+  PhasesCardSharePayload,
   PhasesCardShareTarget,
 } from "../../types";
 
-const PAYLOAD_VERSION = 1;
 const MAX_JSON_BYTES = 8192;
 const MAX_ENCODED_PAYLOAD_LENGTH = Math.ceil(MAX_JSON_BYTES / 3) * 4;
 const MAX_PHASES = 50;
@@ -19,18 +18,18 @@ export type DecodePhasesCardResult =
   | { ok: false; message: string };
 
 export function buildPhasesCardShareUrl(target: PhasesCardShareTarget): string {
-  const builtInId = getBuiltInShareId(target);
-  if (builtInId) {
-    return buildAbsoluteHashUrl(`/phaseCompan10n/phasescard/${builtInId}`);
-  }
-
   const payload = validateOutboundPayload({
-    v: PAYLOAD_VERSION,
+    v: target.phases.some((phase) => phase.removed) ? 2 : 1,
     name: target.name.trim(),
     phases: target.phases.map((phase) => ({
       requirements: phase.requirements.map(copyRequirement),
+      ...(phase.removed !== undefined ? { removed: phase.removed } : {}),
     })),
   });
+  const builtInId = payload.v === 1 ? getBuiltInShareId(target) : undefined;
+  if (builtInId) {
+    return buildAbsoluteHashUrl(`/phaseCompan10n/phasescard/${builtInId}`);
+  }
   const data = encodePhasesCardPayload(payload);
 
   return buildAbsoluteHashUrl(`/phaseCompan10n/phasescard/custom?data=${encodeURIComponent(data)}`);
@@ -47,7 +46,7 @@ function getBuiltInShareId(target: PhasesCardShareTarget): PhaseSetId | undefine
   }
 }
 
-export function encodePhasesCardPayload(payload: PhasesCardSharePayloadV1): string {
+export function encodePhasesCardPayload(payload: PhasesCardSharePayload): string {
   const json = JSON.stringify(payload);
   const bytes = new TextEncoder().encode(json);
   if (bytes.byteLength > MAX_JSON_BYTES) {
@@ -94,20 +93,14 @@ function copyRequirement(requirement: Meld): Meld {
   return { ...requirement };
 }
 
-function validateOutboundPayload(payload: PhasesCardSharePayloadV1): PhasesCardSharePayloadV1 {
+function validateOutboundPayload(payload: PhasesCardSharePayload): PhasesCardSharePayload {
   const result = validatePayload(payload);
   if (!result.ok) throw new Error(result.message);
-  return {
-    v: PAYLOAD_VERSION,
-    name: result.name,
-    phases: result.phases.map((phase) => ({
-      requirements: phase.requirements.map(copyRequirement),
-    })),
-  };
+  return payload;
 }
 
 function validatePayload(value: unknown): DecodePhasesCardResult {
-  if (!isRecord(value) || value.v !== PAYLOAD_VERSION) {
+  if (!isRecord(value) || (value.v !== 1 && value.v !== 2)) {
     return { ok: false, message: "This Phases Card link uses an unsupported format." };
   }
   if (typeof value.name !== "string" || value.name.trim().length === 0) {
@@ -125,6 +118,15 @@ function validatePayload(value: unknown): DecodePhasesCardResult {
     if (!isRecord(phase) || !Array.isArray(phase.requirements)) {
       return { ok: false, message: "This Phases Card link has invalid phases." };
     }
+    if (
+      value.v === 2 &&
+      Object.keys(phase).some((key) => key !== "requirements" && key !== "removed")
+    ) {
+      return { ok: false, message: "This Phases Card link has invalid phases." };
+    }
+    if (phase.removed !== undefined && (value.v !== 2 || phase.removed !== true)) {
+      return { ok: false, message: "This Phases Card link has invalid Removed Phase data." };
+    }
     if (phase.requirements.length === 0 || phase.requirements.length > MAX_REQUIREMENTS) {
       return { ok: false, message: "This Phases Card link has invalid phase requirements." };
     }
@@ -136,7 +138,13 @@ function validatePayload(value: unknown): DecodePhasesCardResult {
       }
       requirements.push(parsed);
     }
-    phases.push({ requirements: requirements as Phase["requirements"] });
+    phases.push({
+      requirements: requirements as Phase["requirements"],
+      ...(phase.removed === true ? { removed: true } : {}),
+    });
+  }
+  if (phases.every((phase) => phase.removed)) {
+    return { ok: false, message: "This Phases Card link has no required Phases." };
   }
 
   return { ok: true, name: value.name.trim(), phases };

@@ -13,6 +13,18 @@ export interface PhasesCardSharePayloadV1 {
   }>;
 }
 
+export interface PhasesCardSharePayloadV2 {
+  v: 2;
+  name: string;
+  // Retained Removed rows preserve numbered slots; array index + 1 is the Phase Number.
+  phases: Array<{
+    requirements: Meld[];
+    removed?: true;
+  }>;
+}
+
+export type PhasesCardSharePayload = PhasesCardSharePayloadV1 | PhasesCardSharePayloadV2;
+
 interface PhasesCardPhaseSetShareTarget {
   source: "phase-set";
   name: string;

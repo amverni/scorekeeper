@@ -47,19 +47,11 @@ export function PhasesCardDialog({ gameId, open, onClose }: PhasesCardDialogProp
         <PhasesCardShareButton
           target={{ source: "game-snapshot", name: card?.name ?? "", phases, builtInPhaseSetId }}
           className="size-10!"
-          disabled={
-            isLoading || builtInMatchLoading || isError || removedPhases || phases.length === 0
-          }
+          disabled={isLoading || builtInMatchLoading || isError || phases.length === 0}
           onError={(message) => toastRef.current?.show(message)}
         />
       }
     >
-      {removedPhases && (
-        <p className="pb-3 text-sm text-text-secondary">
-          Sharing is unavailable because this Game has Removed Phases. The current share format
-          cannot preserve their numbers and removal state.
-        </p>
-      )}
       {isError || phasePlayersQuery.isError ? (
         <div className="pb-4">
           {isError ? (
