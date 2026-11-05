@@ -120,6 +120,7 @@ export const phaseSetsApi = {
    * game phases exactly match a built-in Phase Set.
    */
   getMatchingBuiltInId(phases: PhasesCardPhase[]): PhaseSetId | undefined {
+    if (phases.some((phase) => phase.removed)) return undefined;
     const builtInPhaseById = new Map<PhaseId, Phase>(
       builtInPhases.map((phase) => [phase.id, phase]),
     );

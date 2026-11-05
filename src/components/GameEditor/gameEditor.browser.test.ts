@@ -92,10 +92,9 @@ it("reviews combined removal and Join once, keeps gray history correctable and r
     await page.getByRole("button", { name: "Open Phases Card", exact: true }).click();
     const card = page.getByRole("dialog", { name: "Phases Card", exact: true });
     await card.getByText("Removed", { exact: true }).waitFor();
-    await card.getByText(/Sharing is unavailable.*Removed Phases/).waitFor();
     expect(
       await card.getByRole("button", { name: "Share Phases Card", exact: true }).isDisabled(),
-    ).toBe(true);
+    ).toBe(false);
     await card.getByRole("button", { name: "Close", exact: true }).click();
     await card.waitFor({ state: "detached" });
     await page.getByRole("button", { name: "Round 1", exact: true }).click();

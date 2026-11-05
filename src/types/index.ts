@@ -103,7 +103,9 @@ export type {
 export type {
   PhasesCardPhase,
   PhasesCardPlayerGroups,
+  PhasesCardSharePayload,
   PhasesCardSharePayloadV1,
+  PhasesCardSharePayloadV2,
   PhasesCardShareTarget,
 } from "./phasesCard";
 export type { Player, PlayerId, PlayerIdentity } from "./player";
