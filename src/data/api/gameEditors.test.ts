@@ -18,6 +18,157 @@ async function resetDatabase() {
 beforeEach(resetDatabase);
 afterEach(resetDatabase);
 
+it.each([
+  { deletion: "latest", inOrderPhases: true },
+  { deletion: "latest", inOrderPhases: false },
+  { deletion: "all", inOrderPhases: true },
+  { deletion: "all", inOrderPhases: false },
+])("preserves added requirement eligibility after legacy $deletion deletion and reload (in order: $inOrderPhases)", async ({
+  deletion,
+  inOrderPhases,
+}) => {
+  const [amy, bob, cam] = await Promise.all(
+    ["Amy", "Bob", "Cam"].map((name) => playersApi.create({ name, color: "Jam", isFavorite: 0 })),
+  );
+  const game = await gamesApi.create({
+    players: [amy.id, bob.id, cam.id],
+    phaseSet: { id: "short", type: "temporary", name: "Short", phases: ["classic-1"] },
+    settings: { inOrderPhases, tiebreaker: "fewestWilds", roundSkipPenalty: 0, sitOutPenalty: 0 },
+  });
+  const firstScores: Parameters<typeof roundsApi.add>[0]["scores"] = [
+    { playerId: amy.id, phaseStatus: "completed", score: 0, selectedPhase: 1 },
+    { playerId: bob.id, phaseStatus: "failed", score: 1, selectedPhase: 1 },
+    { playerId: cam.id, phaseStatus: "failed", score: 1, selectedPhase: 1 },
+  ];
+  await roundsApi.add({ gameId: game.id, roundWinnerId: amy.id, scores: firstScores });
+  const pending = await gamesApi.getView(game.id);
+  if (!pending?.pendingFinishChoice) throw new Error("Missing finish choice");
+  await gamesApi.resolveFinishChoice(game.id, "continue", pending.pendingFinishChoice.token);
+  await roundsApi.add({
+    gameId: game.id,
+    roundWinnerId: null,
+    scores: [
+      { playerId: bob.id, phaseStatus: "failed", score: 2, selectedPhase: 1 },
+      { playerId: cam.id, phaseStatus: "failed", score: 2, selectedPhase: 1 },
+    ],
+  });
+  const editor = await gamesApi.getEditor(game.id);
+  if (!editor) throw new Error("Missing editor");
+  const added = { id: crypto.randomUUID(), phaseId: "classic-1" };
+  const input = {
+    gameId: game.id,
+    version: editor.version,
+    players: game.players,
+    phaseOccurrences: [...game.phaseOccurrences, added],
+  };
+  const review = await gamesApi.previewEdit(input);
+  await gamesApi.edit({ ...input, approval: { token: review.token } });
+  if (deletion === "latest") await roundsApi.delete(game.id, 2);
+  else await roundsApi.deleteByGameId(game.id);
+  closeDB();
+  if (deletion === "all") {
+    await roundsApi.add({ gameId: game.id, roundWinnerId: amy.id, scores: firstScores });
+  }
+  await roundsApi.add({
+    gameId: game.id,
+    roundWinnerId: amy.id,
+    scores: [
+      { playerId: amy.id, phaseStatus: "completed", score: 5, selectedPhase: 2 },
+      { playerId: bob.id, phaseStatus: "failed", score: 1, selectedPhase: 1 },
+      { playerId: cam.id, phaseStatus: "failed", score: 1, selectedPhase: 1 },
+    ],
+  });
+  closeDB();
+  const view = await gamesApi.getView(game.id);
+  expect(view?.players[0]).toMatchObject({
+    progress: { isFinished: true },
+    finishingRound: 2,
+    finishingPlace: 1,
+    tiebreakerTotal: 5,
+  });
+  expect(view?.rounds[1].scores[0]).toMatchObject({
+    counted: true,
+    phaseNumber: 2,
+    phaseOccurrenceId: added.id,
+  });
+});
+
+it("rejects restoration of duplicate historical resolutions before either completion choice can save", async () => {
+  const [amy, bob, cam] = await Promise.all(
+    ["Amy", "Bob", "Cam"].map((name) => playersApi.create({ name, color: "Jam", isFavorite: 0 })),
+  );
+  const game = await gamesApi.create({
+    players: [amy.id, bob.id, cam.id],
+    phaseSet: {
+      id: "short",
+      type: "temporary",
+      name: "Short",
+      phases: ["classic-1", "classic-2", "classic-3"],
+    },
+    settings: {
+      inOrderPhases: false,
+      tiebreaker: "fewestWilds",
+      roundSkipPenalty: 0,
+      sitOutPenalty: 0,
+    },
+  });
+  for (const [phase, phaseStatus] of [
+    [1, "failed"],
+    [1, "completed"],
+    [2, "completed"],
+  ] as const) {
+    await roundsApi.add({
+      gameId: game.id,
+      roundWinnerId: null,
+      scores: [
+        { playerId: amy.id, phaseStatus, score: 0, selectedPhase: phase },
+        { playerId: bob.id, phaseStatus: "failed", score: 0, selectedPhase: 1 },
+        { playerId: cam.id, phaseStatus: "failed", score: 0, selectedPhase: 1 },
+      ],
+    });
+  }
+  const editor = await gamesApi.getEditor(game.id);
+  if (!editor) throw new Error("Missing editor");
+  const removal = {
+    gameId: game.id,
+    version: editor.version,
+    players: game.players,
+    phaseOccurrences: game.phaseOccurrences.slice(1),
+  };
+  const removalReview = await gamesApi.previewEdit(removal);
+  await gamesApi.edit({ ...removal, approval: { token: removalReview.token } });
+  const correction = await gamesApi.getRoundEditor(game.id, 1);
+  await gamesApi.editRound({
+    gameId: game.id,
+    roundNumber: 1,
+    version: correction.version,
+    roundWinnerId: null,
+    scores: correction.round.scores.map((entry) => ({
+      ...entry,
+      selectedPhase: entry.currentPhase,
+      phaseStatus: entry.playerId === amy.id ? "completed" : entry.phaseStatus,
+    })),
+  });
+  const before = await gamesApi.getView(game.id);
+  if (!before) throw new Error("Missing Game view");
+  const restoration = {
+    ...removal,
+    version: before.version,
+    phaseOccurrences: game.phaseOccurrences.slice(0, 2),
+  };
+  await expect(gamesApi.previewEdit(restoration)).rejects.toThrow("Phase 1 is already resolved");
+  for (const finishChoice of ["continue", "finish"] as const) {
+    await expect(
+      gamesApi.edit({
+        ...restoration,
+        approval: { token: "forced", finishChoice },
+      }),
+    ).rejects.toThrow("Phase 1 is already resolved");
+  }
+  closeDB();
+  expect(await gamesApi.getView(game.id)).toEqual(before);
+});
+
 it("requires Reopen for Correction before expanding an automatically Completed Game", async () => {
   const [amy, bob] = await Promise.all(
     ["Amy", "Bob"].map((name) => playersApi.create({ name, color: "Jam", isFavorite: 0 })),

@@ -14,6 +14,7 @@ import {
   getSelectedPhaseError,
   isPointsTiebreaker,
   phaseStatusAdvances,
+  shiftPhaseAdditionBoundaries,
 } from "../../utils";
 import {
   finalizeGame,
@@ -52,16 +53,7 @@ export const phaseRoundEdits = {
       const activeGame = {
         ...game,
         deferFinishChoiceUntilSave: undefined,
-        phaseOccurrences: game.phaseOccurrences.map((phase) =>
-          phase.addedAfterRoundNumber === undefined
-            ? phase
-            : {
-                ...phase,
-                addedAfterRoundNumber:
-                  phase.addedAfterRoundNumber -
-                  Number(selected.roundNumber <= phase.addedAfterRoundNumber),
-              },
-        ),
+        phaseOccurrences: shiftPhaseAdditionBoundaries(game.phaseOccurrences, selected.roundNumber),
         ...(game.playerJoins
           ? {
               playerJoins: game.playerJoins.map((join) => ({

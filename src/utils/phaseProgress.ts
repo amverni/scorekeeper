@@ -1,10 +1,28 @@
 import type {
+  GamePhaseOccurrence,
   GamePhaseOccurrenceId,
   PhaseSelectionAvailability,
   PhaseStatus,
   PlayerProgress,
   RoundScore,
 } from "../types";
+
+export function shiftPhaseAdditionBoundaries(
+  phases: readonly GamePhaseOccurrence[],
+  deletedRound: number | "all",
+): GamePhaseOccurrence[] {
+  return phases.map((phase) =>
+    phase.addedAfterRoundNumber === undefined
+      ? phase
+      : {
+          ...phase,
+          addedAfterRoundNumber:
+            deletedRound === "all"
+              ? 0
+              : phase.addedAfterRoundNumber - Number(deletedRound <= phase.addedAfterRoundNumber),
+        },
+  );
+}
 
 export function getInitialPlayerProgress(
   selectableTotalPhases?: number,

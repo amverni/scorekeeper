@@ -20,7 +20,7 @@ import {
   withGameTransaction,
 } from "./gameLifecycle";
 import { assertSavedSeats } from "./gameMembership";
-import { deriveGameReadModel } from "./gameReadModel";
+import { assertUniquePhaseResolutions, deriveGameReadModel } from "./gameReadModel";
 import { assertActivePhaseGame, assertPhaseRounds } from "./games";
 import { phasesApi } from "./phases";
 import { resolveEarlyGameCompletion, resolveGameCompletion } from "./roundCompletion";
@@ -293,6 +293,7 @@ async function evaluateEdit(
   };
   const intendedPlayers = [...players, ...addedPlayers];
   const projected = deriveGameReadModel({ game: proposed, players: intendedPlayers, rounds });
+  assertUniquePhaseResolutions(projected);
   if (
     !inspectOnly &&
     view.gameEndingRound !== null &&
