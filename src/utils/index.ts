@@ -14,6 +14,7 @@ export {
   getProgressAfterScore,
   getSelectedPhaseError,
   phaseStatusAdvances,
+  shiftPhaseAdditionBoundaries,
 } from "./phaseProgress";
 export {
   getPointsCardCount,

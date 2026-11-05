@@ -70,6 +70,19 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
     if (!state) throw new Error(`Player interpretation not found: ${id}`);
     return state;
   };
+  const canPlayAtRound = (id: PlayerId, roundNumber: number) => {
+    const { progress } = stateFor(id);
+    return (
+      !progress.isFinished &&
+      requiredPhases.some(
+        (phase) =>
+          (game.phaseOccurrences[phase - 1].addedAfterRoundNumber ?? 0) < roundNumber &&
+          (progress.selectable
+            ? !progress.selectable.resolvedPhases.includes(phase)
+            : phase >= progress.currentPhase),
+      )
+    );
+  };
   const membershipChanges = (game.playerMembershipChanges ?? [])
     .slice()
     .sort((a, b) => a.afterRoundNumber - b.afterRoundNumber);
@@ -82,7 +95,7 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
       nextMembershipChange++;
       if (
         !hasJoined(change.playerId, change.afterRoundNumber + 1) ||
-        stateFor(change.playerId).progress.isFinished
+        !canPlayAtRound(change.playerId, change.afterRoundNumber + 1)
       ) {
         continue;
       }
@@ -127,7 +140,7 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
       (id) =>
         hasJoined(id, round.roundNumber) &&
         !withdrawn.has(id) &&
-        !stateFor(id).progress.isFinished &&
+        canPlayAtRound(id, round.roundNumber) &&
         round.scores.some((score) => score.playerId === id),
     );
     const dealerId = counted ? nextDealer(participatingIds) : null;
@@ -141,11 +154,12 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
         : undefined;
       const removed = recordedPhase?.removed === true;
       const joined = hasJoined(player.id, round.roundNumber);
+      const wasPlaying = canPlayAtRound(player.id, round.roundNumber);
       const entryCounts =
         counted &&
         joined &&
         !withdrawn.has(player.id) &&
-        !state.progress.isFinished &&
+        wasPlaying &&
         !removed &&
         recorded !== undefined;
       // Selectable attempts retain their recorded numbered position through corrections.
@@ -163,7 +177,6 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
       const phaseAlreadyResolved =
         recorded !== undefined &&
         state.progress.selectable?.resolvedPhases.includes(recorded.currentPhase) === true;
-      const wasFinished = state.progress.isFinished;
       if (entryCounts && effectiveScore) {
         state.progress = getProgressAfterScore(
           effectiveScore,
@@ -175,7 +188,7 @@ export function deriveGameReadModel({ game, players, rounds }: StandingsInput): 
         if (round.roundWinnerId === player.id) state.mostRecentWin = round.roundNumber;
         if (state.progress.isFinished) state.finishingRound = round.roundNumber;
       }
-      if (counted && joined && !withdrawn.has(player.id) && !wasFinished) {
+      if (counted && joined && !withdrawn.has(player.id) && wasPlaying) {
         state.phasePoints.push({ roundNumber: round.roundNumber, ...state.progress });
         state.tiebreakerPoints.push({
           roundNumber: round.roundNumber,

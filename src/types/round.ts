@@ -31,6 +31,7 @@ export interface PhaseSelectionAvailability {
   resolvedElsewhere: number[];
   recordedPhase?: number;
   removedPhases?: number[];
+  notYetAddedPhases?: number[];
   phaseOccurrenceIds?: GamePhaseOccurrenceId[];
 }
 
