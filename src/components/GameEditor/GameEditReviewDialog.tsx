@@ -13,6 +13,10 @@ function describeEffect(effect: PhaseGameEditEffect) {
       return `${names} will become unranked and ineligible to win, and will not play or deal from Round ${round}. Saved history stays intact.`;
     case "rejoin":
       return `${names} will rejoin from Round ${round}, resuming existing totals and phase progress. Missed Rounds add no scores or penalties.`;
+    case "returning":
+      return `${names} will no longer be Finished Players and will return to play from Round ${round}, losing their previous Finishing Places. Finishing results will be recalculated. Actual Participation Gaps stay intact; no earlier scores, penalties, phase progress or dealer turns will be backfilled.`;
+    case "finishingChanged":
+      return `${names} will remain Finished Players, but their previous Finishing Rounds or Finishing Places will change. The revised finishing results replace the previous results.`;
     case "phaseRemoval": {
       const resolved = effect.resolvedPhaseNumbers;
       const attempted = effect.phaseNumbers.filter((number) => !resolved.includes(number));
@@ -27,6 +31,8 @@ function describeEffect(effect: PhaseGameEditEffect) {
     }
     case "finished":
       return `${names} will become Finished Players under the remaining required Phases. Finishing Places and counted totals will be recalculated.`;
+    case "phaseRestoration":
+      return `Phases ${effect.phaseNumbers.join(", ")} will be restored under their original numbers. Their saved entries for ${names} become eligible to count again, including Tiebreaker values and recorded Round wins. History, totals and finishing results will be recalculated under normal participation and Game-ending rules; other excluded entries stay excluded.`;
   }
 }
 

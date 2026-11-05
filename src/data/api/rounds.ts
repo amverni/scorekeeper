@@ -16,6 +16,7 @@ import {
   getPointsCardScore,
   getRoundWinnerRequirement,
   isPointsTiebreaker,
+  shiftPhaseAdditionBoundaries,
 } from "../../utils";
 import { getDB } from "../db";
 import { finalizeGame, requirePlayers, withGameTransaction } from "./gameLifecycle";
@@ -385,6 +386,7 @@ export const roundsApi = {
       const activeGame = {
         ...game,
         deferFinishChoiceUntilSave: undefined,
+        phaseOccurrences: shiftPhaseAdditionBoundaries(game.phaseOccurrences, roundNumber),
         ...(game.playerJoins
           ? {
               playerJoins: game.playerJoins.map((join) => ({
@@ -431,6 +433,7 @@ export const roundsApi = {
       await tx.objectStore("games").put({
         ...game,
         deferFinishChoiceUntilSave: undefined,
+        phaseOccurrences: shiftPhaseAdditionBoundaries(game.phaseOccurrences, "all"),
         ...(game.playerJoins
           ? { playerJoins: game.playerJoins.map((join) => ({ ...join, afterRoundNumber: 0 })) }
           : {}),

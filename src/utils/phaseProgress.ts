@@ -1,10 +1,28 @@
 import type {
+  GamePhaseOccurrence,
   GamePhaseOccurrenceId,
   PhaseSelectionAvailability,
   PhaseStatus,
   PlayerProgress,
   RoundScore,
 } from "../types";
+
+export function shiftPhaseAdditionBoundaries(
+  phases: readonly GamePhaseOccurrence[],
+  deletedRound: number | "all",
+): GamePhaseOccurrence[] {
+  return phases.map((phase) =>
+    phase.addedAfterRoundNumber === undefined
+      ? phase
+      : {
+          ...phase,
+          addedAfterRoundNumber:
+            deletedRound === "all"
+              ? 0
+              : phase.addedAfterRoundNumber - Number(deletedRound <= phase.addedAfterRoundNumber),
+        },
+  );
+}
 
 export function getInitialPlayerProgress(
   selectableTotalPhases?: number,
@@ -47,6 +65,9 @@ export function getSelectedPhaseError({
     selectedPhase > totalPhases
   ) {
     return "Choose a valid Phase Number.";
+  }
+  if (availability.notYetAddedPhases?.includes(selectedPhase)) {
+    return `Phase ${selectedPhase} was added after this Round. Choose a Phase available at that Round.`;
   }
   if (
     selectedPhaseOccurrenceId !== undefined &&

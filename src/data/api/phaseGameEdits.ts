@@ -20,7 +20,7 @@ import {
   withGameTransaction,
 } from "./gameLifecycle";
 import { assertSavedSeats } from "./gameMembership";
-import { deriveGameReadModel } from "./gameReadModel";
+import { assertUniquePhaseResolutions, deriveGameReadModel } from "./gameReadModel";
 import { assertActivePhaseGame, assertPhaseRounds } from "./games";
 import { phasesApi } from "./phases";
 import { resolveEarlyGameCompletion, resolveGameCompletion } from "./roundCompletion";
@@ -165,6 +165,22 @@ async function evaluateEdit(
       "Each Game Phase must have a unique occurrence identity and a Phase definition.",
     );
   }
+  const afterRoundNumber = view.nextRoundNumber - 1;
+  const savedOccurrences = new Map(game.phaseOccurrences.map((phase) => [phase.id, phase]));
+  phaseOccurrences = phaseOccurrences.map(({ id, phaseId, removed }) => {
+    const saved = savedOccurrences.get(id);
+    const addedAfterRoundNumber = saved
+      ? saved.addedAfterRoundNumber
+      : afterRoundNumber > 0
+        ? afterRoundNumber
+        : undefined;
+    return {
+      id,
+      phaseId,
+      ...(removed ? { removed } : {}),
+      ...(addedAfterRoundNumber !== undefined ? { addedAfterRoundNumber } : {}),
+    };
+  });
   const phasesChanged =
     phaseOccurrences.length !== game.phaseOccurrences.length ||
     phaseOccurrences.some(
@@ -179,19 +195,32 @@ async function evaluateEdit(
     (rounds.length > 0 || game.phaseOccurrences.some((phase) => phase.removed))
   ) {
     const intended = new Map(phaseOccurrences.map((phase) => [phase.id, phase]));
+    const savedIds = new Set(game.phaseOccurrences.map((phase) => phase.id));
+    const existing = phaseOccurrences.filter((phase) => savedIds.has(phase.id));
+    const added = phaseOccurrences.filter((phase) => !savedIds.has(phase.id));
     const remaining = game.phaseOccurrences.filter((phase) => intended.has(phase.id));
-    if (phaseOccurrences.some((phase, index) => phase.id !== remaining[index]?.id)) {
-      throw new Error("Phases cannot be added or reordered after the first saved Round.");
+    if (
+      existing.some((phase, index) => phase.id !== remaining[index]?.id) ||
+      phaseOccurrences.slice(0, existing.length).some((phase) => !savedIds.has(phase.id))
+    ) {
+      throw new Error(
+        "Phases cannot be reordered after the first saved Round. Append new Phases after retained slots.",
+      );
     }
-    if (game.phaseOccurrences.some((phase) => phase.removed && !intended.get(phase.id)?.removed)) {
-      throw new Error("Removed Phases cannot be restored or moved.");
+    if (added.some((phase) => phase.removed)) {
+      throw new Error("New Phases must be appended as required Phases.");
     }
     const lastReferenced = lastAnchoredPhase(game, rounds);
-    phaseOccurrences = game.phaseOccurrences.flatMap((phase, index) => {
-      const draft = intended.get(phase.id);
-      if (draft && !draft.removed) return [draft];
-      return index < lastReferenced || phase.removed ? [{ ...phase, removed: true as const }] : [];
-    });
+    phaseOccurrences = [
+      ...game.phaseOccurrences.flatMap((phase, index) => {
+        const draft = intended.get(phase.id);
+        if (draft && !draft.removed) return [draft];
+        return index < lastReferenced || phase.removed
+          ? [{ ...phase, removed: true as const }]
+          : [];
+      }),
+      ...added,
+    ];
   }
   if (!phaseOccurrences.some((phase) => !phase.removed)) {
     throw new Error("At least one required Phase must remain.");
@@ -199,16 +228,6 @@ async function evaluateEdit(
   const [firstPhase, ...remainingPhases] = phaseOccurrences.map(({ phaseId }) => phaseId);
   if (!firstPhase) throw new Error("At least one required Phase must remain.");
   const addedIds = input.players.filter((id) => !game.players.includes(id));
-  const afterRoundNumber = view.nextRoundNumber - 1;
-  if (
-    view.gameEndingRound !== null &&
-    (addedIds.length > 0 ||
-      !game.deferFinishChoiceUntilSave ||
-      view.automaticCompletion ||
-      view.gameEndingRound !== afterRoundNumber)
-  ) {
-    throw new Error("Resolve Finish Game before editing membership.");
-  }
   const addedPlayers = await requirePlayers(tx, addedIds);
   const savedWithdrawn = new Set(
     view.players.filter((player) => player.place === null).map(({ id }) => id),
@@ -274,6 +293,18 @@ async function evaluateEdit(
   };
   const intendedPlayers = [...players, ...addedPlayers];
   const projected = deriveGameReadModel({ game: proposed, players: intendedPlayers, rounds });
+  assertUniquePhaseResolutions(projected);
+  if (
+    !inspectOnly &&
+    view.gameEndingRound !== null &&
+    !(game.deferFinishChoiceUntilSave && phasesChanged && projected.gameEndingRound === null) &&
+    (addedIds.length > 0 ||
+      !game.deferFinishChoiceUntilSave ||
+      view.automaticCompletion ||
+      view.gameEndingRound !== afterRoundNumber)
+  ) {
+    throw new Error("Resolve Finish Game before editing membership.");
+  }
   const winner = projected.standings.gameWinner?.player;
   const completion: PhaseGameEditCompletion =
     winner && projected.gameEndingRound !== null
@@ -292,21 +323,23 @@ async function evaluateEdit(
     );
     if (affected.length > 0) effects.push({ type, players: affected, afterRoundNumber });
   }
-  const removedWithEntries = game.phaseOccurrences.flatMap((phase, index) => {
-    if (
-      phase.removed ||
-      phaseOccurrences.some((intended) => intended.id === phase.id && !intended.removed)
-    )
-      return [];
-    const entries = rounds.flatMap((round) =>
+  const phaseHistory = game.phaseOccurrences.map((phase, index) => ({
+    phase,
+    phaseNumber: index + 1,
+    entries: rounds.flatMap((round) =>
       round.scores.filter(
         (score) =>
           score.phaseOccurrenceId === phase.id ||
           (score.phaseOccurrenceId === undefined && score.currentPhase === index + 1),
       ),
-    );
-    return entries.length > 0 ? [{ phaseNumber: index + 1, entries }] : [];
-  });
+    ),
+  }));
+  const removedWithEntries = phaseHistory.filter(
+    ({ phase, entries }) =>
+      entries.length > 0 &&
+      !phase.removed &&
+      !phaseOccurrences.some((intended) => intended.id === phase.id && !intended.removed),
+  );
   if (removedWithEntries.length > 0) {
     effects.push({
       type: "phaseRemoval",
@@ -319,12 +352,47 @@ async function evaluateEdit(
       ),
     });
   }
+  const restoredWithEntries = phaseHistory.filter(
+    ({ phase, entries }) =>
+      entries.length > 0 &&
+      phase.removed &&
+      phaseOccurrences.some((intended) => intended.id === phase.id && !intended.removed),
+  );
+  if (restoredWithEntries.length > 0) {
+    effects.push({
+      type: "phaseRestoration",
+      phaseNumbers: restoredWithEntries.map(({ phaseNumber }) => phaseNumber),
+      players: intendedPlayers.filter(({ id }) =>
+        restoredWithEntries.some(({ entries }) => entries.some((entry) => entry.playerId === id)),
+      ),
+    });
+  }
   const newlyFinished = intendedPlayers.filter(
     ({ id }) =>
       projected.players.some((player) => player.id === id && player.progress.isFinished) &&
       !view.players.some((player) => player.id === id && player.progress.isFinished),
   );
   if (newlyFinished.length > 0) effects.push({ type: "finished", players: newlyFinished });
+  const returning = intendedPlayers.filter(
+    ({ id }) =>
+      view.players.some((player) => player.id === id && player.progress.isFinished) &&
+      projected.players.some((player) => player.id === id && !player.progress.isFinished),
+  );
+  if (returning.length > 0)
+    effects.push({ type: "returning", players: returning, afterRoundNumber });
+  const finishingChanged = intendedPlayers.filter(({ id }) => {
+    const before = view.players.find((player) => player.id === id);
+    const after = projected.players.find((player) => player.id === id);
+    return (
+      before?.progress.isFinished &&
+      after?.progress.isFinished &&
+      (before.finishingRound !== after.finishingRound ||
+        before.finishingPlace !== after.finishingPlace)
+    );
+  });
+  if (finishingChanged.length > 0) {
+    effects.push({ type: "finishingChanged", players: finishingChanged });
+  }
   const preview: PhaseGameEditPreview = {
     token: JSON.stringify([view.version, proposed, intendedPlayers]),
     requiresConfirmation: rounds.length > 0 && (effects.length > 0 || completion.type !== "none"),
@@ -349,7 +417,6 @@ function getRemovalOptions(
     game,
     view.rounds.map(({ source }) => source),
   );
-  const requiredCount = game.phaseOccurrences.filter((phase) => !phase.removed).length;
   return game.phaseOccurrences.map((phase, index) => {
     const resolvedByEveryone =
       eligibleIds.length > 0 &&
@@ -373,9 +440,7 @@ function getRemovalOptions(
         ? "Removed Phase"
         : resolvedByEveryone
           ? `Phase ${index + 1} has been resolved by every eligible Player and cannot be removed.`
-          : requiredCount === 1
-            ? "At least one required Phase must remain."
-            : null,
+          : null,
     };
   });
 }
